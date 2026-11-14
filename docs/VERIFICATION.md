@@ -1,3 +1,8 @@
+# Private 0.4.0 acceptance
+
+[Installed results and recovery](ACCEPTANCE-0.4.0.md) identify the exact
+private candidate. No public release is authorized.
+
 # Internal 0.4.0 continuation
 
 See [INTERNAL-CANDIDATE.md](INTERNAL-CANDIDATE.md) for the current source-built

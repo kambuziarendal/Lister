@@ -28,6 +28,15 @@ Registrer ventetid, CPU, minne og disk-I/O, også tomgang og avbrudd. Sammenlign
 på forskjellige operativsystemer må beskrive forskjellene. Vi lover ingen bestemt
 ressursbrøk før målingene finnes. Tracker-erstatning er en senere, separat etappe.
 
+### Intern kandidat 0.4.0, kontrollert 14. november
+
+Sikkerhet/modulgrenser, panelvisninger og intern operasjonsvisning er samlet i en
+privat kandidat. Native tester, kompakt lys/mørk visning, faktisk installasjon og
+0.3.0-tilbakeføring/ny oppgradering er kontrollert. Se ACCEPTANCE-0.4.0.md.
+Neste produkttrinn er funksjonsmatrisen og et konkret betabehov, ikke automatisk
+publisering eller en ny stor omskriving. De opprinnelige deltrinnene følger under
+som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
+
 ### Aktivt trinn og kø
 
 1. **Aktivt: filoperasjonenes sikkerhet og modulgrenser.** Gjennomgå dispatch,

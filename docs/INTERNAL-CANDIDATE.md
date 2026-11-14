@@ -5,6 +5,10 @@ no public branch push, release or Depot publication is authorized. Package and
 UI versions agree. Installed-package acceptance is recorded separately from the
 development checks below, with the exact artifact in the private test receipt.
 
+Installed qualification is complete for this private candidate. See
+[the exact acceptance receipt](ACCEPTANCE-0.4.0.md), including upgrade/rollback,
+artifact identity and the distinction between app tests and native object tests.
+
 ## UI/package continuation
 
 Final development executable SHA256:
