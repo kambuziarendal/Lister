@@ -144,7 +144,14 @@ public:
       busy=false;std::lock_guard<std::mutex> lock(delivery->mutex);
       if(!delivery->error.empty())Status(delivery->error);
       else {
-        auto row=new AppRow(*delivery->chosen,false);apps->AddRow(row);apps->DeselectAll();apps->AddToSelection(row);
+        // Re-choosing an existing program refreshes its identity without
+        // accumulating duplicate rows on every visit to the native picker.
+        for(int32 i=apps->CountRows()-1;i>=0;--i) {
+          auto old=static_cast<AppRow *>(apps->RowAt(i));
+          if(old->app.path==delivery->chosen->path) {apps->RemoveRow(old);delete old;}
+        }
+        auto row=new AppRow(*delivery->chosen,delivery->chosen->signature==delivery->info.preferred);
+        apps->AddRow(row);apps->DeselectAll();apps->AddToSelection(row);
         delivery->chosen.reset();Status("Application selected. Click Open once to send the file.");
       }
       Controls();break;
