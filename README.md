@@ -132,3 +132,7 @@ This is a private candidate, not a Dolphin-parity or performance claim. See
 [the current qualification](docs/INTERNAL-CANDIDATE.md) for exact tested scope,
 recovery and limitations. Dependency licenses remain their own; MIT covers Listi's
 source, not every library provided by Haiku packages.
+
+Private 0.11.0 adds MIME inspection and one-time native application choice via
+Files > Open with (Command+Shift+O). Associations remain unchanged.
+See docs/OPEN-WITH-0.11.0.md for scope and recovery.

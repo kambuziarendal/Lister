@@ -53,7 +53,7 @@ Neste produkttrinn er funksjonsmatrisen og et konkret betabehov, ikke automatisk
 publisering eller en ny stor omskriving. De opprinnelige deltrinnene følger under
 som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
 
-### Nåværende trinn og kø, oppdatert for 0.10.0
+### Nåværende trinn og kø, oppdatert for 0.11.0
 
 1. Sikkerhet/modulgrenser, arkiv/nettverksgrunnlag, panelvisninger og intern
    operasjonsvisning er samlet og kvalifisert innenfor den private 0.4.0-kandidatens
@@ -75,7 +75,9 @@ som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
 7. **Neste dagligflyt:** Lokal Tracker-utklippstavle levert i privat 0.9.0,
    med tastatur/mus, identitetskontroll og avbrudd. Egenskaper og typed lokale
    BFS-attributter inngår i 0.10.0, se PROPERTIES-0.10.0.md for avgrensning.
-   Neste er MIME/Åpne med og tydelig drop-semantikk. Dypere kvalifisering av eksisterende
+   MIME-visning og engangsvalg av program bygges i privat 0.11.0, se
+   OPEN-WITH-0.11.0.md. Standardtilknytninger og MIME-redigering gjenstår.
+   Neste avgrensede flyt er tydelig drop-semantikk. Dypere kvalifisering av eksisterende
    protokoller/arkivformater følger relevante endringer, inkludert egen FTPS-prøve.
 8. **Trygg massebehandling:** maler, lenker, duplisering, masseomdøping med
    forhåndsvisning, sammenligning og konfliktbevisst angre-journal.

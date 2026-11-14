@@ -34,6 +34,7 @@ enum : uint32 {
   kDesktop = 'desk',
   kDisks = 'disk',
   kProperties = 'prop',
+  kOpenWith = 'opwi',
   kClipboardCopy = 'ccpy',
   kClipboardCut = 'ccut',
   kClipboardPaste = 'cpst',
