@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "FileOperation.h"
+#include "Trash.h"
 #include <Directory.h>
 #include <Entry.h>
 #include <Node.h>
@@ -352,8 +353,19 @@ struct Runner {
                 source +
                 ": mounted volumes cannot be deleted, moved or renamed");
         }
+        if (job.action == Action::Trash || job.action == Action::Restore) {
+          if (job.action == Action::Trash)
+            MoveToTrash(source);
+          else
+            RestoreFromTrash(source);
+          result.completed++;
+          Tick(source);
+          continue;
+        }
         if (job.action == Action::Delete) {
-          Remove(source);
+          Snapshot deletion;
+          SnapshotTree(source, deletion, sourceStat.st_dev);
+          RemoveCopied(source, deletion);
           result.completed++;
           continue;
         }

@@ -2,6 +2,7 @@
 // The private ColumnListView API is isolated to this translation unit.
 #include "Pane.h"
 #include "FileOperation.h"
+#include "Trash.h"
 #include <Bitmap.h>
 #include <ColumnListView.h>
 #include <ColumnTypes.h>
@@ -96,6 +97,18 @@ public:
     int64 serial = m->GetInt64("serial", 0);
     BString path = m->GetString("path", "");
     bool icons = m->GetBool("icons", true);
+    if (m->GetBool("trash", false)) {
+      try {
+        path = Lister::TrashDirectory(path.String(), true).c_str();
+      } catch (const std::exception &error) {
+        BMessage failed(kScanDone);
+        failed.AddInt64("serial", serial);
+        failed.AddString("path", path);
+        failed.AddString("error", error.what());
+        target.SendMessage(&failed);
+        return;
+      }
+    }
     BMessage batch(kRows);
     batch.AddInt64("serial", serial);
     int count = 0;
@@ -274,9 +287,10 @@ Pane::Pane(int32 number, const Preferences &p)
   SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
   role = new BButton("role", "Destination", new BMessage(kActivate));
   auto menu = new BPopUpMenu("Go");
-  const char *names[] = {"Parent", "Root", "Home", "Desktop", "Disks"};
-  uint32 codes[] = {kParent, kRoot, kHome, kDesktop, kDisks};
-  for (int i = 0; i < 5; i++)
+  const char *names[] = {"Parent",  "Root",  "Home",
+                         "Desktop", "Disks", "Trash (this volume)"};
+  uint32 codes[] = {kParent, kRoot, kHome, kDesktop, kDisks, kTrashFolder};
+  for (int i = 0; i < 6; i++)
     menu->AddItem(new BMenuItem(names[i], new BMessage(codes[i])));
   auto field = new BMenuField("go", "", menu);
   menu->SetRadioMode(false);
@@ -436,6 +450,26 @@ void Pane::MessageReceived(BMessage *m) {
   case kDesktop:
     Navigate("/boot/home/Desktop");
     break;
+  case kTrashFolder: {
+    if (path == "@disks") {
+      status->SetText("Open a volume first.");
+      break;
+    }
+    stop_watching(this);
+    serial++;
+    generation->store(serial);
+    scanning = true;
+    refreshPending = false;
+    list->Clear();
+    status->SetText("Opening Trash...");
+    BMessage scan(kScan);
+    scan.AddInt64("serial", serial);
+    scan.AddString("path", path);
+    scan.AddBool("icons", prefs.icons);
+    scan.AddBool("trash", true);
+    scanner->PostMessage(&scan);
+    break;
+  }
   case kDisks:
     Navigate("@disks");
     break;

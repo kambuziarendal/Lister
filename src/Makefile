@@ -1,6 +1,6 @@
 NAME = Lister
 TYPE = APP
-SRCS = App.cpp Pane.cpp FileOperation.cpp OperationQueue.cpp Preferences.cpp SelfTest.cpp
+SRCS = App.cpp Pane.cpp FileOperation.cpp Trash.cpp OperationQueue.cpp Preferences.cpp SelfTest.cpp
 LIBS = be columnlistview tracker $(STDCPPLIBS)
 RDEFS = Lister.rdef
 OPTIMIZE := FULL

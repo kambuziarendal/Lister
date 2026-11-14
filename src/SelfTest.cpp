@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MIT
 #include "FileOperation.h"
+#include "Trash.h"
 #include <File.h>
 #include <Node.h>
+#include <String.h>
 #include <TypeConstants.h>
 #include <cstdlib>
 #include <cstring>
+#include <fs_attr.h>
 #include <fstream>
 #include <iostream>
+#include <limits.h>
 #include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
@@ -135,6 +139,80 @@ int SelfTest() {
   r = Run({Action::Delete, {"/boot"}, ""}, hooks);
   check(!r.errors.empty() && exists("/boot/home"),
         "mounted volume deletion refused");
+  // Only this run's uniquely named entries are moved to the system Trash.
+  std::string owned = Join(root, "trash-test-" + Leaf(root));
+  mkdir(owned.c_str(), 0755);
+  write(Join(owned, "inside"), "recover me");
+  std::string trashed, collision, linked;
+  try {
+    trashed = MoveToTrash(owned);
+    BString original;
+    BNode trashNode(trashed.c_str());
+    check(trashNode.ReadAttrString("_trk/original_path", &original) == B_OK &&
+              original == owned.c_str() && !exists(owned) &&
+              text(Join(trashed, "inside")) == "recover me",
+          "native Trash preserves tree and Tracker original-path metadata");
+    mkdir(owned.c_str(), 0755);
+    write(Join(owned, "inside"), "second tree");
+    collision = MoveToTrash(owned);
+    check(collision != trashed &&
+              text(Join(trashed, "inside")) == "recover me" &&
+              text(Join(collision, "inside")) == "second tree",
+          "same-name trash entries never overwrite one another");
+    write(owned, "existing replacement");
+    r = Run({Action::Restore, {trashed}, ""}, hooks);
+    check(!r.errors.empty() && exists(trashed) &&
+              text(owned) == "existing replacement",
+          "restore conflict retains both current file and trashed tree");
+    unlink(owned.c_str());
+    r = Run({Action::Restore, {trashed}, ""}, hooks);
+    attr_info metadata;
+    BNode restored(owned.c_str());
+    check(
+        r.errors.empty() && r.completed == 1 && !exists(trashed) &&
+            text(Join(owned, "inside")) == "recover me" &&
+            restored.GetAttrInfo("_trk/original_path", &metadata) != B_OK,
+        "restore returns tree to original location and removes Trash metadata");
+    r = Run({Action::Trash, {collision}, ""}, hooks);
+    check(!r.errors.empty() && exists(collision),
+          "already trashed entry is retained");
+    r = Run({Action::Restore, {owned}, ""}, hooks);
+    check(!r.errors.empty() && exists(owned),
+          "restore outside Trash is rejected");
+    std::string symlinkPath = Join(root, "link-" + Leaf(root));
+    symlink(owned.c_str(), symlinkPath.c_str());
+    linked = MoveToTrash(symlinkPath);
+    char linkValue[PATH_MAX] = {};
+    readlink(linked.c_str(), linkValue, sizeof(linkValue) - 1);
+    check(std::string(linkValue) == owned && exists(Join(owned, "inside")),
+          "trashing a symlink leaves its target untouched");
+    r = Run({Action::Restore, {linked}, ""}, hooks);
+    check(r.errors.empty() && exists(symlinkPath) && exists(owned),
+          "trashed symlink restores without traversing target");
+    hooks.proceed = [] { return false; };
+    r = Run({Action::Trash, {owned}, ""}, hooks);
+    check(r.cancelled && exists(owned),
+          "cancelled trash leaves source untouched");
+    hooks.proceed = [] { return true; };
+    r = Run({Action::Trash, {"/boot"}, ""}, hooks);
+    check(!r.errors.empty() && exists("/boot/home"),
+          "trashing a volume root is refused");
+    std::string missing = Join(root, "missing-parent");
+    mkdir(missing.c_str(), 0755);
+    write(Join(missing, "file"), "keep if parent missing");
+    std::string missingTrashed = MoveToTrash(Join(missing, "file"));
+    rmdir(missing.c_str());
+    r = Run({Action::Restore, {missingTrashed}, ""}, hooks);
+    check(!r.errors.empty() && exists(missingTrashed),
+          "missing original parent leaves trashed file intact with error");
+    Run({Action::Delete, {missingTrashed}, ""}, hooks);
+  } catch (const std::exception &e) {
+    std::cerr << e.what() << std::endl;
+    check(false, "native Trash round trip");
+  }
+  for (auto path : {trashed, collision, linked})
+    if (!path.empty() && exists(path))
+      Run({Action::Delete, {path}, ""}, hooks);
   r = Run({Action::Delete, {root}, ""}, hooks);
   check(r.errors.empty() && !exists(root),
         "recursive delete of owned test tree completes");

@@ -1,3 +1,41 @@
+# Version 0.2.0 verification
+
+14 November 2026, native Haiku beta6 x86_64, GCC 13.3.0, installed haiku_devel.
+All application source editing, build and tests took place in our own Haiku VM.
+
+Passed:
+- Clean build/link and 29 native filesystem tests (18 previous, 11 Trash checks).
+- Native Trash tree/metadata preservation, same-name collision, restore conflict,
+  round-trip, already-trashed rejection, restore outside Trash rejection, symlink
+  preservation/restoration, cancellation, volume-root refusal, missing-parent
+  retention. Tests clean only their own unique fixture entries.
+- Installed 0.1.0 -> 0.2.0 upgrade, settings retained, installed/built binary hashes
+  compared; final artifact hash is in the release SHA256SUMS.
+- Actual F8 confirmation, move to Trash, Go > Trash navigation and Files > Restore
+  from Trash, with on-disk content readback. Haiku Tracker's own File > Restore
+  also successfully restores a directory trashed by Lister.
+- Native UI copy/move/permanent-delete of a small owned tree. Copy conflict,
+  Pause/Resume and responsive main-window scripting while paused.
+- Double-click navigation from / to /boot, from /boot to home, and from mounted
+  ext4 root into FolderTest. This ext4 volume rejects Trash with an error and the
+  original tree is retained; no permanent-delete fallback.
+- Dark and light system themes, normal 1140x650 and compact 800x600 window.
+  Captures of the installed main and copy windows in dark theme.
+
+Limits: no physical hardware, full-disk/power-loss/unplug durability tests or
+qualification of every filesystem. Restore requires its original parent to exist
+and does not overwrite conflicts. General undo, FTP/SMB and the proposed portable
+core/Plan 9 architecture are not implemented. Tracker's restoration attribute is
+an on-disk convention, verified against beta6; no private Tracker header was added.
+
+Recovery: keep previous HPKGs. Reinstalling does not undo file operations.
+Preferences remain ~/config/settings/Lister_settings. Never restore a filesystem
+snapshot merely to roll back the application package. HPKG container byte-for-byte
+reproducibility is not claimed (BFS access/creation timestamps); the source build
+and installed executable identity are verified separately.
+
+---
+
 # Version 0.1.0 verification
 
 14 November 2026. Native Haiku R1 beta6 hrev59866+79 x86_64 in our own QEMU/KVM

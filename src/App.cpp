@@ -124,7 +124,8 @@ public:
         if (mode == "edit") {
           entry_ref editor;
           s = get_ref_for_path(
-              m->GetString("application", "/boot/system/apps/StyledEdit"), &editor);
+              m->GetString("application", "/boot/system/apps/StyledEdit"),
+              &editor);
           if (s == B_OK)
             s = be_roster->Launch(&editor, &refs);
         } else
@@ -312,7 +313,16 @@ class MainWindow : public BWindow {
     }
     auto m = Encode(job, kConfirm);
     BString text;
-    if (a == Lister::Action::Delete)
+    if (a == Lister::Action::Trash)
+      text << "Move " << int32(job.sources.size())
+           << " selected entries to this volume's Trash?\n\nYou can restore "
+              "them from Trash.\n"
+           << job.sources[0].c_str();
+    else if (a == Lister::Action::Restore)
+      text << "Restore " << int32(job.sources.size())
+           << " selected entries to their original folders?\n\nExisting files "
+              "will not be overwritten.";
+    else if (a == Lister::Action::Delete)
       text << "Permanently delete " << int32(job.sources.size())
            << " selected entries?\n\nThis cannot be undone.\n"
            << job.sources[0].c_str();
@@ -322,9 +332,11 @@ class MainWindow : public BWindow {
            << panes[source]->Path() << "\n\nto:\n"
            << job.destination.c_str();
     auto alert = new BAlert("Confirm file operation", text, "Cancel",
-                            a == Lister::Action::Delete ? "Delete"
-                            : a == Lister::Action::Copy ? "Copy"
-                                                        : "Move",
+                            a == Lister::Action::Trash     ? "Move to Trash"
+                            : a == Lister::Action::Restore ? "Restore"
+                            : a == Lister::Action::Delete  ? "Delete"
+                            : a == Lister::Action::Copy    ? "Copy"
+                                                           : "Move",
                             nullptr, B_WIDTH_AS_USUAL,
                             a == Lister::Action::Delete ? B_WARNING_ALERT
                                                         : B_INFO_ALERT);
@@ -346,7 +358,7 @@ class MainWindow : public BWindow {
 
 public:
   MainWindow(const Preferences &p, BMessenger svc)
-      : BWindow(BRect(70, 70, 1170, 710), "Lister 0.1.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Lister 0.2.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), service(svc) {
     auto menu = new BMenuBar("menu");
@@ -356,11 +368,15 @@ public:
       uint32 action;
       char key;
     };
-    Item commands[] = {
-        {"View [F3]", kView, 'V'},    {"Edit [F4]", kEdit, 'E'},
-        {"Copy [F5]", kCopy, 'C'},    {"Move [F6]", kMove, 'M'},
-        {"Rename", kRename, 'R'},     {"New folder [F7]", kMkdir, 'N'},
-        {"Delete [F8]", kDelete, 'D'}};
+    Item commands[] = {{"View [F3]", kView, 'V'},
+                       {"Edit [F4]", kEdit, 'E'},
+                       {"Copy [F5]", kCopy, 'C'},
+                       {"Move [F6]", kMove, 'M'},
+                       {"Rename", kRename, 'R'},
+                       {"New folder [F7]", kMkdir, 'N'},
+                       {"Move to Trash [F8]", kDelete, 'D'},
+                       {"Restore from Trash", kRestore, 0},
+                       {"Delete permanently...", kPermanentDelete, 0}};
     for (auto c : commands)
       files->AddItem(new BMenuItem(c.label, new BMessage(c.action), c.key));
     files->AddSeparatorItem();
@@ -395,7 +411,7 @@ public:
     auto grid = new BGridView(5, 5);
     Item buttons[] = {{"View", kView, 0},         {"Edit", kEdit, 0},
                       {"Copy", kCopy, 0},         {"Move", kMove, 0},
-                      {"Rename", kRename, 0},     {"Delete", kDelete, 0},
+                      {"Rename", kRename, 0},     {"Trash", kDelete, 0},
                       {"All", kAll, 0},           {"None", kNone, 0},
                       {"Invert", kInvert, 0},     {"New folder", kMkdir, 0},
                       {"Terminal", kTerminal, 0}, {"Operations", kShowJobs, 0}};
@@ -534,6 +550,12 @@ public:
       Operation(Lister::Action::Move);
       break;
     case kDelete:
+      Operation(Lister::Action::Trash);
+      break;
+    case kRestore:
+      Operation(Lister::Action::Restore);
+      break;
+    case kPermanentDelete:
       Operation(Lister::Action::Delete);
       break;
     case kRename:

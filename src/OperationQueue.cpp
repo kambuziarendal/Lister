@@ -43,6 +43,10 @@ const char *Verb(Lister::Action a) {
     return "Copy";
   case Lister::Action::Move:
     return "Move";
+  case Lister::Action::Trash:
+    return "Move to Trash";
+  case Lister::Action::Restore:
+    return "Restore";
   case Lister::Action::Delete:
     return "Delete";
   case Lister::Action::Rename:
@@ -172,6 +176,8 @@ public:
         history->Insert(error);
         history->Insert("\n");
       }
+      history->Select(history->TextLength(), history->TextLength());
+      history->ScrollToSelection();
       if (m->GetBool("idle", false))
         title->SetText("Queue finished");
       ShowChoices(false);
@@ -287,7 +293,8 @@ void OperationQueue::Loop() {
           << " selected entries";
     BMessage start(kJobUpdate);
     start.AddString("title", title);
-    start.AddString("path", "Calculating size...");
+    start.AddString("path", job.sources.empty() ? job.destination.c_str()
+                                                : job.sources[0].c_str());
     start.AddBool("start", true);
     display.SendMessage(&start);
     uint64_t total = 0;

@@ -1,0 +1,114 @@
+// SPDX-License-Identifier: MIT
+#include "Trash.h"
+#include "FileOperation.h"
+#include <Directory.h>
+#include <Entry.h>
+#include <FindDirectory.h>
+#include <Node.h>
+#include <Path.h>
+#include <String.h>
+#include <Volume.h>
+#include <cstring>
+#include <stdexcept>
+#include <sys/stat.h>
+
+namespace Lister {
+namespace {
+// Tracker's on-disk restoration attribute, not a private API dependency.
+const char *kOriginalPath = "_trk/original_path";
+void Require(status_t status, const std::string &path) {
+  if (status != B_OK)
+    throw std::runtime_error(path + ": " + strerror(status));
+}
+bool Within(const std::string &path, const std::string &parent) {
+  return path == parent ||
+         path.compare(0, parent.size() + 1, parent + "/") == 0;
+}
+std::string EntryPath(BEntry &entry) {
+  BPath path;
+  Require(entry.GetPath(&path), "Resolve path");
+  return path.Path();
+}
+} // namespace
+std::string TrashDirectory(const std::string &path, bool create) {
+  BEntry entry(path.c_str(), false);
+  struct stat st;
+  Require(entry.GetStat(&st), path);
+  BVolume volume(st.st_dev);
+  Require(volume.InitCheck(), path);
+  if (!volume.IsPersistent() || volume.IsReadOnly() || !volume.KnowsAttr())
+    throw std::runtime_error(
+        path +
+        ": this volume has no supported writable Trash. Nothing was deleted.");
+  BPath trash;
+  Require(find_directory(B_TRASH_DIRECTORY, &trash, create, &volume), path);
+  return trash.Path();
+}
+std::string MoveToTrash(const std::string &path) {
+  BEntry entry(path.c_str(), false);
+  Require(entry.InitCheck(), path);
+  std::string original = EntryPath(entry);
+  std::string trash = TrashDirectory(original, true);
+  if (Within(original, trash) || Within(trash, original))
+    throw std::runtime_error(path + ": cannot trash the Trash folder, its "
+                                    "ancestors or an already trashed entry.");
+  BDirectory directory(trash.c_str());
+  Require(directory.InitCheck(), trash);
+  BNode node(&entry);
+  Require(node.InitCheck(), original);
+  BString previous;
+  bool hadPrevious = node.ReadAttrString(kOriginalPath, &previous) == B_OK;
+  BString saved(original.c_str());
+  Require(node.WriteAttrString(kOriginalPath, &saved), original);
+  // MoveTo(false) never overwrites, including a name created after our check.
+  node_ref identity;
+  Require(node.GetNodeRef(&identity), original);
+  status_t status = B_FILE_EXISTS;
+  for (unsigned n = 0; n < 10000 && status == B_FILE_EXISTS; n++) {
+    std::string name = n == 0 ? Leaf(original)
+                              : Leaf(original) + " (" + std::to_string(n) + ")";
+    if (name.size() >= B_FILE_NAME_LENGTH)
+      name =
+          "trashed-" + std::to_string(identity.node) + "-" + std::to_string(n);
+    status = entry.MoveTo(&directory, name.c_str(), false);
+  }
+  if (status != B_OK) {
+    if (hadPrevious)
+      node.WriteAttrString(kOriginalPath, &previous);
+    else
+      node.RemoveAttr(kOriginalPath);
+    Require(status, original);
+  }
+  return EntryPath(entry);
+}
+std::string RestoreFromTrash(const std::string &path) {
+  BEntry entry(path.c_str(), false);
+  std::string current = EntryPath(entry);
+  std::string trash = TrashDirectory(current, false);
+  BEntry parent;
+  Require(entry.GetParent(&parent), current);
+  if (EntryPath(parent) != trash)
+    throw std::runtime_error(path +
+                             ": select a top-level entry in Trash to restore.");
+  BNode node(&entry);
+  BString original;
+  Require(node.ReadAttrString(kOriginalPath, &original), current);
+  std::string target = original.String();
+  if (target.empty() || target[0] != '/' || Leaf(target).empty() ||
+      Leaf(target) == "." || Leaf(target) == ".." || Within(target, trash))
+    throw std::runtime_error(
+        path + ": invalid original path; entry retained in Trash.");
+  std::string parentPath = target.substr(0, target.find_last_of('/'));
+  if (parentPath.empty())
+    parentPath = "/";
+  BDirectory destination(parentPath.c_str());
+  Require(destination.InitCheck(),
+          parentPath + " (original folder must exist)");
+  // No replacement or recursive merge during restore. A conflicting file is
+  // safe.
+  Require(entry.MoveTo(&destination, Leaf(target).c_str(), false), target);
+  Require(node.RemoveAttr(kOriginalPath),
+          target + " (restored, but could not clear Trash metadata)");
+  return EntryPath(entry);
+}
+} // namespace Lister

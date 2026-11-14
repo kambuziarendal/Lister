@@ -26,6 +26,24 @@ inheriting its synchronous operations and fixed-coordinate UI.
   linked. All other UI uses public BeAPI. A future OS ABI change may need a rebuild.
 
 Limitations: not a transactional backup tool; concurrent external edits can race
-operations. No remote filesystems, archive provider, trash/undo, saved tabs,
+operations. No remote filesystems, archive provider, general undo, saved tabs,
 configurable button commands or content search yet. Built-in viewer reads text
 up to 1 MiB. File browser metadata/icon reads are off the window thread.
+
+## Native Trash backend (0.2.0)
+
+`src/Trash.cpp` is deliberately Haiku-specific and independent of widgets. It
+uses public BEntry/BNode/BVolume/find_directory APIs and the Tracker on-disk
+`_trk/original_path` B_STRING_TYPE attribute. This attribute is a Tracker
+convention, not a new private-header dependency. Checked against Haiku beta6
+Tracker Attributes.h and FSUtils.cpp. No Tracker source was copied.
+
+Trash is on the source volume. Names are disambiguated without replacement.
+Restore only accepts a top-level Trash entry, keeps conflicts intact and reports
+missing parent folders. Unsupported volumes fail without permanent-delete
+fallback. The existing operation worker owns all Trash I/O. UI navigation also
+resolves the volume's Trash on the directory-reader looper.
+
+The portable-core / Plan 9 direction is specified as a proposal in
+[PORTABLE-DESIGN-PROPOSAL.md](PORTABLE-DESIGN-PROPOSAL.md). It has not been
+implemented or silently substituted for the working native preview.

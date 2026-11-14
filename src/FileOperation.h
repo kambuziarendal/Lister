@@ -6,7 +6,7 @@
 #include <vector>
 
 namespace Lister {
-enum class Action { Copy, Move, Delete, MakeDirectory, Rename };
+enum class Action { Copy, Move, Delete, Trash, Restore, MakeDirectory, Rename };
 enum class Decision { Replace, ReplaceAll, Skip, SkipAll, Abort };
 struct Job {
   Action action = Action::Copy;
