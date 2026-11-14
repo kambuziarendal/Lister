@@ -61,6 +61,8 @@ class GridView : public FileGrid {
   std::map<std::string, std::unique_ptr<BBitmap>> thumbnails;
   std::set<std::string> pending;
   RubberBand *band;
+  std::set<std::string> paintedSelection;
+  std::string paintedFocus;
   BPoint pressed;
   int pressedIndex = -1;
   bool dragging = false, deferredPick = false;
@@ -98,10 +100,11 @@ public:
     band->selection = [this] { return model->Selected(); };
     band->restoreSelection = [this](const auto &paths) {
       model->SetSelection(paths, paths.empty() ? "" : paths.back());
-      pane->SendSelection();
+      pane->SendSelection(true);
     };
+    band->finished = [this] { pane->SendSelection(); };
     band->activate = [this] { MakeFocus(); pressedIndex = -1; deferredPick = false; };
-    band->redraw = [this] { Invalidate(); };
+    band->redraw = [this](BRect rect) { Invalidate(rect); };
     band->empty = [this](BPoint p) {
       for (int i = 0; i < int(model->Visible().size()); ++i)
         if (Cell(i).InsetByCopy(4, 4).Contains(p)) return false;
@@ -114,8 +117,15 @@ public:
         if (!entry->parent && rect.Intersects(Cell(i).InsetByCopy(4, 4)))
           paths.push_back(entry->path);
       }
-      model->SetSelection(paths, paths.empty() ? "" : paths.back());
-      pane->SendSelection();
+      const std::string focus = paths.empty() ? "" : paths.back();
+      std::sort(paths.begin(), paths.end());
+      paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
+      auto current = model->Selected();
+      std::sort(current.begin(), current.end());
+      if (paths != current) {
+        model->SetSelection(paths, focus);
+        pane->SendSelection(true);
+      }
     };
     AddFilter(band);
     SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
@@ -135,6 +145,8 @@ public:
   bool CancelSelectionGesture() override { return band->Escape(); }
   void Reset() {
     band->Cancel();
+    paintedSelection.clear();
+    paintedFocus.clear();
     pressedIndex = -1;
     dragging = deferredPick = false;
     ++*generation;
@@ -152,6 +164,20 @@ public:
     cellWidth = mode == 1 ? 112 : 156;
     cellHeight = mode == 1 ? 100 : 154;
     Update();
+  }
+  void SyncSelection() override {
+    auto focused = model->Focused();
+    std::string focus = focused ? focused->path : "";
+    for (int i = 0; i < int(model->Visible().size()); ++i) {
+      const auto &path = model->Visible()[i]->path;
+      bool selected = model->IsSelected(path);
+      if (selected != bool(paintedSelection.count(path)) ||
+          (focus != paintedFocus && (path == focus || path == paintedFocus)))
+        Invalidate(Cell(i));
+      if (selected) paintedSelection.insert(path);
+      else paintedSelection.erase(path);
+    }
+    paintedFocus = focus;
   }
   void Update() {
     if (auto bar = ScrollBar(B_VERTICAL)) {

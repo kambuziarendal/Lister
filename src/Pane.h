@@ -39,7 +39,7 @@ public:
   void FocusFilter();
   void Activate();
   bool IsScanning() const { return scanning; }
-  void SendSelection();
+  void SendSelection(bool gesture = false);
   void ContextMenu(const std::string &entry, BPoint screen);
   void ShowStatus(const char *text) { SetStatus(text); }
   int32 DisplayMode() const { return prefs.paneMode[id]; }

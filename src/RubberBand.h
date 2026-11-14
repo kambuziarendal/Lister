@@ -18,17 +18,21 @@ class RubberBand : public BMessageFilter {
   BView *view;
   std::unique_ptr<BMessageRunner> timer;
   BPoint origin, cursor;
+  bigtime_t lastFrame = 0, lastScroll = 0;
   std::vector<std::string> before;
   std::string location;
   bool active = false, moved = false, extend = false;
 
   void Update(BPoint point, bool scroll) {
+    BRect oldRect = Rect();
     BPoint previous = cursor;
     bool wasMoved = moved;
     cursor = point;
     if (std::abs(cursor.x - origin.x) >= 4 || std::abs(cursor.y - origin.y) >= 4)
       moved = true;
-    if (scroll && moved) {
+    bigtime_t now = system_time();
+    if (scroll && moved && now - lastScroll >= 50000) {
+      lastScroll = now;
       auto bounds = view->Bounds();
       float delta = cursor.y < bounds.top + 12 ? -18 :
                     cursor.y > bounds.bottom - 12 ? 18 : 0;
@@ -41,16 +45,29 @@ class RubberBand : public BMessageFilter {
       }
     }
     if (moved && (!wasMoved || cursor != previous)) {
+      view->Window()->BeginViewTransaction();
       select(Rect(), extend ? before : std::vector<std::string>{});
-      redraw();
+      RedrawOutline(oldRect);
+      RedrawOutline(Rect());
+      view->Window()->EndViewTransaction();
     }
   }
   void End(bool restore) {
     if (!active) return;
+    BRect oldRect = Rect();
+    bool hadOutline = moved;
     active = false;
     timer.reset();
     if (restore) restoreSelection(before);
-    redraw();
+    if (hadOutline) RedrawOutline(oldRect);
+    finished();
+  }
+  void RedrawOutline(BRect rect) {
+    // Invalidate only the old/new border, never the entire file view.
+    redraw(BRect(rect.left - 1, rect.top - 1, rect.right + 1, rect.top + 1));
+    redraw(BRect(rect.left - 1, rect.bottom - 1, rect.right + 1, rect.bottom + 1));
+    redraw(BRect(rect.left - 1, rect.top - 1, rect.left + 1, rect.bottom + 1));
+    redraw(BRect(rect.right - 1, rect.top - 1, rect.right + 1, rect.bottom + 1));
   }
 
 public:
@@ -60,7 +77,8 @@ public:
   std::function<std::vector<std::string>()> selection;
   std::function<void(const std::vector<std::string> &)> restoreSelection;
   std::function<void(BRect, const std::vector<std::string> &)> select;
-  std::function<void()> activate, redraw;
+  std::function<void()> activate, finished;
+  std::function<void(BRect)> redraw;
 
   explicit RubberBand(BView *target)
       : BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE), view(target) {}
@@ -86,23 +104,28 @@ public:
       extend = modifiers() & (B_SHIFT_KEY | B_CONTROL_KEY | B_COMMAND_KEY);
       active = true;
       moved = false;
+      lastFrame = lastScroll = system_time();
       if (!extend) restoreSelection({});
       view->SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
       BMessage tick(kTick);
-      timer.reset(new BMessageRunner(BMessenger(view), &tick, 50000));
+      timer.reset(new BMessageRunner(BMessenger(view), &tick, 16667));
       return B_SKIP_MESSAGE;
     }
     if (message->what == kTick) {
-      if (active) {
+      if (active && system_time() - lastFrame >= 12000) {
+        lastFrame = system_time();
         BPoint point; uint32 buttons;
         view->GetMouse(&point, &buttons, false);
+        Update(point, (buttons & B_PRIMARY_MOUSE_BUTTON) != 0);
         if (!(buttons & B_PRIMARY_MOUSE_BUTTON)) End(false);
-        else Update(point, true);
       }
       return B_SKIP_MESSAGE;
     }
     if (!active) return B_DISPATCH_MESSAGE;
-    if (message->what == B_MOUSE_MOVED || message->what == B_MOUSE_UP) {
+    // Pointer events can arrive much faster than the display. Sample the latest
+    // position once per frame instead of replaying a growing movement backlog.
+    if (message->what == B_MOUSE_MOVED) return B_SKIP_MESSAGE;
+    if (message->what == B_MOUSE_UP) {
       BPoint point;
       if (message->FindPoint("where", &point) == B_OK) Update(point, false);
       if (message->what == B_MOUSE_UP) End(false);

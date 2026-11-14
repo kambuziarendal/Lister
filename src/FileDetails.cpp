@@ -125,21 +125,36 @@ public:
     band->selection = [this] { return model->Selected(); };
     band->restoreSelection = [this](const auto &paths) {
       model->SetSelection(paths, paths.empty() ? "" : paths.back());
-      pane->SendSelection();
+      pane->SendSelection(true);
     };
+    band->finished = [this] { pane->SendSelection(); };
     band->activate = [this] { MakeFocus(); };
-    band->redraw = [this] { Invalidate(); };
+    band->redraw = [this](BRect rect) {
+      Invalidate(ConvertFromScreen(ScrollView()->ConvertToScreen(rect)));
+    };
     band->empty = [this](BPoint point) { return RowAt(point) == nullptr || ColumnAt(point) == nullptr; };
     band->select = [this](BRect rect, const auto &base) {
       auto paths = base;
+      // Flat rows in current native sort order. GetRowRect walks from the
+      // first row, so calling it for every row makes each frame quadratic.
+      float top = 0;
+      auto bounds = ScrollView()->Bounds();
       for (int32 i = 0; i < CountRows(); ++i) {
         auto row = static_cast<FileRow *>(RowAt(i));
-        BRect frame;
-        if (!row->entry->parent && GetRowRect(row, &frame) && rect.Intersects(frame))
+        BRect frame(bounds.left, top, bounds.right, top + row->Height());
+        top = frame.bottom + 1;
+        if (!row->entry->parent && rect.Intersects(frame))
           paths.push_back(row->entry->path);
       }
-      model->SetSelection(paths, paths.empty() ? "" : paths.back());
-      pane->SendSelection();
+      const std::string focus = paths.empty() ? "" : paths.back();
+      std::sort(paths.begin(), paths.end());
+      paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
+      auto current = model->Selected();
+      std::sort(current.begin(), current.end());
+      if (paths != current) {
+        model->SetSelection(paths, focus);
+        pane->SendSelection(true);
+      }
     };
     ScrollView()->AddFilter(band);
   }
@@ -301,7 +316,7 @@ public:
         list->SetFocusRow(item.second);
     }
     list->syncing = false;
-    Redraw();
+    // Native row APIs already invalidate changed rows.
   }
 };
 } // namespace

@@ -82,8 +82,9 @@ void PaneModel::Pick(int index, bool extend, bool toggle) {
   focused = row->path;
 }
 void PaneModel::RestoreSelection(const std::vector<std::string> &paths) {
+  const std::set<std::string> wanted(paths.begin(), paths.end());
   for (auto entry : visible)
-    if (!entry->parent && std::find(paths.begin(), paths.end(), entry->path) != paths.end())
+    if (!entry->parent && wanted.count(entry->path))
       selection.insert(entry->path);
 }
 void PaneModel::SetSelection(const std::vector<std::string> &paths,

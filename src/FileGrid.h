@@ -10,5 +10,6 @@ public:
   virtual void Reset() = 0;
   virtual void SetMode(int) = 0;
   virtual void Update() = 0;
+  virtual void SyncSelection() = 0;
 };
 FileGrid *CreateFileGrid(Pane *, PaneModel *);

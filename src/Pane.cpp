@@ -199,6 +199,8 @@ void Pane::SetDisplayMode(int32 value) {
   mode = std::max(0, std::min(3, value));
   cards->CardLayout()->SetVisibleItem(mode == 0 ? 0 : 1);
   grid->SetMode(mode);
+  if (mode == 0) list->SyncSelection();
+  else grid->SyncSelection();
   auto menu = display->Menu();
   for (int i = 0; i < 4; ++i)
     menu->ItemAt(i)->SetMarked(mode == i);
@@ -401,7 +403,7 @@ bool Pane::CancelSelectionGesture() {
   bool b = grid->CancelSelectionGesture();
   return a || b;
 }
-void Pane::SendSelection() {
+void Pane::SendSelection(bool gesture) {
   BString s;
   int32 visible = 0;
   for (auto entry : entries.Visible())
@@ -414,9 +416,10 @@ void Pane::SendSelection() {
   else
     s << " entries";
   SetStatus(s);
-  list->SyncSelection();
-  grid->Update();
-  if (Window()) {
+  if (mode == 0) list->SyncSelection();
+  else grid->SyncSelection();
+  // Preview decoding is useful after the gesture, not for transient rows.
+  if (Window() && !gesture) {
     BMessage changed(kPreviewSelection);
     changed.AddInt32("pane", id);
     auto selected = Selected();
