@@ -50,8 +50,8 @@ når den kan startes fra Listi og hele oppgaven er prøvd.
 | T22 | Filegenskaper, plassering, eier og rettigheter | D (0.10) | Lokal inspeksjon og vanlige oktale rettigheter. Eierbytte, spesialbiter, rekursiv størrelse og virtuelle filkilder gjenstår | Tracker |
 | T23 | MIME-identifikasjon og korrigering av filtype | D | 0.11: lagret eller oppdaget MIME vises uten skriving. Korrigering/force-identify gjenstår | Tracker |
 | T24 | Egendefinerte ikoner og filtypeinnstillinger | M | Native integrasjon, per-fil kontra globalt valg | Filetypes |
-| T25 | Kopiere, flytte, duplisere og endre navn | D | Sikker kø testet. Duplisering og bred metadata-matrise | Tracker |
-| T26 | Absolutte og relative lenker, åpne lenkemål | D | Lenker håndteres i motor. Oppretting/målflyt mangler | Tracker |
+| T25 | Kopiere, flytte, duplisere og endre navn | D | Sikker kø og lokal duplisering (0.13). Bred metadata-matrise gjenstår | Tracker |
+| T26 | Absolutte og relative lenker, åpne lenkemål | D | Lokal oppretting av relative/absolutte lenker (0.13). Målflyt gjenstår | Tracker |
 | T27 | Filutklippstavle med cut/copy/paste | D (0.9) | Native lokale referanser, begge veier med Tracker, kilde-/målidentitet og avbrudd prøvd. Virtuelle kilder og vedvarende cut-markering gjenstår | Tracker |
 | T28 | Utvide utklippstavleutvalg og lime inn som lenker | M | Egne synlige valg uten skjulte tastaturkrav | Tracker |
 | T29 | Trash, gjenoppretting og permanent sletting | D | Grunnflyt testet. Volumer, fulle rettigheter og flere konflikter | Tracker |

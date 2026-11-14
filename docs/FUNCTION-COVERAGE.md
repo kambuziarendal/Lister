@@ -176,8 +176,8 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
 | F08 | Opprett en ny fil eller fil fra en mal | D3 create_file; D1 Create New | M | Native filtyper og en liten eksplisitt malflyt |
 | F09 | Gi én fil nytt navn, med forståelig konflikt | D1 Rename; D3 | D: backend og historisk UI, ikke ny 0.4 UI-prøve, T/H | Behold frosset original og validering |
 | F10 | Gi flere filer systematiske navn uten kollisjoner | D1 batch-rename | M | Forhåndsvis gammel/ny mapping før én avgrenset jobb |
-| F11 | Lag en kopi ved siden av originalen med et nytt navn | D1 Duplicate Here; D3 | M: kopi til seg selv avvises; ingen dupliseringsflyt | Egen navngitt duplikathandling med kollisjonskontroll |
-| F12 | Opprett en symbolsk lenke og gå til lenkens mål | D1 drag/link og Show Target; D3 | D: eksisterende lenker kopieres trygt; opprett/vis mål mangler | Native lenkeoperasjoner, ikke implisitt dereferering |
+| F11 | Lag en kopi ved siden av originalen med et nytt navn | D1 Duplicate Here; D3 | D (0.13): navngitt lokal duplisering; batch gjenstår | Egen navngitt duplikathandling med kollisjonskontroll |
+| F12 | Opprett en symbolsk lenke og gå til lenkens mål | D1 drag/link og Show Target; D3 | D (0.13): relative/absolutte lenker opprettes lokalt; vis mål gjenstår | Native lenkeoperasjoner, ikke implisitt dereferering |
 | F13 | Legg i lokal papirkurv og gjenopprett uten å overskrive nyere filer | D1 Trash/Undo; K2 trash | D: native Trash/Restore bestått, aktuell UI ikke fullstendig prøvd, T/H | Haiku/Tracker-kompatibel Trash; ikke falsk remote-Trash |
 | F14 | Slett permanent først etter eksplisitt valg og bekreftelse | D1 Delete; D3 | D: backend testet; aktuell permanent-slett-UI ikke repetert, T/H | Behold klart skille fra papirkurv |
 | F15 | Angre og gjør om støttede handlinger med synlig konsekvens | D2 FileUndoManager undo/redo | M: gjenoppretting fra Trash er ikke generell angre | Begrenset operasjonsjournal med konfliktsjekk, aldri backup-løfte |

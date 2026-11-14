@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace Lister {
-enum class Action { Copy, Move, Delete, Trash, Restore, MakeDirectory, Rename };
+enum class Action { Copy, Move, Delete, Trash, Restore, MakeDirectory, Rename, Duplicate, Link };
 enum class Decision { Replace, ReplaceAll, Skip, SkipAll, Abort };
 struct NodeIdentity {
   int32_t device = -1;
@@ -22,6 +22,9 @@ struct Job {
   std::map<std::string, NodeIdentity> expectedSources;
   NodeIdentity expectedDestination;
   int64_t tag = 0;
+  // Only Duplicate/Link use an explicit leaf name, always without replacement.
+  std::string entryName;
+  bool relativeLink = true;
 };
 struct Hooks {
   std::function<bool()> proceed;

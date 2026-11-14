@@ -43,7 +43,7 @@ filtering, keyboard/mouse parity and understandable operation progress.
   Haiku's native Command modifier (normally Alt, respecting the user's keymap):
   V view, E edit, C copy, M move, R rename, N new folder, F filter; Tab switches
   listers. Most already exist in the menu. Promote them in discoverability and
-  future configurable bindings; function keys are optional secondary aliases.
+  future configurable bindings; function keys are unassigned (owner decision, 2026-11-14).
   Bare letters must not steal type-ahead. Text fields must retain normal text
   selection/copy/paste shortcuts rather than triggering filesystem actions.
   The generated mockup's F-key labels are superseded by this owner feedback.

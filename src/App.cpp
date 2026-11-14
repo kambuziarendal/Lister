@@ -2,6 +2,7 @@
 #include "Common.h"
 #include "FileClipboard.h"
 #include "FileDrop.h"
+#include "NamedEntry.h"
 #include "PropertiesWindow.h"
 #include "OpenWith.h"
 #include "ExplicitSubmit.h"
@@ -43,7 +44,7 @@
 #include <set>
 #include <sys/stat.h>
 #include <unistd.h>
-constexpr uint32 kDropAccepted = 'dacc', kConfirm = 'cfir', kViewLoaded = 'vloa',
+constexpr uint32 kNamedEntryAccepted = 'nacc', kDropAccepted = 'dacc', kConfirm = 'cfir', kViewLoaded = 'vloa',
                  kServiceError = 'serr', kSavePreferences = 'save',
                  kNetwork = 'netw', kOpenSystem = 'osys',
                  kInlineNotice = 'inot', kInlineCancel = 'ican';
@@ -322,36 +323,8 @@ public:
         view = view->Parent();
       }
     }
-    if (bytes[0] != B_FUNCTION_KEY)
-      return B_DISPATCH_MESSAGE;
-    uint32 action = 0;
-    switch (m->GetInt32("key", 0)) {
-    case B_F3_KEY:
-      action = kView;
-      break;
-    case B_F4_KEY:
-      action = kEdit;
-      break;
-    case B_F5_KEY:
-      action = kCopy;
-      break;
-    case B_F6_KEY:
-      action = kMove;
-      break;
-    case B_F7_KEY:
-      action = kMkdir;
-      break;
-    case B_F8_KEY:
-      action = kDelete;
-      break;
-    case B_F9_KEY:
-      action = kPreferences;
-      break;
-    default:
-      return B_DISPATCH_MESSAGE;
-    }
-    Looper()->PostMessage(action);
-    return B_SKIP_MESSAGE;
+    // Function keys are deliberately unassigned.
+    return B_DISPATCH_MESSAGE;
   }
 };
 class MainWindow : public BWindow {
@@ -390,6 +363,7 @@ class MainWindow : public BWindow {
   void CloseAction() {
     actionArea->Close();
     pendingDrop = {};
+    pendingNamedEntry = {};
     ShowBank(prefs.buttons);
     panes[source]->FocusList();
   }
@@ -402,7 +376,26 @@ class MainWindow : public BWindow {
   }
   int source = 0;
   int64 clipboardSerial = 0;
-  Lister::Job pendingDrop;
+  Lister::Job pendingDrop, pendingNamedEntry;
+  void NamedEntry(Lister::Action action) {
+    if (actionArea->Pending()) {
+      queue->ErrorInfo("Finish or cancel the open question first.");
+      return;
+    }
+    try {
+      auto job = Lister::PrepareNamedEntry(action, panes[source]->Selected(), panes[1-source]->Path());
+      const bool duplicate = action == Lister::Action::Duplicate;
+      std::string text = std::string(duplicate ? "Duplicate: " : "Link to: ") + job.sources[0] +
+          "\nIn: " + job.destination;
+      if (!duplicate) text += "\nRelative: path from this folder. Absolute: full target path.";
+      BMessage accepted(kNamedEntryAccepted);
+      accepted.AddString("newEntryIn", job.destination.c_str());
+      ShowBank(false);
+      if (actionArea->Ask(text.c_str(), duplicate ? "Duplicate" : "Relative link", accepted,
+                          job.entryName.c_str(), duplicate ? nullptr : "Absolute link"))
+        pendingNamedEntry = job;
+    } catch (const std::exception &e) { Notice(e.what()); }
+  }
   Lister::ClipboardPaste clipboardPaste;
   std::set<int64> clipboardJobs;
   std::vector<std::string> clipboardMoved;
@@ -578,7 +571,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.12.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.13.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     auto menu = new BMenuBar("menu");
@@ -612,6 +605,10 @@ public:
     files->AddItem(new BMenuItem("Open with...", new BMessage(kOpenWith), 'O', B_SHIFT_KEY));
     files->AddItem(new BMenuItem("Open with system application",
                                  new BMessage(kOpenSystem)));
+    auto more = new BMenu("More file actions");
+    more->AddItem(new BMenuItem("Duplicate...", new BMessage(kDuplicate), 'D', B_SHIFT_KEY));
+    more->AddItem(new BMenuItem("Create symbolic link...", new BMessage(kCreateLink), 'L', B_SHIFT_KEY));
+    files->AddItem(more);
     files->AddItem(new BMenuItem("Properties...", new BMessage(kProperties), 'I', B_SHIFT_KEY));
     files->AddSeparatorItem();
     files->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
@@ -655,8 +652,8 @@ public:
     bank = new BGroupView(B_VERTICAL, 5);
     auto grid = new BGridView(5, 5);
     Item buttons[] = {
-        {"View [F3]", kView, 'V'},         {"Edit [E]", kEdit, 'E'},
-        {"Copy [F5]", kCopy, 'C'},         {"Move [M]", kMove, 'M'},
+        {"View [Shift+V]", kView, 'V'},         {"Edit [E]", kEdit, 'E'},
+        {"Copy [Shift+C]", kCopy, 'C'},         {"Move [M]", kMove, 'M'},
         {"Rename [R]", kRename, 'R'},     {"Trash [D]", kDelete, 'D'},
         {"All [A]", kAll, 'A'},           {"None", kNone, 0},
         {"Invert [I]", kInvert, 'I'},     {"New folder [N]", kMkdir, 'N'},
@@ -666,7 +663,7 @@ public:
           new BButton(buttons[i].label, new BMessage(buttons[i].action));
       BString hint("Command+");
       if (buttons[i].action == kCopy || buttons[i].action == kView)
-        hint << "Shift+" << buttons[i].key << " or " << (buttons[i].action == kCopy ? "F5" : "F3");
+        hint << "Shift+" << buttons[i].key;
       else if (buttons[i].key)
         hint << buttons[i].key;
       else
@@ -680,7 +677,7 @@ public:
     bank->AddChild(new BStringView(
         "shortcuts",
         "Command + letter (normally Alt). Tab: other panel. Command+F: filter. "
-        "C/X/V: clipboard. F5: panel copy. Escape: close dialog."));
+        "C/X/V: clipboard. Shift+C: panel copy. Escape: close dialog."));
     bank->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     command = new BTextControl("Command:", "", nullptr);
     command->TextView()->AddFilter(
@@ -695,13 +692,16 @@ public:
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
         .Add(menu)
         .Add(split)
-        .Add(actionArea)
-        .Add(queue->View())
-        .AddGroup(B_VERTICAL, 5)
+        .Add(actionArea, 0)
+        .Add(queue->View(), 0)
+        .AddGroup(B_VERTICAL, 5, 0)
         .SetInsets(8, 4, 8, 8)
         .Add(bank)
         .Add(command)
         .End();
+    // Child visibility must not impose a transient maximum on the window.
+    // Apply after attachment: Haiku replaces layout explicit-data proxies.
+    GetLayout()->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
     queue->Start();
     AddCommonFilter(new Keys());
 
@@ -1020,6 +1020,20 @@ public:
       break;
     case kPermanentDelete:
       Operation(Lister::Action::Delete);
+      break;
+    case kDuplicate:
+      NamedEntry(Lister::Action::Duplicate);
+      break;
+    case kCreateLink:
+      NamedEntry(Lister::Action::Link);
+      break;
+    case kNamedEntryAccepted:
+      if (!pendingNamedEntry.sources.empty()) {
+        pendingNamedEntry.entryName = m->GetString("name", "");
+        pendingNamedEntry.relativeLink = m->GetInt32("which", 1) != 2;
+        queue->Enqueue(pendingNamedEntry);
+        pendingNamedEntry = {};
+      }
       break;
     case kRename:
       Operation(Lister::Action::Rename);

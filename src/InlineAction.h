@@ -4,6 +4,7 @@
 #include <Message.h>
 #include <Messenger.h>
 class BTextControl;
+class BStringView;
 constexpr uint32 kInlineClosed = 'icls';
 // Owns one frozen question. New requests cannot replace a pending decision.
 class InlineAction : public BGroupView {
@@ -19,6 +20,7 @@ private:
   BMessenger target;
   BMessage result;
   BTextControl *name = nullptr;
+  BStringView *nameHint = nullptr;
   bool pending = false;
   int64 serial = 0;
   BMessage Event(uint32 what) const;

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "InlineAction.h"
+#include "NamedEntry.h"
+#include <StringView.h>
 #include "ConnectionView.h"
 #include "ExplicitSubmit.h"
 #include <Button.h>
@@ -25,6 +27,7 @@ void InlineAction::Close() {
   ++serial;
   Hide();
   name = nullptr;
+  nameHint = nullptr;
   result.MakeEmpty();
   // Destroy connection password controls immediately, not on the next prompt.
   while (auto child = ChildAt(0)) {
@@ -55,6 +58,12 @@ bool InlineAction::Ask(const char *text, const char *button,
     name->SetTarget(this);
     name->TextView()->AddFilter(
         new Lister::ExplicitSubmit(BMessenger(this), Event(kAccept)));
+  }
+  if (name && result.HasString("newEntryIn")) {
+    nameHint = new BStringView("name hint", "Choose an unused name. Existing entries are never replaced.");
+    nameHint->SetExplicitMinSize(BSize(200, B_SIZE_UNSET));
+    nameHint->SetTruncation(B_TRUNCATE_END);
+    AddChild(nameHint);
   }
   auto cancel = new BButton("Cancel", new BMessage(Event(kCancel)));
   auto accept = new BButton(button, new BMessage(Event(kAccept)));
@@ -99,14 +108,23 @@ void InlineAction::MessageReceived(BMessage *message) {
   if (message->what == kAccept || message->what == kAlternate) {
     if (name) {
       std::string value = name->Text();
+      if (nameHint) {
+        try { Lister::ValidateNewEntryName(result.GetString("newEntryIn", ""), value); }
+        catch (const std::exception &e) {
+          nameHint->SetText(e.what());
+          nameHint->SetToolTip(e.what());
+          name->MakeFocus(true);
+          return;
+        }
+      }
       if (value.empty() || (!result.GetBool("placeLabel", false) &&
           (value == "." || value == ".." || value.find('/') != std::string::npos))) {
         name->SetToolTip("Enter one file or folder name, without a slash");
         return;
       }
       accepted.AddString("name", value.c_str());
-    } else
-      accepted.AddInt32("which", message->what == kAlternate ? 2 : 1);
+    }
+    accepted.AddInt32("which", message->what == kAlternate ? 2 : 1);
   }
   Close();
   // No queued close event may cancel an unrelated later question.

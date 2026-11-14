@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<title>Listi: two-panel file manager</title>
+<polygon fill="#263744" fill-opacity="0.333333" points="10,49 52,42 61,50 18,61 7,56"/>
+<polygon fill="#283b49" points="7,13 24,9 32,16 54,12 59,50 17,59 6,51"/>
+<polygon fill="#d99e35" points="9,15 23,12 31,19 52,15 56,48 18,56 9,49"/>
+<polygon fill="#ffe49a" points="9,15 23,12 27,16 11,20"/>
+<polygon fill="#a56b29" points="9,24 18,29 20,55 9,49"/>
+<polygon fill="#283b49" points="11,23 52,15 56,47 17,55"/>
+<polygon fill="#fff6d6" points="13,25 30,22 34,49 19,52"/>
+<polygon fill="#d9edf0" points="33,21 50,18 53,45 37,48"/>
+<polygon fill="#ffffff" points="13,25 30,22 30,25 14,28"/>
+<polygon fill="#ffffff" points="33,21 50,18 50,21 34,24"/>
+<polygon fill="#e3a53a" points="14,29 30,26 31,31 15,34"/>
+<polygon fill="#3e899d" points="34,25 50,22 51,27 35,30"/>
+<polygon fill="#947443" points="17,37 29,35 29,37 17,39"/>
+<polygon fill="#947443" points="18,42 30,40 30,42 18,44"/>
+<polygon fill="#947443" points="19,47 27,45 27,47 19,49"/>
+<polygon fill="#538396" points="37,33 49,31 49,33 37,35"/>
+<polygon fill="#538396" points="38,38 50,36 50,38 38,40"/>
+<polygon fill="#538396" points="39,43 47,41 47,43 39,45"/>
+<polygon fill="#ffe49a" points="17,55 56,47 56,50 18,58"/>
+</svg>

@@ -9,13 +9,13 @@ set -- src/objects.*-release/Listi
 mkdir -p build dist
 stage=$(mktemp -d build/package.XXXXXX)
 trap 'rm -rf "$stage"' EXIT HUP INT TERM
-mkdir -p "$stage/apps" "$stage/data/licenses" "$stage/data/deskbar/menu/Applications" "$stage/documentation/packages/lister"
+mkdir -p "$stage/apps" "$stage/data/licenses" "$stage/data/deskbar/menu/Applications" "$stage/documentation/packages/listi"
 cp "$1" "$stage/apps/Listi"
 cp PackageInfo "$stage/.PackageInfo"
 cp LICENSE "$stage/data/licenses/MIT"
-cp README.md docs/*.md "$stage/documentation/packages/lister/"
-mkdir -p "$stage/documentation/packages/lister/reference"
-cp docs/reference/*.json "$stage/documentation/packages/lister/reference/"
+cp README.md docs/*.md "$stage/documentation/packages/listi/"
+mkdir -p "$stage/documentation/packages/listi/reference"
+cp docs/reference/*.json "$stage/documentation/packages/listi/reference/"
 ln -s /boot/system/apps/Listi "$stage/data/deskbar/menu/Applications/Listi"
 # Normalize mtimes. Haiku package also records filesystem atime/creation time,
 # so package-container bytes are not guaranteed identical across rebuilds.

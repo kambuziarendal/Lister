@@ -65,7 +65,6 @@ Pane::Pane(int32 number, const Preferences &p)
     : BView("pane", B_WILL_DRAW | B_SUPPORTS_LAYOUT), id(number), prefs(p),
       generation(std::make_shared<std::atomic<int64>>(0)) {
   SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-  SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
   role = new BStringView("role", id == 0 ? "Left panel" : "Right panel");
   role->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
   auto menu = new BPopUpMenu("Go");
@@ -152,6 +151,7 @@ Pane::Pane(int32 number, const Preferences &p)
       .End()
       .Add(content)
       .Add(status);
+  SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
 }
 Pane::~Pane() {
   generation->store(-1);

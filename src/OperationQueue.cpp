@@ -62,6 +62,10 @@ const char *Verb(Lister::Action a) {
     return "Copy";
   case Lister::Action::Move:
     return "Move";
+  case Lister::Action::Duplicate:
+    return "Duplicate";
+  case Lister::Action::Link:
+    return "Create link";
   case Lister::Action::Trash:
     return "Move to Trash";
   case Lister::Action::Restore:
@@ -102,7 +106,6 @@ public:
   ProgressView(OperationQueue *o)
       : BView("operations", B_WILL_DRAW | B_SUPPORTS_LAYOUT), owner(o) {
     SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-    SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     title = new BStringView("operation", "No queued operations");
     title->SetFont(be_bold_font);
     file = new BStringView("current-file", "");
@@ -158,6 +161,7 @@ public:
         .Add(file)
         .Add(bar)
         .Add(details);
+    SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
   }
   void AttachedToWindow() override {
     pause->SetTarget(this);
@@ -423,7 +427,7 @@ void OperationQueue::Loop() {
     display.SendMessage(&start);
     uint64_t total = 0;
     if (job.action == Lister::Action::Copy ||
-        job.action == Lister::Action::Move)
+        job.action == Lister::Action::Move || job.action == Lister::Action::Duplicate)
       for (auto &s : job.sources)
         total += Size(s, [this] { return Proceed(); });
     start.AddInt64("total", std::max<uint64_t>(1, total));
@@ -484,7 +488,7 @@ void OperationQueue::Loop() {
     count--;
     BMessage done(kJobDone);
     done.AddInt64("tag", job.tag);
-    if (job.action == Lister::Action::Move)
+    if (job.action == Lister::Action::Move || job.action == Lister::Action::Duplicate)
       for (const auto &root : result.completedRoots)
         done.AddString("moved", root.first.c_str());
     BString summary;

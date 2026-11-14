@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "FileOperation.h"
+#include "NamedEntry.h"
 #include "Trash.h"
 #include <Directory.h>
 #include <Entry.h>
@@ -126,6 +127,8 @@ struct Runner {
   bool Allow(const std::string &dst) {
     if (!Exists(dst))
       return true;
+    if (guardedJob && guardedJob->action == Action::Duplicate)
+      throw std::runtime_error(dst + ": already exists; duplicate does not overwrite");
     if (skipAll) {
       result.skipped++;
       return false;
@@ -251,6 +254,8 @@ struct Runner {
       Fail(src);
     struct stat before{};
     bool existed = Exists(dst, &before);
+    if (existed && guardedJob && guardedJob->action == Action::Duplicate)
+      throw std::runtime_error(dst + ": already exists; duplicate does not overwrite");
     if (existed && st.st_dev == before.st_dev && st.st_ino == before.st_ino)
       throw std::runtime_error(src +
                                ": source and destination are the same entry");
@@ -362,6 +367,13 @@ struct Runner {
   }
   void Execute(const Job &job) {
     guardedJob = &job;
+    const bool named = job.action == Action::Duplicate || job.action == Action::Link;
+    if (named) {
+      if (job.sources.size() != 1 || job.expectedSources.size() != 1 ||
+          job.expectedDestination.device < 0)
+        throw std::runtime_error("Named entry operations require one guarded local source and destination.");
+      ValidateNewEntryName(job.destination, job.entryName);
+    }
     if (job.action == Action::MakeDirectory) {
       Check();
       if (mkdir(job.destination.c_str(), 0755))
@@ -385,7 +397,27 @@ struct Runner {
         struct stat sourceStat;
         if (lstat(source.c_str(), &sourceStat))
           Fail(source);
-        if (S_ISDIR(sourceStat.st_mode) && job.action != Action::Copy) {
+        if (job.action == Action::Link) {
+          Check();
+          Guard();
+          BDirectory directory(job.destination.c_str());
+          node_ref node;
+          if (directory.GetNodeRef(&node) != B_OK ||
+              node.device != job.expectedDestination.device ||
+              node.node != job.expectedDestination.inode)
+            throw std::runtime_error("The link destination changed; nothing was created.");
+          // One native exclusive create: existing files, folders and broken
+          // symlinks are never replaced. No shell or source dereferencing.
+          const auto text = LinkText(job);
+          status_t status = directory.CreateSymLink(job.entryName.c_str(), text.c_str(), nullptr);
+          if (status != B_OK) throw std::runtime_error("Could not create link: " + std::string(strerror(status)));
+          const auto destination = Join(job.destination, job.entryName);
+          result.completedRoots.emplace_back(source, destination);
+          ++result.completed;
+          if (h.fileDone) h.fileDone(source, destination);
+          continue;
+        }
+        if (S_ISDIR(sourceStat.st_mode) && job.action != Action::Copy && job.action != Action::Duplicate) {
           std::string parent = source.substr(0, source.find_last_of('/'));
           if (parent.empty())
             parent = "/";
@@ -415,7 +447,7 @@ struct Runner {
         }
         std::string destination = job.action == Action::Rename
                                       ? job.destination
-                                      : Join(Canonical(job.destination), leaf);
+                                      : Join(Canonical(job.destination), named ? job.entryName : leaf);
         if (S_ISDIR(sourceStat.st_mode)) {
           std::string from = Canonical(source),
                       parent = Canonical(
@@ -479,12 +511,13 @@ Result Run(const Job &j, const Hooks &h) {
   // Source-only actions must not depend on the location in the other pane.
   const bool usesDestination =
       j.action == Action::Copy || j.action == Action::Move ||
-      j.action == Action::Rename || j.action == Action::MakeDirectory;
+      j.action == Action::Rename || j.action == Action::MakeDirectory ||
+      j.action == Action::Duplicate || j.action == Action::Link;
   bool virtualJob = usesDestination && IsVirtual(j.destination);
   for (auto &path : j.sources)
     virtualJob = virtualJob || IsVirtual(path);
   if (virtualJob) {
-    if (!j.expectedSources.empty()) {
+    if (!j.expectedSources.empty() || j.action == Action::Duplicate || j.action == Action::Link) {
       Result result;
       result.errors.push_back("Guarded file clipboard transfers require local entries.");
       return result;

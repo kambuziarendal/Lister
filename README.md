@@ -2,7 +2,7 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.10.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.13.0**. Published preview: **0.2.0**.
 
 Find files: **Command+Shift+F** opens cancellable recursive local name search
 and native BFS formulas, with optional live updates. Save named criteria and
@@ -29,6 +29,11 @@ Properties: **Files > Properties** or **Command+Shift+I** opens one local entry.
 Inspect file information and edit supported typed BFS attributes and ordinary
 permissions explicitly. See [behavior and limits](docs/PROPERTIES-0.10.0.md).
 
+Duplicate one local entry beside its original with **Command+Shift+D**.
+Create a relative or absolute symbolic link in the other panel with
+**Command+Shift+L**. Both require an unused name and preserve existing entries.
+See [behavior and limits](docs/NAMED-ENTRIES-0.13.0.md).
+
 ## Workflow
 
 The bold active panel supplies selected files. Direct panel Copy/Move uses
@@ -36,14 +41,15 @@ the other panel as destination; clipboard Paste uses the active panel. Click a p
 a directory to enter it; Backspace goes up. Use Haiku's **Command modifier**
 (normally **Alt**, following your system keymap) plus **C/X/V** to copy/cut/paste
 local files using the system clipboard, including Tracker. The mouse route is
-**Files > Clipboard**. **Shift+C** or **F5** copies directly to the other panel;
-**Shift+V** or **F3** opens the viewer. **E** edits, **M** moves to the other panel,
+**Files > Clipboard**. **Shift+C** copies directly to the other panel;
+**Shift+V** opens the viewer. **E** edits, **M** moves to the other panel,
 **R** renames, **N** creates a folder, **D** trashes and **F** filters.
 Buttons and menus show their shortcuts. See [clipboard behavior and limits](docs/CLIPBOARD-0.9.0.md). Bare letters remain
 available for list type-ahead. In path, filter, command and name fields,
 Command+A/C/X/V selects/copies/cuts/pastes text, never files. Press Enter after
 editing a path or filter to return to the list. Escape cancels a name dialog.
-F3/F4/F5/F6/F7/F8/F9 remain secondary aliases outside text fields.
+Function keys are unassigned. Alt+W follows Haiku’s window-close behavior;
+Alt+Q quits Listi. Escape cancels an inline question.
 
 Each panel has its own **< Back / > Forward** path buttons. **Command+[ / ]**
 work while browsing that panel, not while editing text or answering a question.

@@ -53,7 +53,7 @@ Neste produkttrinn er funksjonsmatrisen og et konkret betabehov, ikke automatisk
 publisering eller en ny stor omskriving. De opprinnelige deltrinnene følger under
 som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
 
-### Nåværende trinn og kø, oppdatert for 0.12.0
+### Nåværende trinn og kø, oppdatert for 0.13.0
 
 1. Sikkerhet/modulgrenser, arkiv/nettverksgrunnlag, panelvisninger og intern
    operasjonsvisning er samlet og kvalifisert innenfor den private 0.4.0-kandidatens
@@ -78,7 +78,8 @@ som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
    MIME-visning og engangsvalg av program er kvalifisert i privat 0.11.0, se
    OPEN-WITH-0.11.0.md. Standardtilknytninger og MIME-redigering gjenstår.
    Tydelig lokal drop-semantikk inngår i privat 0.12.0, se DROP-0.12.0.md.
-   Neste avgrensede flyt er lenker og duplisering. Dypere kvalifisering av eksisterende
+   Lokale lenker og duplisering inngår i privat 0.13.0, se NAMED-ENTRIES-0.13.0.md.
+   Neste avgrensede flyt er arkivoppretting med tydelige formatvalg. Dypere kvalifisering av eksisterende
    protokoller/arkivformater følger relevante endringer, inkludert egen FTPS-prøve.
 8. **Trygg massebehandling:** maler, lenker, duplisering, masseomdøping med
    forhåndsvisning, sammenligning og konfliktbevisst angre-journal.
@@ -213,3 +214,10 @@ Arne trenger i hverdagen.
 Hvert steg skal gjøre en konkret oppgave bedre i dag, passe naturlig på Haiku og
 gi plass til videre utvikling. DOpus gir handlefriheten, moderne arbeidsmåter
 former flyten. Vi trenger ikke alt samtidig for å ha en tydelig egen identitet.
+
+### Tastatur og innmeldt layoutfeil, 14. november
+
+Arne vil ikke bruke funksjonstastene. Fra 0.13.0 fjernes alle Listi-bindinger
+på F-taster og deres knappetekster. Alt+W beholdes som Haikus vanlige
+vinduslukking. Inline spørsmål skal ikke endre hovedvinduets størrelse,
+inkludert to detaljpaneler uten mappe-/forhåndsvisning.
