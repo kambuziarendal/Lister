@@ -37,25 +37,29 @@ Neste produkttrinn er funksjonsmatrisen og et konkret betabehov, ikke automatisk
 publisering eller en ny stor omskriving. De opprinnelige deltrinnene følger under
 som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
 
-### Aktivt trinn og kø
+### Nåværende trinn og kø, oppdatert etter 0.4.0
 
-1. **Aktivt: filoperasjonenes sikkerhet og modulgrenser.** Gjennomgå dispatch,
-   konflikter, avbrudd, kildeendringer og ferdigmarkering. Test uten å avhenge av UI.
-2. Arkiv- og nettverkspaneler: fullfør SMB, arkiver, SFTP/FTP og tydelige
-   feil/kapabiliteter. Eksisterende kode er en kandidat, ikke ferdig funksjonsdekning.
-3. Panelvisninger: detaljer, ikoner og thumbnails, valgfri bildevisning,
-   mappevalg og uavhengige mappetrær. Test fokus, utvalg og kompakt laptopoppsett.
-4. Intern operasjonsvisning: status, konflikter, per-fil fremdrift og avbrudd.
-   Grønt betyr bekreftet ferdig, ikke bare at data er lest eller sendt.
-5. Samlet intern kandidat: installasjon, bevart konfigurasjon og brukerflyt på Haiku.
-6. Kartlegg Dolphin-funksjoner og prioriter neste konkrete bruksbehov fra matrisen.
+1. Sikkerhet/modulgrenser, arkiv/nettverksgrunnlag, panelvisninger og intern
+   operasjonsvisning er samlet og kvalifisert innenfor den private 0.4.0-kandidatens
+   uttrykkelige begrensninger. Dette betyr ikke full protokoll- eller funksjonsdekning.
+2. Første [funksjonskart](FUNCTION-COVERAGE.md) er laget mot Dolphin 26.08.3,
+   med separate protokoller/tillegg, brukerflyter og teststatus. Referansen er
+   kildekontrollert, ikke runtime-kvalifisert. Den er ikke en designoppskrift.
+3. **Neste byggepunkt: uavhengig navigasjonshistorikk i hvert panel.** Avgrensning
+   og ferdigkrav står i [NEXT-NAVIGATION.md](NEXT-NAVIGATION.md).
+4. Deretter: lagrede arbeidssteder, avbrytbart søk, dypere kvalifisering av eksisterende
+   filkilder, Tracker-samspill, trygg massebehandling og flere providers. Restbehovene
+   beholdes i matrisen. Ingen funksjon avskrives fordi en lignende funksjon finnes.
 
-Tilpasning skal følge prinsippet i DESIGN.md: gode standardvalg, lokale
-panelkontroller, eksplisitte mappevalg og en enkel vei tilbake. Lagrede
-arbeidsoppsett som «Laptop» og «Stor skjerm» ligger i kø, ikke i aktivt trinn.
+Arnes presisering: Vi skal ikke kopiere Dolphin på noen måte. Det de tilbyr av
+funksjoner skal vi også dekke, gjennom vår egen kode, utforming og arbeidsflyt.
+Native Haiku-løsninger skal brukes der de løser behovet godt. Felles funksjonsnavn
+betyr ikke at implementasjon, plassering, utseende eller tastaturkart skal kopieres.
 
-Påbegynt UI-kode i punkt 3 og 4 beholdes, men utvides ikke mens punkt 1 sikres.
-Ingen av disse punktene er automatisk autorisasjon til offentlig publisering.
+Tilpasning følger DESIGN.md: gode standardvalg, lokale panelkontroller,
+eksplisitte mappevalg og en enkel vei tilbake. Lagrede arbeidsoppsett som «Laptop»
+og «Stor skjerm» ligger fortsatt i kø. Kartlegging og nye prioriteringer gir
+ikke automatisk fullmakt til offentlig publisering eller nye kostnader.
 
 Fast designkrav: bruk native Haiku-ikoner og brukerens systemoppsett der Haiku
 støtter det. Fil-, mappe- og programikoner hentes fra systemet, ikke fra et eget

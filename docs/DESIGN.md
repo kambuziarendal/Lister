@@ -6,6 +6,20 @@ suite and `Lister_settings` path for in-place upgrades and settings compatibilit
 Internal C++ namespaces and temporary-file prefixes remain stable. No repository
 rename or public release is part of this candidate.
 
+## Functional ambition, clarified by the owner 14 November 2026
+
+Dolphin is a coverage reference, not a product to copy in any respect. Listi must
+cover the user needs/functions it offers, including applicable protocols and
+extensions, through our own code, design and workflows. Do not reproduce its UI,
+layout, assets or implementation. Build on Listi's identity and Haiku's native
+capabilities. Native integrations count only when they deliver a coherent,
+verified user workflow; an adjacent feature is not automatic equivalence.
+
+The versioned inventory in [FUNCTION-COVERAGE.md](FUNCTION-COVERAGE.md) identifies
+covered, partial, unqualified and missing needs. Deferred needs remain gaps,
+not exclusions from the long-term ambition. This does not authorize public
+publication, paid services or one large rewrite.
+
 ## Product direction, 14 November 2026
 
 Listi is a native Haiku working environment for files. DOpus inspires freedom

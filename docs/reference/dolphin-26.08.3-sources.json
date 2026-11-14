@@ -1,0 +1,113 @@
+{
+  "retrieved": "2026-11-14",
+  "purpose": "Read-only capability inventory, not implementation reuse",
+  "baseline": "Dolphin 26.08.3",
+  "tag_object": "e746d3044eeb4a511c3e548f0dd8bd80416ed800",
+  "commit": "2fdee206603fd3a21928984e9a3d404e82ae9890",
+  "runtime_tested": false,
+  "handbook_caveat": "Tagged handbook still labels itself KDE Gear 22.04 (2022-01-17); action registries supplement it.",
+  "sources": [
+    {
+      "file": "dolphin-doc.xml",
+      "url": "https://raw.githubusercontent.com/KDE/dolphin/v26.08.3/doc/index.docbook",
+      "sha256": "102c5b7c79dec50b8f05faf62c2471f538c451502ab0a5a5a69439c7f329b239",
+      "bytes": 76627
+    },
+    {
+      "file": "dolphin-actions.cpp",
+      "url": "https://raw.githubusercontent.com/KDE/dolphin/v26.08.3/src/dolphinmainwindow.cpp",
+      "sha256": "55eddc8bd0e90b9c40efbf2ef8e6566567feecd4263196b12c87c577a50c713a",
+      "bytes": 158782
+    },
+    {
+      "file": "dolphin-cmake.txt",
+      "url": "https://raw.githubusercontent.com/KDE/dolphin/v26.08.3/CMakeLists.txt",
+      "sha256": "023e01ee49c3fff548dda670c3ff4784015c44bdb2d25b68282754ece854a2c2",
+      "bytes": 7053
+    },
+    {
+      "file": "dolphin-release.json",
+      "url": "https://api.github.com/repos/KDE/dolphin/git/ref/tags/v26.08.3",
+      "sha256": "2bc40f462154b3a05f99de05c8258c26c2030dd09910a13aa6dc17a0056873f2",
+      "bytes": 329
+    },
+    {
+      "file": "kio-extras-cmake.txt",
+      "url": "https://raw.githubusercontent.com/KDE/kio-extras/v26.08.3/CMakeLists.txt",
+      "sha256": "79f1fd824e0618ff8df326d91549f3502961049cb34a7bf09dfb08a75375dd72",
+      "bytes": 8241
+    },
+    {
+      "file": "plugins-cmake.txt",
+      "url": "https://raw.githubusercontent.com/KDE/dolphin-plugins/v26.08.3/CMakeLists.txt",
+      "sha256": "d7a7e9cb6bead5e15b03ab7d6e89424a6821916179e3a8f56eb1b66ffe5e1819",
+      "bytes": 2228
+    },
+    {
+      "file": "dolphin-tag.json",
+      "url": "https://api.github.com/repos/KDE/dolphin/git/tags/e746d3044eeb4a511c3e548f0dd8bd80416ed800",
+      "sha256": "ae640a0b1421cc1bda26cdbd6974e452e8e25a26f5b00bf1c4eb737610af1db9",
+      "bytes": 2610
+    },
+    {
+      "file": "dolphin-view-actions.cpp",
+      "url": "https://raw.githubusercontent.com/KDE/dolphin/v26.08.3/src/views/dolphinviewactionhandler.cpp",
+      "sha256": "accd8b286bdc7423a4e316627a5f0fa1841f9e507740a61c02c1c736fc8619a5",
+      "bytes": 49057
+    },
+    {
+      "file": "ark-cmake.txt",
+      "url": "https://raw.githubusercontent.com/KDE/ark/v26.08.3/CMakeLists.txt",
+      "sha256": "d6136d1b4b9e17b02e57428333e405f5c7d96e89c3636c4e530aec4d17294fae",
+      "bytes": 4721
+    },
+    {
+      "file": "ark-doc.xml",
+      "url": "https://raw.githubusercontent.com/KDE/ark/v26.08.3/doc/index.docbook",
+      "sha256": "a72eac6947ff84e8440558f3f1e35dc5860d745e7195a87a7015d42175379b25",
+      "bytes": 19945
+    },
+    {
+      "file": "kio-cmake.txt",
+      "url": "https://raw.githubusercontent.com/KDE/kio/v6.23.0/CMakeLists.txt",
+      "sha256": "0af330c121808f43235c2bf9a2ba91676508281b59d5c5d3d15e061e5ecbb6f5",
+      "bytes": 7276
+    },
+    {
+      "file": "kio-workers-cmake.txt",
+      "url": "https://raw.githubusercontent.com/KDE/kio/v6.23.0/src/kioworkers/CMakeLists.txt",
+      "sha256": "9edfb7b91dc9890b433be8c671c93469aec7416997514cfab24a95b5ef6ce2b8",
+      "bytes": 193
+    },
+    {
+      "file": "kio-extras-archive.json",
+      "url": "https://raw.githubusercontent.com/KDE/kio-extras/v26.08.3/archive/archive.json",
+      "sha256": "a0af4e864919e8d51bf365bb78bc77fa7ed0284362301ccad5feba4936bca61d",
+      "bytes": 3580
+    },
+    {
+      "file": "kio-http.json",
+      "url": "https://raw.githubusercontent.com/KDE/kio/v6.23.0/src/kioworkers/http/http.json",
+      "sha256": "b4627523c73d53569351239c0d49025da73d3626d1fbc0c4139f6371338d3497",
+      "bytes": 4574
+    },
+    {
+      "file": "kio-ftp.json",
+      "url": "https://raw.githubusercontent.com/KDE/kio/v6.23.0/src/kioworkers/ftp/ftp.json",
+      "sha256": "b29b33dd2e0e98bb23eec2be347a9b8d3c324157bcad11e5e59f95438e5dad5e",
+      "bytes": 820
+    },
+    {
+      "file": "dolphin-admin.cpp",
+      "url": "https://raw.githubusercontent.com/KDE/dolphin/v26.08.3/src/admin/workerintegration.cpp",
+      "sha256": "ba258a0da4fe0bf42ef4fb519d8e642b40ad67ec0e3617f0e9b5cf67f6460f67",
+      "bytes": 8245
+    }
+  ],
+  "official_catalogs": [
+    "https://apps.kde.org/dolphin/",
+    "https://apps.kde.org/dolphin_plugins/",
+    "https://apps.kde.org/kio_gdrive/",
+    "https://apps.kde.org/kio_s3/"
+  ]
+}
