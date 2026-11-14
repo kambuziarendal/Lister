@@ -14,6 +14,14 @@ filtering, keyboard/mouse parity and understandable operation progress.
 - Judge features by today's work and native fit, not historical completeness.
 - Menus, buttons and future scripts should share user actions; internal rendering
   and mouse events do not need a text protocol.
+- Keyboard-first does not mean function-key-first. Prefer nearby letters with
+  Haiku's native Command modifier (normally Alt, respecting the user's keymap):
+  V view, E edit, C copy, M move, R rename, N new folder, F filter; Tab switches
+  listers. Most already exist in the menu. Promote them in discoverability and
+  future configurable bindings; function keys are optional secondary aliases.
+  Bare letters must not steal type-ahead. Text fields must retain normal text
+  selection/copy/paste shortcuts rather than triggering filesystem actions.
+  The generated mockup's F-key labels are superseded by this owner feedback.
 - Resolve source/destination and freeze selected paths when accepting a job.
   Focus/layout/query changes must not retarget it. Paths do not freeze content;
   native identity/conflict checks remain necessary.

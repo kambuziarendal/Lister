@@ -12,6 +12,9 @@ destination colours is exploratory; labels must remain sufficient without colour
 The illustrated icons are placeholders. The owner explicitly requires native
 Haiku icons and respect for the user's system appearance wherever supported;
 reuse Tracker/MIME/per-file/application resources rather than a custom Lister set.
+The owner also rejected F-row-first interaction. Replace the illustrated F3/F4/
+F5/etc labels with discoverable native Command+letter shortcuts near the fingers;
+the function keys may remain secondary aliases. Respect text-editing contexts.
 
 Generated using the built-in imagegen tool, not the CLI/API fallback.
 Prompt brief: a realistic native Haiku Lister window, yellow title tab, compact
