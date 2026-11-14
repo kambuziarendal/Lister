@@ -2,7 +2,7 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.8.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.9.0**. Published preview: **0.2.0**.
 
 Find files: **Command+Shift+F** opens cancellable recursive local name search
 and native BFS formulas, with optional live updates. Save named criteria and
@@ -27,12 +27,15 @@ Native Haiku controls and system colours, including dark themes.
 
 ## Workflow
 
-The bold active panel supplies selected files; the other panel is the
-destination. Click a panel or press Tab in a list to switch roles. Double-click
+The bold active panel supplies selected files. Direct panel Copy/Move uses
+the other panel as destination; clipboard Paste uses the active panel. Click a panel or press Tab in a list to switch roles. Double-click
 a directory to enter it; Backspace goes up. Use Haiku's **Command modifier**
-(normally **Alt**, following your system keymap) plus **V** View, **E** Edit,
-**C** Copy, **M** Move, **R** Rename, **N** New folder, **D** Trash or **F** Filter.
-Buttons show the letter; menus show the native modifier. Bare letters remain
+(normally **Alt**, following your system keymap) plus **C/X/V** to copy/cut/paste
+local files using the system clipboard, including Tracker. The mouse route is
+**Files > Clipboard**. **Shift+C** or **F5** copies directly to the other panel;
+**Shift+V** or **F3** opens the viewer. **E** edits, **M** moves to the other panel,
+**R** renames, **N** creates a folder, **D** trashes and **F** filters.
+Buttons and menus show their shortcuts. See [clipboard behavior and limits](docs/CLIPBOARD-0.9.0.md). Bare letters remain
 available for list type-ahead. In path, filter, command and name fields,
 Command+A/C/X/V selects/copies/cuts/pastes text, never files. Press Enter after
 editing a path or filter to return to the list. Escape cancels a name dialog.

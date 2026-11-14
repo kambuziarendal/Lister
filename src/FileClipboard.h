@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: MIT
+#pragma once
+#include "FileOperation.h"
+#include <Clipboard.h>
+#include <Entry.h>
+#include <Message.h>
+#include <string>
+#include <vector>
+
+namespace Lister {
+struct ClipboardItem {
+  entry_ref ref;
+  NodeIdentity node;
+  std::string key, path;
+  bool cut = false;
+};
+struct ClipboardPaste {
+  std::vector<ClipboardItem> items;
+  std::vector<Job> jobs;
+  std::string lease;
+};
+// Tracker's native file-reference wire format. No text paths or credentials.
+std::vector<ClipboardItem> ReadFileClipboard(const BMessage &);
+void PutFileClipboard(const std::vector<std::string> &, bool cut,
+                      BClipboard *clipboard = be_clipboard);
+ClipboardPaste PrepareFilePaste(const std::string &destination,
+                               BClipboard *clipboard = be_clipboard);
+// Consume only successfully moved roots, and never a newer clipboard selection.
+void FinishFilePaste(const ClipboardPaste &, const std::vector<std::string> &moved,
+                     BClipboard *clipboard = be_clipboard);
+} // namespace Lister

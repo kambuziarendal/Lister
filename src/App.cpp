@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "Common.h"
+#include "FileClipboard.h"
 #include "ExplicitSubmit.h"
 #include "SavedPlaces.h"
 #include "SavedSearches.h"
@@ -36,6 +37,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
+#include <set>
 #include <sys/stat.h>
 #include <unistd.h>
 constexpr uint32 kConfirm = 'cfir', kViewLoaded = 'vloa',
@@ -301,6 +303,12 @@ public:
         return B_SKIP_MESSAGE;
       }
     }
+    if (!text && (modifiers & B_COMMAND_KEY) &&
+        !(modifiers & B_SHIFT_KEY) && strchr("cCxXvV", raw) && raw != 0) {
+      auto view = window ? window->CurrentFocus() : nullptr;
+      while (view && !dynamic_cast<Pane *>(view)) view = view->Parent();
+      if (!view) return B_SKIP_MESSAGE;
+    }
     if (bytes[0] == B_TAB) {
       auto view = dynamic_cast<BView *>(*target);
       while (view) {
@@ -389,6 +397,39 @@ class MainWindow : public BWindow {
       queue->ErrorInfo("Finish or cancel the open question first.");
   }
   int source = 0;
+  int64 clipboardSerial = 0;
+  Lister::ClipboardPaste clipboardPaste;
+  std::set<int64> clipboardJobs;
+  std::vector<std::string> clipboardMoved;
+  void ClipboardAction(uint32 action) {
+    if (actionArea->Pending()) {
+      queue->ErrorInfo("Finish or cancel the open question first.");
+      return;
+    }
+    try {
+      if (action != kClipboardPaste) {
+        auto selected = panes[source]->Selected();
+        Lister::PutFileClipboard(selected, action == kClipboardCut);
+        BString status;
+        status << int32(selected.size()) << (action == kClipboardCut
+          ? " marked for moving. Paste in a destination folder."
+          : " copied to clipboard. Paste in a destination folder.");
+        panes[source]->ShowStatus(status);
+        return;
+      }
+      if (!clipboardJobs.empty()) {
+        queue->ErrorInfo("A clipboard transfer is still running. Let it finish before pasting again.");
+        return;
+      }
+      clipboardPaste = Lister::PrepareFilePaste(panes[source]->Path());
+      clipboardMoved.clear();
+      for (auto job : clipboardPaste.jobs) {
+        job.tag = ++clipboardSerial;
+        clipboardJobs.insert(job.tag);
+        queue->Enqueue(job);
+      }
+    } catch (const std::exception &e) { Notice(e.what()); }
+  }
   OperationQueue *queue;
   BGroupView *bank;
   BTextControl *command;
@@ -532,7 +573,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.8.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.9.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     auto menu = new BMenuBar("menu");
@@ -542,17 +583,27 @@ public:
       uint32 action;
       char key;
     };
-    Item commands[] = {{"View", kView, 'V'},
+    auto clipboard = new BMenu("Clipboard");
+    clipboard->AddItem(new BMenuItem("Copy", new BMessage(kClipboardCopy), 'C'));
+    clipboard->AddItem(new BMenuItem("Cut", new BMessage(kClipboardCut), 'X'));
+    clipboard->AddItem(new BMenuItem("Paste into active folder", new BMessage(kClipboardPaste), 'V'));
+    files->AddItem(clipboard);
+    files->AddSeparatorItem();
+    Item commands[] = {{"View", kView, 0},
                        {"Edit", kEdit, 'E'},
-                       {"Copy", kCopy, 'C'},
-                       {"Move", kMove, 'M'},
+                       {"Copy to other panel", kCopy, 0},
+                       {"Move to other panel", kMove, 'M'},
                        {"Rename", kRename, 'R'},
                        {"New folder", kMkdir, 'N'},
                        {"Move to Trash", kDelete, 'D'},
                        {"Restore from Trash", kRestore, 0},
                        {"Delete permanently...", kPermanentDelete, 0}};
-    for (auto c : commands)
-      files->AddItem(new BMenuItem(c.label, new BMessage(c.action), c.key));
+    for (auto c : commands) {
+      if (c.action == kCopy || c.action == kView)
+        files->AddItem(new BMenuItem(c.label, new BMessage(c.action),
+                       c.action == kCopy ? 'C' : 'V', B_SHIFT_KEY));
+      else files->AddItem(new BMenuItem(c.label, new BMessage(c.action), c.key));
+    }
     files->AddItem(new BMenuItem("Open with system application",
                                  new BMessage(kOpenSystem)));
     files->AddSeparatorItem();
@@ -597,8 +648,8 @@ public:
     bank = new BGroupView(B_VERTICAL, 5);
     auto grid = new BGridView(5, 5);
     Item buttons[] = {
-        {"View [V]", kView, 'V'},         {"Edit [E]", kEdit, 'E'},
-        {"Copy [C]", kCopy, 'C'},         {"Move [M]", kMove, 'M'},
+        {"View [F3]", kView, 'V'},         {"Edit [E]", kEdit, 'E'},
+        {"Copy [F5]", kCopy, 'C'},         {"Move [M]", kMove, 'M'},
         {"Rename [R]", kRename, 'R'},     {"Trash [D]", kDelete, 'D'},
         {"All [A]", kAll, 'A'},           {"None", kNone, 0},
         {"Invert [I]", kInvert, 'I'},     {"New folder [N]", kMkdir, 'N'},
@@ -607,7 +658,9 @@ public:
       auto button =
           new BButton(buttons[i].label, new BMessage(buttons[i].action));
       BString hint("Command+");
-      if (buttons[i].key)
+      if (buttons[i].action == kCopy || buttons[i].action == kView)
+        hint << "Shift+" << buttons[i].key << " or " << (buttons[i].action == kCopy ? "F5" : "F3");
+      else if (buttons[i].key)
         hint << buttons[i].key;
       else
         hint << "Shift+A";
@@ -620,7 +673,7 @@ public:
     bank->AddChild(new BStringView(
         "shortcuts",
         "Command + letter (normally Alt). Tab: other panel. Command+F: filter. "
-        "Command+K: connect. Escape: close dialog."));
+        "C/X/V: clipboard. F5: panel copy. Escape: close dialog."));
     bank->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     command = new BTextControl("Command:", "", nullptr);
     command->TextView()->AddFilter(
@@ -693,7 +746,7 @@ public:
       Notice("Saved places or searches are still being written. Please try quitting again shortly.");
       return false;
     }
-    if (queue->Busy()) {
+    if (queue->Busy() || !clipboardJobs.empty()) {
       queue->Show();
       Notice("File operations are still running. Let them finish, or use "
              "Cancel all before quitting.");
@@ -928,6 +981,11 @@ public:
     case kFilter:
       panes[source]->FocusFilter();
       break;
+    case kClipboardCopy:
+    case kClipboardCut:
+    case kClipboardPaste:
+      ClipboardAction(m->what);
+      break;
     case kCopy:
       Operation(Lister::Action::Copy);
       break;
@@ -994,6 +1052,17 @@ public:
       }
       break;
     case kJobDone:
+      if (clipboardJobs.erase(m->GetInt64("tag", 0))) {
+        const char *path;
+        for (int32 i = 0; m->FindString("moved", i, &path) == B_OK; ++i)
+          clipboardMoved.emplace_back(path);
+        if (clipboardJobs.empty()) {
+          try { Lister::FinishFilePaste(clipboardPaste, clipboardMoved); }
+          catch (const std::exception &e) { Notice(e.what()); }
+          clipboardPaste = {};
+          clipboardMoved.clear();
+        }
+      }
       for (auto p : panes)
         p->MessageReceived(m);
       break;

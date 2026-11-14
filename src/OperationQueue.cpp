@@ -470,6 +470,10 @@ void OperationQueue::Loop() {
     auto result = Lister::Run(job, hooks);
     count--;
     BMessage done(kJobDone);
+    done.AddInt64("tag", job.tag);
+    if (job.action == Lister::Action::Move)
+      for (const auto &root : result.completedRoots)
+        done.AddString("moved", root.first.c_str());
     BString summary;
     summary << Verb(job.action) << ": " << result.completed << " completed, "
             << result.skipped << " skipped, " << int32(result.errors.size())

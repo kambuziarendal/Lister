@@ -69,6 +69,21 @@ struct Runner {
   const Hooks &h;
   bool replaceAll = false, skipAll = false;
   Result result;
+  const Job *guardedJob = nullptr;
+  std::string guardedSource;
+  void Guard() {
+    if (!guardedJob || guardedJob->expectedSources.empty()) return;
+    auto expected = guardedJob->expectedSources.find(guardedSource);
+    struct stat st;
+    if (expected == guardedJob->expectedSources.end() ||
+        lstat(guardedSource.c_str(), &st) ||
+        st.st_dev != expected->second.device || st.st_ino != expected->second.inode)
+      throw std::runtime_error(guardedSource + ": clipboard source changed; left untouched");
+    const auto &destination = guardedJob->expectedDestination;
+    if (stat(guardedJob->destination.c_str(), &st) || !S_ISDIR(st.st_mode) ||
+        st.st_dev != destination.device || st.st_ino != destination.inode)
+      throw std::runtime_error("Clipboard destination changed; operation stopped.");
+  }
   bool deferCompletion = false;
   std::vector<std::pair<std::string, std::string>> copied;
   void Done(const std::string &src, const std::string &dst) {
@@ -126,6 +141,7 @@ struct Runner {
       result.skipped++;
       return false;
     }
+    Guard();
     if (d == Decision::ReplaceAll)
       replaceAll = true;
     return true;
@@ -212,6 +228,7 @@ struct Runner {
   }
   void Commit(const std::string &tmp, const std::string &dst, bool replace,
               const struct stat &original) {
+    Guard();
     struct stat now;
     bool exists = Exists(dst, &now);
     if (exists != replace || (exists && !SameEntry(now, original)))
@@ -228,6 +245,7 @@ struct Runner {
   }
   bool Copy(const std::string &src, const std::string &dst) {
     Check();
+    Guard();
     struct stat st;
     if (lstat(src.c_str(), &st) != 0)
       Fail(src);
@@ -273,6 +291,7 @@ struct Runner {
                                ": a directory cannot be replaced by a file");
     if (!Allow(dst))
       return false;
+    Guard();
     std::string pattern = dst + ".lister-XXXXXX";
     std::vector<char> name(pattern.begin(), pattern.end());
     name.push_back(0);
@@ -342,6 +361,7 @@ struct Runner {
     return true;
   }
   void Execute(const Job &job) {
+    guardedJob = &job;
     if (job.action == Action::MakeDirectory) {
       Check();
       if (mkdir(job.destination.c_str(), 0755))
@@ -354,6 +374,8 @@ struct Runner {
       copied.clear();
       deferCompletion = job.action == Action::Move;
       try {
+        guardedSource = source;
+        Guard();
         // Do not allow volume roots, parent pseudoentries or empty paths to be
         // removed.
         std::string leaf = Leaf(source);
@@ -415,10 +437,12 @@ struct Runner {
           continue;
         }
         if (job.action == Action::Move && !Exists(destination)) {
+          Guard();
           BEntry e(source.c_str());
           BDirectory dir(job.destination.c_str());
           status_t s = e.MoveTo(&dir, leaf.c_str(), false);
           if (s == B_OK) {
+            result.completedRoots.emplace_back(source, destination);
             if (h.fileDone)
               h.fileDone(source, destination);
             Tick(source);
@@ -432,8 +456,11 @@ struct Runner {
         if (job.action == Action::Move)
           SnapshotTree(source, beforeMove, sourceStat.st_dev);
         if (Copy(source, destination)) {
-          if (job.action == Action::Move)
+          if (job.action == Action::Move) {
+            Guard();
             RemoveCopied(source, beforeMove);
+          }
+          result.completedRoots.emplace_back(source, destination);
           result.completed++;
           if (h.fileDone)
             for (auto &entry : copied)
@@ -456,8 +483,14 @@ Result Run(const Job &j, const Hooks &h) {
   bool virtualJob = usesDestination && IsVirtual(j.destination);
   for (auto &path : j.sources)
     virtualJob = virtualJob || IsVirtual(path);
-  if (virtualJob)
+  if (virtualJob) {
+    if (!j.expectedSources.empty()) {
+      Result result;
+      result.errors.push_back("Guarded file clipboard transfers require local entries.");
+      return result;
+    }
     return RunVirtual(j, h);
+  }
 
   Runner r{h};
   try {

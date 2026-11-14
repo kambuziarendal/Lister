@@ -36,6 +36,7 @@ public:
   void Activate();
   bool IsScanning() const { return scanning; }
   void SendSelection();
+  void ShowStatus(const char *text) { SetStatus(text); }
   int32 DisplayMode() const { return prefs.paneMode[id]; }
   bool TreeVisible() const { return prefs.paneTree[id]; }
   void FolderModes(const std::map<std::string, int32> &modes) {

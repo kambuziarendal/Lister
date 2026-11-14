@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include <functional>
+#include <map>
+#include <utility>
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -8,10 +10,18 @@
 namespace Lister {
 enum class Action { Copy, Move, Delete, Trash, Restore, MakeDirectory, Rename };
 enum class Decision { Replace, ReplaceAll, Skip, SkipAll, Abort };
+struct NodeIdentity {
+  int32_t device = -1;
+  int64_t inode = -1;
+};
 struct Job {
   Action action = Action::Copy;
   std::vector<std::string> sources;
   std::string destination;
+  // Optional identity guards for operations frozen from the system clipboard.
+  std::map<std::string, NodeIdentity> expectedSources;
+  NodeIdentity expectedDestination;
+  int64_t tag = 0;
 };
 struct Hooks {
   std::function<bool()> proceed;
@@ -24,6 +34,7 @@ struct Result {
   int completed = 0, skipped = 0;
   bool cancelled = false;
   std::vector<std::string> errors;
+  std::vector<std::pair<std::string, std::string>> completedRoots;
 };
 Result Run(const Job &, const Hooks &);
 std::string Join(const std::string &, const std::string &);
