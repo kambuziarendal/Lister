@@ -163,6 +163,7 @@ public:
         .Add(ok)
         .End();
     SetDefaultButton(ok);
+    AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
     CenterOnScreen();
     name->MakeFocus(true);
     name->TextView()->SelectAll();
@@ -186,6 +187,33 @@ public:
   Keys() : BMessageFilter(B_KEY_DOWN) {}
   filter_result Filter(BMessage *m, BHandler **target) override {
     const char *bytes = m->GetString("bytes", "");
+    auto window = dynamic_cast<BWindow *>(Looper());
+    auto text = window ? dynamic_cast<BTextView *>(window->CurrentFocus()) : nullptr;
+    // Window menu accelerators otherwise claim Command+A/C/V before the text
+    // control can select/copy/paste. Route editing commands to the focused view,
+    // not to the file panel. Explicit menu and button clicks still act on files.
+    if (text) {
+      if (m->GetInt32("modifiers", 0) & B_COMMAND_KEY) {
+        int32 key = m->GetInt32("raw_char", bytes[0]);
+        uint32 edit = 0;
+        switch (key) {
+        case 'a': case 'A': edit = B_SELECT_ALL; break;
+        case 'c': case 'C': edit = B_COPY; break;
+        case 'v': case 'V': edit = B_PASTE; break;
+        case 'x': case 'X': edit = B_CUT; break;
+        }
+        if (edit) {
+          Looper()->PostMessage(edit, text);
+          return B_SKIP_MESSAGE;
+        }
+        // Do not invoke file actions while editing a path, filter or command.
+        // Command+F remains available to enter the active pane's name filter.
+        if (key != 0 && strchr("eEmMrRnNdDiIsSlLtToO", key))
+          return B_SKIP_MESSAGE;
+      }
+      if (bytes[0] == B_FUNCTION_KEY)
+        return B_DISPATCH_MESSAGE;
+    }
     if (bytes[0] == B_TAB) {
       auto view = dynamic_cast<BView *>(*target);
       while (view) {
@@ -368,13 +396,13 @@ public:
       uint32 action;
       char key;
     };
-    Item commands[] = {{"View [F3]", kView, 'V'},
-                       {"Edit [F4]", kEdit, 'E'},
-                       {"Copy [F5]", kCopy, 'C'},
-                       {"Move [F6]", kMove, 'M'},
+    Item commands[] = {{"View", kView, 'V'},
+                       {"Edit", kEdit, 'E'},
+                       {"Copy", kCopy, 'C'},
+                       {"Move", kMove, 'M'},
                        {"Rename", kRename, 'R'},
-                       {"New folder [F7]", kMkdir, 'N'},
-                       {"Move to Trash [F8]", kDelete, 'D'},
+                       {"New folder", kMkdir, 'N'},
+                       {"Move to Trash", kDelete, 'D'},
                        {"Restore from Trash", kRestore, 0},
                        {"Delete permanently...", kPermanentDelete, 0}};
     for (auto c : commands)
@@ -399,7 +427,7 @@ public:
     view->AddItem(new BMenuItem("Operations", new BMessage(kShowJobs), 'O'));
     view->AddSeparatorItem();
     view->AddItem(
-        new BMenuItem("Preferences [F9]", new BMessage(kPreferences), ','));
+        new BMenuItem("Preferences", new BMessage(kPreferences), ','));
     menu->AddItem(view);
     panes[0] = new Pane(0, prefs);
     panes[1] = new Pane(1, prefs);
@@ -410,19 +438,28 @@ public:
     split->SetCollapsible(1, false);
     bank = new BGroupView(B_VERTICAL, 5);
     auto grid = new BGridView(5, 5);
-    Item buttons[] = {{"View", kView, 0},         {"Edit", kEdit, 0},
-                      {"Copy", kCopy, 0},         {"Move", kMove, 0},
-                      {"Rename", kRename, 0},     {"Trash", kDelete, 0},
-                      {"All", kAll, 0},           {"None", kNone, 0},
-                      {"Invert", kInvert, 0},     {"New folder", kMkdir, 0},
-                      {"Terminal", kTerminal, 0}, {"Operations", kShowJobs, 0}};
+    Item buttons[] = {{"View [V]", kView, 'V'}, {"Edit [E]", kEdit, 'E'},
+                      {"Copy [C]", kCopy, 'C'}, {"Move [M]", kMove, 'M'},
+                      {"Rename [R]", kRename, 'R'}, {"Trash [D]", kDelete, 'D'},
+                      {"All [A]", kAll, 'A'}, {"None", kNone, 0},
+                      {"Invert [I]", kInvert, 'I'}, {"New folder [N]", kMkdir, 'N'},
+                      {"Terminal [T]", kTerminal, 'T'}, {"Operations [O]", kShowJobs, 'O'}};
     for (int i = 0; i < 12; i++) {
       auto button =
           new BButton(buttons[i].label, new BMessage(buttons[i].action));
+      BString hint("Command+");
+      if (buttons[i].key)
+        hint << buttons[i].key;
+      else
+        hint << "Shift+A";
+      hint << " (normally Alt). File shortcuts apply outside text fields.";
+      button->SetToolTip(hint);
       button->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
       grid->GridLayout()->AddView(button, i % 6, i / 6);
     }
     bank->AddChild(grid);
+    bank->AddChild(new BStringView("shortcuts",
+        "Shortcuts: Command + letter (normally Alt). Tab switches panels; Command+F filters."));
     bank->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     command = new BTextControl("Command:", "", new BMessage(kCommand));
     command->SetToolTip(

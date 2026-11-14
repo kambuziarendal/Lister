@@ -29,17 +29,18 @@
 #include <unistd.h>
 
 namespace {
-class FilterInput : public BMessageFilter {
+class PaneInput : public BMessageFilter {
   Pane *pane;
+  bool isFilter;
 public:
-  explicit FilterInput(Pane *p)
-      : BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE), pane(p) {}
+  PaneInput(Pane *p, bool filter)
+      : BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE), pane(p), isFilter(filter) {}
   filter_result Filter(BMessage *message, BHandler **) override {
     if (message->what == B_MOUSE_DOWN || message->what == B_KEY_DOWN)
       pane->Activate();
     if (message->what == B_KEY_DOWN) {
       const char *bytes = message->GetString("bytes", "");
-      if (bytes[0] == B_ESCAPE) {
+      if (isFilter && bytes[0] == B_ESCAPE) {
         BMessage clear(kClearFilter);
         pane->MessageReceived(&clear);
         return B_SKIP_MESSAGE;
@@ -356,7 +357,8 @@ void Pane::AttachedToWindow() {
   edit->SetTarget(this);
   filter->SetTarget(this);
   clearFilter->SetTarget(this);
-  filter->TextView()->AddFilter(new FilterInput(this));
+  filter->TextView()->AddFilter(new PaneInput(this, true));
+  edit->TextView()->AddFilter(new PaneInput(this, false));
   list->SetTarget(this);
   auto field = dynamic_cast<BMenuField *>(FindView("go"));
   field->Menu()->SetTargetForItems(this);
@@ -526,6 +528,7 @@ void Pane::MessageReceived(BMessage *m) {
     break;
   case kNavigate:
     Navigate(edit->Text());
+    FocusList();
     break;
   case kParent: {
     std::string p = path.String();

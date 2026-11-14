@@ -13,8 +13,14 @@ Native Haiku controls and system colours, including dark themes.
 
 The bold **SOURCE** panel supplies selected files; the other panel is the
 **DESTINATION**. Click a panel or press Tab in a list to switch roles. Double-click
-a directory to enter it; Backspace goes up. F3 View, F4 Edit, F5 Copy, F6 Move,
-F7 New folder, F8 Trash, F9 Preferences. Menus expose additional shortcuts.
+a directory to enter it; Backspace goes up. Use Haiku's **Command modifier**
+(normally **Alt**, following your system keymap) plus **V** View, **E** Edit,
+**C** Copy, **M** Move, **R** Rename, **N** New folder, **D** Trash or **F** Filter.
+Buttons show the letter; menus show the native modifier. Bare letters remain
+available for list type-ahead. In path, filter, command and name fields,
+Command+A/C/X/V selects/copies/cuts/pastes text, never files. Press Enter after
+editing a path or filter to return to the list. Escape cancels a name dialog.
+F3/F4/F5/F6/F7/F8/F9 remain secondary aliases outside text fields.
 
 Operations run on a worker queue. A separate window shows progress, Pause/Resume,
 Cancel all and Replace/Replace all/Skip/Skip all/Abort conflicts. Closing that
