@@ -94,6 +94,10 @@ public:
       : FileGrid("file grid", B_WILL_DRAW | B_NAVIGABLE | B_FRAME_EVENTS |
                                B_FULL_UPDATE_ON_RESIZE),
         pane(p), model(state), generation(std::make_shared<std::atomic<int64>>(0)) {
+    // The scroll container owns geometry. Current viewport size must not
+    // become a growing layout minimum when an unnecessary bar is reclaimed.
+    SetExplicitMinSize(BSize(0, 0));
+    SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
     band = new RubberBand(this);
     band->ready = [this] { return !pane->IsScanning(); };
     band->path = [this] { return std::string(pane->Path()); };
@@ -104,7 +108,12 @@ public:
     };
     band->finished = [this] { pane->SendSelection(); };
     band->activate = [this] { MakeFocus(); pressedIndex = -1; deferredPick = false; };
-    band->redraw = [this](BRect rect) { Invalidate(rect); };
+    band->outline = [this](BRect rect) {
+      PushState();
+      SetDrawingMode(B_OP_INVERT);
+      StrokeRect(rect);
+      PopState();
+    };
     band->empty = [this](BPoint p) {
       for (int i = 0; i < int(model->Visible().size()); ++i)
         if (Cell(i).InsetByCopy(4, 4).Contains(p)) return false;
@@ -179,7 +188,12 @@ public:
     }
     paintedFocus = focus;
   }
+  float ContentHeight(float width) const override {
+    const int columns = std::max(1, int((width + 1) / cellWidth));
+    return ((int(model->Visible().size()) + columns - 1) / columns) * cellHeight;
+  }
   void Update() {
+    if (Parent()) Parent()->InvalidateLayout();
     if (auto bar = ScrollBar(B_VERTICAL)) {
       float height =
           ((int(model->Visible().size()) + Columns() - 1) / Columns()) * cellHeight;
@@ -404,8 +418,9 @@ public:
       }
     }
     if (band->Active()) {
-      SetHighUIColor(B_KEYBOARD_NAVIGATION_COLOR);
+      SetDrawingMode(B_OP_INVERT);
       StrokeRect(band->Rect());
+      SetDrawingMode(B_OP_COPY);
     }
   }
 };

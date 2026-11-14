@@ -61,6 +61,37 @@ constexpr uint32 kRememberView = 'grem',
                  kForgetView = 'gfor', kExpireProgress = 'expr',
                  kToggleTree = 'ttre';
 } // namespace
+namespace {
+class GridScroll : public BScrollView {
+  FileGrid* grid;
+  Pane* pane;
+  BRect laidOutBounds;
+  float fullWidth = 0;
+  bool laidOut = false, barVisible = true;
+public:
+  GridScroll(FileGrid* target, Pane* owner)
+      : BScrollView("icons scroll", target, 0, false, true), grid(target), pane(owner) {}
+  void DoLayout() override {
+    auto bar = ScrollBar(B_VERTICAL);
+    const bool resized = !laidOut || laidOutBounds != Bounds();
+    if (resized) {
+      BScrollView::DoLayout();
+      fullWidth = grid->Bounds().Width() + bar->PreferredSize().Width();
+      laidOutBounds = Bounds();
+      laidOut = true;
+    }
+    bool show = !pane->IsSimple() || grid->ContentHeight(fullWidth) > grid->Bounds().Height() + 1;
+    if (resized || show != barVisible) {
+      if (!resized) BScrollView::DoLayout();
+      barVisible = show;
+      if (!show) grid->ResizeTo(fullWidth, grid->Bounds().Height());
+    }
+    if (show == bar->IsHidden(this)) {
+      if (show) bar->Show(); else bar->Hide();
+    }
+  }
+};
+}
 Pane::Pane(int32 number, const Preferences &p)
     : BView("pane", B_WILL_DRAW | B_SUPPORTS_LAYOUT), id(number), prefs(p),
       generation(std::make_shared<std::atomic<int64>>(0)) {
@@ -102,7 +133,7 @@ Pane::Pane(int32 number, const Preferences &p)
   list = CreateFileDetails(this, &entries, p);
   list->SetExplicitMinSize(BSize(220, 96));
   grid = CreateFileGrid(this, &entries);
-  auto gridScroll = new BScrollView("icons scroll", grid, 0, false, true);
+  auto gridScroll = new GridScroll(grid, this);
   cards = new BCardView("panel views");
   cards->AddChild(list);
   cards->AddChild(gridScroll);
@@ -245,6 +276,7 @@ void Pane::SetSimple(bool value) {
   const bool changed = simple != value;
   simple = value;
   prefs.simple = value;
+  list->SetSimple(value);
   if (chromeVisible == simple) {
     chromeVisible = !simple;
     for (BView* control : {static_cast<BView*>(header), static_cast<BView*>(filterRow),

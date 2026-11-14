@@ -101,16 +101,28 @@ public:
     return B_SKIP_MESSAGE;
   }
 };
+constexpr uint32 kScrollLayout = 'sbar';
+class ColumnResizeFinished : public BMessageFilter {
+  BHandler* target;
+public:
+  explicit ColumnResizeFinished(BHandler* owner)
+      : BMessageFilter(B_MOUSE_UP), target(owner) {}
+  filter_result Filter(BMessage*, BHandler**) override {
+    BMessenger(target).SendMessage(kScrollLayout);
+    return B_DISPATCH_MESSAGE;
+  }
+};
 class DetailsList : public BColumnListView {
 public:
   Pane *pane;
   PaneModel *model;
   NameColumn *name;
-  bool syncing = false;
+  bool syncing = false, simple = false, arranging = false;
   RubberBand *band;
   DetailsList(Pane *p, PaneModel *state, const Preferences &prefs)
       : BColumnListView("files", B_WILL_DRAW | B_NAVIGABLE | B_DRAW_ON_CHILDREN, B_FANCY_BORDER),
         pane(p), model(state) {
+    simple = prefs.simple;
     name = new NameColumn(prefs);
     AddColumn(name, 0);
     AddColumn(new SizeColumn(), 1);
@@ -129,8 +141,12 @@ public:
     };
     band->finished = [this] { pane->SendSelection(); };
     band->activate = [this] { MakeFocus(); };
-    band->redraw = [this](BRect rect) {
-      Invalidate(ConvertFromScreen(ScrollView()->ConvertToScreen(rect)));
+    band->outline = [this](BRect rect) {
+      auto view = ScrollView();
+      view->PushState();
+      view->SetDrawingMode(B_OP_INVERT);
+      view->StrokeRect(rect);
+      view->PopState();
     };
     band->empty = [this](BPoint point) { return RowAt(point) == nullptr || ColumnAt(point) == nullptr; };
     band->select = [this](BRect rect, const auto &base) {
@@ -157,6 +173,54 @@ public:
       }
     };
     ScrollView()->AddFilter(band);
+    auto horizontal = static_cast<BScrollBar*>(FindView("horizontal_scroll_bar"));
+    horizontal->Target()->AddFilter(new ColumnResizeFinished(this));
+  }
+  void UpdateScrollBars() { DoLayout(); }
+  void DoLayout() override {
+    if (arranging) return;
+    arranging = true;
+    BColumnListView::DoLayout();
+    auto vertical = static_cast<BScrollBar*>(FindView("vertical_scroll_bar"));
+    auto horizontal = static_cast<BScrollBar*>(FindView("horizontal_scroll_bar"));
+    auto body = ScrollView();
+    auto heading = horizontal->Target();
+    const float verticalWidth = vertical->Frame().Width();
+    const float horizontalHeight = horizontal->Frame().Height();
+    const float fullWidth = body->Bounds().Width() + verticalWidth;
+    const float fullHeight = body->Bounds().Height() + horizontalHeight;
+    // Obtain the native column margins through PreferredSize, not private
+    // constants. PreferredSize includes hidden columns, which we subtract.
+    float contentWidth = BColumnListView::PreferredSize().width
+        - (Bounds().Width() - heading->Frame().Width());
+    for (int32 i = 0; i < CountColumns(); ++i)
+      if (!ColumnAt(i)->IsVisible()) contentWidth -= ColumnAt(i)->Width();
+    float contentHeight = 0;
+    for (int32 i = 0; i < CountRows(); ++i) contentHeight += RowAt(i)->Height() + 1;
+    bool showVertical = !simple, showHorizontal = !simple;
+    if (simple) {
+      // Adding one scrollbar can make the other necessary. Start without
+      // either to avoid retaining mutually unnecessary bars at the boundary.
+      for (int i = 0; i < 3; ++i) {
+        showHorizontal = contentWidth > fullWidth - (showVertical ? verticalWidth : 0);
+        showVertical = contentHeight > fullHeight - (showHorizontal ? horizontalHeight : 0);
+      }
+    }
+    const float extraWidth = showVertical ? 0 : verticalWidth;
+    const float extraHeight = showHorizontal ? 0 : horizontalHeight;
+    body->ResizeBy(extraWidth, extraHeight);
+    heading->ResizeBy(extraWidth, 0);
+    vertical->ResizeBy(0, extraHeight);
+    horizontal->ResizeBy(extraWidth, 0);
+    for (auto item : {std::make_pair(vertical, showVertical),
+                      std::make_pair(horizontal, showHorizontal)}) {
+      if (item.second == item.first->IsHidden(this)) {
+        if (item.second) item.first->Show(); else item.first->Hide();
+      }
+    }
+    vertical->SetRange(0, std::max(0.f, contentHeight - body->Bounds().Height()));
+    horizontal->SetRange(0, std::max(0.f, contentWidth - heading->Bounds().Width()));
+    arranging = false;
   }
   void DrawAfterChildren(BRect) override {
     if (!band->Active()) return;
@@ -164,8 +228,9 @@ public:
     BRect clip = ConvertFromScreen(view->ConvertToScreen(view->Bounds()));
     BRegion region(clip);
     ConstrainClippingRegion(&region);
-    SetHighUIColor(B_KEYBOARD_NAVIGATION_COLOR);
+    SetDrawingMode(B_OP_INVERT);
     StrokeRect(ConvertFromScreen(view->ConvertToScreen(band->Rect())));
+    SetDrawingMode(B_OP_COPY);
     ConstrainClippingRegion(nullptr);
   }
   void AttachedToWindow() override {
@@ -173,6 +238,7 @@ public:
     SetTarget(this);
   }
   void MessageReceived(BMessage *message) override {
+    if (message->what == kScrollLayout) { UpdateScrollBars(); return; }
     if (message->what == kInvoke) {
       auto row = static_cast<FileRow *>(FocusRow());
       model->SetSelection(model->Selected(), row ? row->entry->path : "");
@@ -256,6 +322,10 @@ public:
   bool CancelSelectionGesture() override { return list->band->Escape(); }
   void MakeFocus(bool focus = true) override { list->MakeFocus(focus); }
   void Redraw() override { list->Invalidate(); }
+  void SetSimple(bool value) override {
+    list->simple = value;
+    list->UpdateScrollBars();
+  }
   void Apply(const Preferences &p) override {
     prefs = p;
     list->name->prefs = p;
@@ -269,6 +339,7 @@ public:
     list->SetColor(B_COLOR_SELECTION_TEXT, ui_color(B_PANEL_TEXT_COLOR));
     list->SetColor(B_COLOR_NON_FOCUS_SELECTION,
                     tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.80));
+    list->UpdateScrollBars();
     Redraw();
   }
   void Refresh() override {
@@ -296,6 +367,7 @@ public:
       list->AddRow(row);
     }
     list->syncing = false;
+    list->UpdateScrollBars();
     SyncSelection();
   }
   void SyncSelection() override {

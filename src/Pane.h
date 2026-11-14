@@ -38,6 +38,7 @@ public:
   void FocusList();
   void FocusFilter();
   void Activate();
+  bool IsSimple() const { return simple; }
   bool IsScanning() const { return scanning; }
   void SendSelection(bool gesture = false);
   void ContextMenu(const std::string &entry, BPoint screen);

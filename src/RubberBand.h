@@ -23,51 +23,48 @@ class RubberBand : public BMessageFilter {
   std::string location;
   bool active = false, moved = false, extend = false;
 
+  bool painting = false;
   void Update(BPoint point, bool scroll) {
-    BRect oldRect = Rect();
     BPoint previous = cursor;
     bool wasMoved = moved;
+    auto now = system_time();
+    auto bounds = view->Bounds();
+    float delta = 0;
+    if (scroll && now - lastScroll >= 50000) {
+      lastScroll = now;
+      delta = point.y < bounds.top + 12 ? -18 :
+              point.y > bounds.bottom - 12 ? 18 : 0;
+    }
+    if (point == cursor && (!moved || !delta)) return;
+    painting = true;
+    if (moved) outline(Rect()); // Erase the previous invert-mode border.
     cursor = point;
     if (std::abs(cursor.x - origin.x) >= 4 || std::abs(cursor.y - origin.y) >= 4)
       moved = true;
-    bigtime_t now = system_time();
-    if (scroll && moved && now - lastScroll >= 50000) {
-      lastScroll = now;
-      auto bounds = view->Bounds();
-      float delta = cursor.y < bounds.top + 12 ? -18 :
-                    cursor.y > bounds.bottom - 12 ? 18 : 0;
-      if (delta) {
-        if (auto bar = view->ScrollBar(B_VERTICAL)) {
-          float old = bar->Value();
-          bar->SetValue(old + delta);
-          cursor.y += bar->Value() - old;
-        }
+    if (moved && delta) {
+      if (auto bar = view->ScrollBar(B_VERTICAL)) {
+        float old = bar->Value();
+        bar->SetValue(old + delta);
+        cursor.y += bar->Value() - old;
       }
     }
-    if (moved && (!wasMoved || cursor != previous)) {
-      view->Window()->BeginViewTransaction();
+    if (moved && (!wasMoved || cursor != previous))
       select(Rect(), extend ? before : std::vector<std::string>{});
-      RedrawOutline(oldRect);
-      RedrawOutline(Rect());
-      view->Window()->EndViewTransaction();
-    }
+    // Finish any changed rows before overlaying the new border. Moving only
+    // the border never invalidates or redraws the underlying native file list.
+    view->Window()->UpdateIfNeeded();
+    painting = false;
+    if (moved) outline(Rect());
+    view->Flush();
   }
   void End(bool restore) {
     if (!active) return;
-    BRect oldRect = Rect();
-    bool hadOutline = moved;
+    if (moved) outline(Rect());
     active = false;
     timer.reset();
     if (restore) restoreSelection(before);
-    if (hadOutline) RedrawOutline(oldRect);
     finished();
-  }
-  void RedrawOutline(BRect rect) {
-    // Invalidate only the old/new border, never the entire file view.
-    redraw(BRect(rect.left - 1, rect.top - 1, rect.right + 1, rect.top + 1));
-    redraw(BRect(rect.left - 1, rect.bottom - 1, rect.right + 1, rect.bottom + 1));
-    redraw(BRect(rect.left - 1, rect.top - 1, rect.left + 1, rect.bottom + 1));
-    redraw(BRect(rect.right - 1, rect.top - 1, rect.right + 1, rect.bottom + 1));
+    view->Flush();
   }
 
 public:
@@ -78,11 +75,11 @@ public:
   std::function<void(const std::vector<std::string> &)> restoreSelection;
   std::function<void(BRect, const std::vector<std::string> &)> select;
   std::function<void()> activate, finished;
-  std::function<void(BRect)> redraw;
+  std::function<void(BRect)> outline;
 
   explicit RubberBand(BView *target)
       : BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE), view(target) {}
-  bool Active() const { return active && moved; }
+  bool Active() const { return active && moved && !painting; }
   BRect Rect() const {
     return BRect(std::min(origin.x, cursor.x), std::min(origin.y, cursor.y),
                  std::max(origin.x, cursor.x), std::max(origin.y, cursor.y));
