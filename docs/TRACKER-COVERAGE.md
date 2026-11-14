@@ -18,6 +18,7 @@ Kravlisten må utvides ved runtime-gjennomgang og nye dokumenterte funksjoner.
 Listi-basis: privat 0.5.0, med avgrenset testbevis i NAVIGATION-0.5.0.md og
 ACCEPTANCE-0.4.0.md. D betyr delvis dekning, M betyr mangler egen brukerflyt,
 U betyr tilgjengelig mekanisme, men behovet er ikke tilstrekkelig verifisert.
+Oppdaterte søketrinn er versjonsmerket til 0.8.0, se ACCEPTANCE-0.8.0.md.
 Ingen rad nedenfor påstår full Tracker-likhet. Systemintegrasjon teller først
 når den kan startes fra Listi og hele oppgaven er prøvd.
 
@@ -39,9 +40,9 @@ når den kan startes fra Listi og hele oppgaven er prøvd.
 | T14 | Vanlige flerutvalg, tastatur og drag | D | Egen liste/grid testet. Alle modifierkombinasjoner | Shortcuts |
 | T15 | BFS-søk på navn, typer, attributter og formler | D (0.7) | Lokalt navnesøk og native BFS-formler som snapshot; attributtbygger gjenstår | Queries |
 | T16 | Velge søkevolumer, mapper og inkludering av Trash | D (0.7) | Én mappe/volumrot og eksplisitt Trash-valg; flervolumvalg gjenstår | Queries |
-| T17 | Levende treff med originale filhandlinger | D (0.7) | Snapshot viser/velger original i eierpanelet med identitetskontroll; levende treff gjenstår | Queries |
-| T18 | Lagrede søk, søkemaler og gjenåpning/redigering | M | Bevar semantikk, ikke lagre en foreldet treffliste | Queries |
-| T19 | Tidsuttrykk og logiske AND/OR-vilkår | M | Dato-/tidssonegrenser og typesikker formel | Queries |
+| T17 | Levende treff med originale filhandlinger | D (0.8) | Levende BFS med identitetsbevart valg og vis-original i eierpanelet. Filhandlinger går via panelet; større datamengder/providere gjenstår | Queries |
+| T18 | Lagrede søk, søkemaler og gjenåpning/redigering | D (0.8) | Listi-kriterier lagres, redigeres og kjøres på nytt. Tracker query-filer, import/eksport og maler gjenstår | Queries |
+| T19 | Tidsuttrykk og logiske AND/OR-vilkår | D (0.7) | Native AND/OR-formler prøvd. Dato-/tidssonegrenser og vennlig byggeverktøy gjenstår | Queries |
 | T20 | Opprette mapper og filer fra maler | D | Ny mappe finnes. Filmaler, metadata og malmapper mangler | Tracker |
 | T21 | Åpne med og velge foretrukket program | D | Systemåpning finnes. Programvalg per fil/type mangler | Filetypes |
 | T22 | Filegenskaper, plassering, eier og rettigheter | M | Samlet inspeksjon og validerte endringer | Tracker |

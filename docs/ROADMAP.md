@@ -42,7 +42,7 @@ Neste produkttrinn er funksjonsmatrisen og et konkret betabehov, ikke automatisk
 publisering eller en ny stor omskriving. De opprinnelige deltrinnene følger under
 som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
 
-### Nåværende trinn og kø, oppdatert for 0.7.0
+### Nåværende trinn og kø, oppdatert for 0.8.0
 
 1. Sikkerhet/modulgrenser, arkiv/nettverksgrunnlag, panelvisninger og intern
    operasjonsvisning er samlet og kvalifisert innenfor den private 0.4.0-kandidatens
@@ -57,10 +57,10 @@ som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
    [atferd og verifikasjon](PLACES-0.6.0.md).
 5. Avbrytbart lokalt navnesøk og native BFS-formler er implementert som
    snapshot-arbeidsflate i privat 0.7.0. Se [søk og begrensninger](SEARCH-0.7.0.md).
-6. **Pågår etter 0.7.0:** levende BFS-treff og lagrede søkevilkår. Nye og fjernede
-   treff, endret identitet, avbrudd, robust lagring og tidligere pakkers lagring
-   av innstillinger inngår i ferdigkravene. Attributtbygger, innholdssøk og flere
-   volumer beholdes som egne søketrinn.
+6. **Levert i privat 0.8.0:** levende BFS-treff og lagrede søkevilkår. Nye/fjernede
+   treff, endret identitet, avbrudd, robust lagring og 0.7.0-tilbakeføring er prøvd.
+   Se [akseptkvitteringen](ACCEPTANCE-0.8.0.md). Attributtbygger, innholdssøk,
+   query-filutveksling og flere volumer beholdes som egne søketrinn.
 7. **Neste dagligflyt:** Tracker-utklippstavle, egenskaper/BFS-attributter,
    MIME/Åpne med og tydelig drop-semantikk. Dypere kvalifisering av eksisterende
    protokoller/arkivformater følger relevante endringer, inkludert egen FTPS-prøve.

@@ -5,7 +5,7 @@ dekkes i Listi, på vår egen måte. Se [Tracker-kartet](TRACKER-COVERAGE.md)
 for dokumentert tilbud, udekkede behov og akseptkrav. Dette erstatter ikke
 Dolphin-kravet og er ikke en påstand om ferdig funksjonslikhet.
 
-## Samlet status etter privat 0.7.0
+## Samlet status etter privat 0.8.0
 
 Kartet inneholder 81 brukerbehov fra Dolphin 26.08.3 og relevante tillegg.
 [Tracker-kartet](TRACKER-COVERAGE.md) supplerer med 40 behovsområder. Referansene
@@ -15,13 +15,13 @@ er dokument- og kildegransket, ikke kjørt som full praktisk sammenligning.
 |---|---|---|
 | Historikk, N03 | 0.5.0: uavhengig Tilbake/Frem per panel, også virtuelle steder. [Bevis](NAVIGATION-0.5.0.md) | Faner/mappekort, flere vinduer og øktgjenoppretting er egne udekkede behov |
 | Lagrede steder, N05/R08 | 0.6.0: navngitte adresser uten innloggingsdata. [Bevis](PLACES-0.6.0.md) | Oppdagelse, kontohåndtering og bredere nettverkskvalifisering |
-| Søk, V08-V10/T15-T18 | 0.7.0: avbrytbart lokalt navnesøk og native BFS-snapshots med originalsti og identitetskontroll. [Bevis](SEARCH-0.7.0.md) | Levende og lagrede søk er pågående arbeid, ikke levert. Attributtbygger, innhold og flervolumvalg gjenstår |
+| Søk, V08-V10/T15-T18 | 0.7.0 navnesøk og 0.8.0 levende BFS/lagrede kriterier med identitetskontroll. [Bevis](ACCEPTANCE-0.8.0.md) | Attributtbygger, innhold, flervolumvalg og Tracker-søkefiler gjenstår |
 | Filhandlinger og Haiku-samspill | Eksisterende operasjoner har kandidatspesifikke bevis, ikke generell full dekning | Tracker-utklippstavle, egenskaper/attributter, MIME/Åpne med, lenker, maler, masseomdøping, sammenligning og konfliktbevisst angre |
 | Visninger og arbeidsflater | To paneler, detalj-/ikonvisning og mappetrær finnes | Mappekort/arbeidssett, visningsvalg, gruppering, skjulte filer og bredere tilgjengelighetsprøver |
 | Arkiver, filkilder og integrasjoner | Arkivlesing/uttrekk og SMB/SFTP/FTP har avgrensede syntetiske prøver | Arkivoppretting/redigering/passord, flere formater, ekte servervariasjon, nye protokoller, enheter, sky og VCS |
 
 Tabellene nedenfor beholder det daterte 0.4.0-basiskartet, med eksplisitt merkede
-senere radoppdateringer. De er ikke alle kontrollert på nytt på 0.7.0. Vi beregner
+senere radoppdateringer. De er ikke alle kontrollert på nytt på 0.8.0. Vi beregner
 ikke en dekningsprosent fra ulikt store behov. Oppdater denne samlede statusen ved
 hver kvalifisert leveranse, og behold utestede deler som åpne krav.
 
@@ -106,7 +106,9 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
   [Preferences](../src/Preferences.cpp). Søk må ikke utledes fra MatchesNameFilter.
 - V08-V12/V16-V18: registrerte handlinger i App, innstillinger i Preferences og
   feltene i [Common](../src/Common.h). Det finnes ikke registrerte tilsvarende
-  søk-, metadataredigerings-, gruppering- eller snarveikonfigurasjonsflyter.
+  metadataredigerings-, gruppering- eller snarveikonfigurasjonsflyter i basiskartet.
+  Søk er siden implementert i FileSearch, SearchWorker og SearchWindow, med
+  SavedSearches for kriterier. Se SEARCH-0.8.0.md og akseptkvitteringen.
 - V13-V14: [ImagePreview](../src/ImagePreview.cpp), [BitmapMailbox](../src/BitmapMailbox.h),
   FileGrid og tekstviseren i App. Bildeoversetterens eksistens er ikke formatbevis.
 - F01-F19: [FileOperation](../src/FileOperation.cpp), [VirtualOperation](../src/VirtualOperation.cpp),
@@ -124,13 +126,13 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
 
 ## Navigasjon og arbeidssteder
 
-| ID | Brukerbehov og konkret prøve | Referanse | Listi 0.4.0 | Vår retning |
+| ID | Brukerbehov og konkret prøve | Referanse | Listi, basis 0.4; oppdateringer merket | Vår retning |
 |---|---|---|---|---|
 | N01 | Åpne to ulike steder, velg kilde, kopier uten å miste målet | D1 split-view | V: to paneler, låst jobb og PNG-lesekontroll, UI | Behold tydelige kilde/mål-roller og uavhengige paneler |
 | N02 | Skriv en sti; gå til forelder, hjem og rot | D1 location-bar; D2 | D: redigerbar sti og Go-meny; forelder prøvd, ikke alle snarveier på 0.4 | Native stifelt og lokal navigasjon, uten ny global kommandogrammatikk |
-| N03 | Besøk A, B, C; gå tilbake til B og frem til C i bare ett panel | D1 dolphin-view-using; D2 | M: Pane har ingen navigasjonshistorikk | Begrenset, uavhengig panelhistorikk. Første prioriterte byggepunkt |
+| N03 | Besøk A, B, C; gå tilbake til B og frem til C i bare ett panel | D1 dolphin-view-using; D2 | V (0.5): uavhengig panelhistorikk, også nettverk og arkiv | NAVIGATION-0.5.0.md. Bevar kilde/mål og tekstfeltgrenser |
 | N04 | Hopp direkte til en vilkårlig forfar uten å skrive hele stien | D1 location-bar-bread-crumb | D: forelder og tre finnes; ingen direkte valg av alle stileddene | Lag vår egen raskt tilgjengelige stinavigasjon |
-| N05 | Lagre en mappe/deling som favoritt, åpne etter omstart | D1 places-panel, quick-bookmarking | M: faste Go-steder, ingen brukerfavoritter | Lagrede steder uten passord i URL eller vanlig oppsett |
+| N05 | Lagre en mappe/deling som favoritt, åpne etter omstart | D1 places-panel, quick-bookmarking | V (0.6): navngitte steder med omstart og redigering | PLACES-0.6.0.md. Innloggingsdata forblir utenfor stedslagringen |
 | N06 | Hold flere arbeidssteder åpne og bytt uten å navigere på nytt | D2 new_tab; D1 File-meny | M: to paneler, ikke faner/flere arbeidssett | Flere Listi-arbeidssteder med tydelig aktivt kilde/mål-par |
 | N07 | Åpne et separat filarbeidsvindu og lukk det uten å avslutte alt | D2 new_window, popout_split_view | M: ett hovedvindu | Native vinduslivsløp, køeierskap og lukk/avslutt-skille |
 | N08 | Start igjen med valgte steder og arbeidsoppsett bevart | D1 preferences-dialog-startup; D2 sesjonslagring | D: visningsvalg lagres; steder og arbeidsøkten gjenopprettes ikke | Eksplisitt gjenopptakelse, ikke automatisk restart av filjobber |
@@ -139,7 +141,7 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
 
 ## Finne, vise og velge
 
-| ID | Brukerbehov og konkret prøve | Referanse | Listi 0.4.0 | Vår retning |
+| ID | Brukerbehov og konkret prøve | Referanse | Listi, basis 0.4; oppdateringer merket | Vår retning |
 |---|---|---|---|---|
 | V01 | Bytt mellom detaljer, ikoner og visuell bildeliste | D1 dolphin-view-modes; D3 | V: detaljer, ikoner/store ikoner og thumbnails prøvd, UI | Native visninger styrt av én panelmodell |
 | V02 | Se svært mange navn tett, og juster visningsskala uten å miste valg | D1 Compact; D3 zoom | D: faste ikonstørrelser; ingen tett kolonnevisning eller fri zoom | Utform plassøkonomisk Listi-visning, ikke kopier referansens rutenett |
@@ -149,8 +151,8 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
 | V06 | Velg et intervall, krymp det, inverter eller velg alle synlige filer | D1 selection; D2 | V: modelltester og grid-intervall/drag-bevis, T/UI | Behold ett sannhetsgrunnlag for valg og fokus |
 | V07 | Snevre inn navn mens du skriver; nullstill uten skjult filvalg | D1 filter-files | D: bokstavelig filter er prøvd; ikke samme mønster-/regexmuligheter | Raskt lokalt filter først; eventuelle mønstre må være eksplisitte |
 | V08 | Finn et filnavn i undermapper, avbryt og se treffets opprinnelse | D1 finding-searching-in-file; K1 filenamesearch | D (0.7): lokalt avbrytbart navnesøk og BFS-snapshot | Se SEARCH-0.7.0.md; virtuelle filkilder gjenstår |
-| V09 | Finn innhold, type, dato og metadata i et større filområde | D1 søk; Dolphin Baloo-avhengighet | M | Bruk BFS-indekser/queries der de passer, tydelig fallback ellers |
-| V10 | Lagre et søk og åpne oppdaterte treff senere | D1 søk, Save | M | Lagrede søk som peker til originaler, aldri skjulte filkopier |
+| V09 | Finn innhold, type, dato og metadata i et større filområde | D1 søk; Dolphin Baloo-avhengighet | D (0.8): native indeksformler og levende attributtprøver; innhold/vennlig byggeverktøy mangler | Bruk BFS-indekser/queries der de passer, tydelig fallback ellers |
+| V10 | Lagre et søk og åpne oppdaterte treff senere | D1 søk, Save | V (0.8): lokale søkevilkår lagres og kjøres på nytt; installasjon/tilbakeføring prøvd | SEARCH-0.8.0.md. Virtuelle filkilder og query-filutveksling er egne restkrav |
 | V11 | Se type, eierskap, rettigheter, mediemetadata og valgte kolonner | D1 dolphin-view-information; D3 visible roles | D: navn/størrelse/endret og interne metadata; ingen full egenskapsflate | Native MIME/BFS-egenskaper og formatspesifikke tillegg |
 | V12 | Legg på og søk i merker, rangering og kommentarer | D1 information-panel og søk | M | Egen forståelig metadataflyt; BFS-attributter vurderes før format låses |
 | V13 | Se thumbnails for bilder, dokumenter, video og andre installerte typer | D1 preview; K1 thumbnail | D: bildeflyt prøvd med PNG; øvrige translators/formater er ikke bredt kvalifisert | Haiku Translators først; avgrenset og avbrytbar dekoding |
@@ -162,7 +164,7 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
 
 ## Filhandlinger og gjenoppretting
 
-| ID | Brukerbehov og konkret prøve | Referanse | Listi 0.4.0 | Vår retning |
+| ID | Brukerbehov og konkret prøve | Referanse | Listi, basis 0.4; oppdateringer merket | Vår retning |
 |---|---|---|---|---|
 | F01 | Kopier valgte lokale filer/mappehierarki og les tilbake resultatet | D1 Edit-meny; D3 | V: lokal kopi, metadata/lenker og UI-PNG, T/UI | Viderefør verifisert commit og kilde/mål-kontroll |
 | F02 | Flytt lokalt; ikke marker ferdig før kilden er ryddet | D1 Edit-meny | D: native backend bestått, UI-flyttbevis historisk, T/H | Kjør ny sluttbrukerprøve før bredere flyttegaranti |
@@ -187,7 +189,7 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
 
 ## Arkiver, protokoller og eksterne filkilder
 
-| ID | Brukerbehov og konkret prøve | Referanse | Listi 0.4.0 | Vår retning |
+| ID | Brukerbehov og konkret prøve | Referanse | Listi, basis 0.4; oppdateringer merket | Vår retning |
 |---|---|---|---|---|
 | A01 | Gå inn i et arkiv, naviger mapper og gå ut igjen | K1 archive; A1 | D: ZIP/tar-familie native testet; full nåværende arkiv-UI mangler, T | Arkiv som eksplisitt skrivebeskyttet sted i panelet |
 | A02 | Trekk ut valgte oppføringer med metadata, uten sti-/lenkerømming | K1; A1 ark-extract | D: native uttrekk og angreps-/metadata-fixtures består, T; bred UI ikke kvalifisert | Samme sikre kø og valgt mål som annen kopiering |
@@ -215,7 +217,7 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
 
 ## Integrasjoner og bredde
 
-| ID | Brukerbehov og konkret prøve | Referanse | Listi 0.4.0 | Vår retning |
+| ID | Brukerbehov og konkret prøve | Referanse | Listi, basis 0.4; oppdateringer merket | Vår retning |
 |---|---|---|---|---|
 | X01 | Åpne terminal i valgt mappe og hold shell-/filkontekst forståelig | D1 terminal-panel | D: ekstern Terminal og kommandofelt; ingen integrert toveis mappefølge, H | Native terminalintegrasjon med tydelig valgt mappe og prosesseierskap |
 | X02 | Se versjonsstatus og utfør relevante repository-handlinger | P1 git/svn/hg/bazaar | M | Små provider-adaptere; hver støttet VCS får egen akseptprøve |
@@ -228,7 +230,10 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
 | X09 | Åpne program-, font-, hjelp- og systemsteder som del av filarbeidet | D1 KIO; K1 info/man; K2 help | D: vanlige lokale systemmapper kan åpnes; spesialiserte virtuelle steder mangler | Haikus egne systembegreper og apper, ingen KDE-navneromskopi |
 | X10 | Se fri plass og størrelsen på valgt mappe/utvalg | D1 statusbar/Properties | D: filstørrelser og antall vises; fri plass/rekursiv størrelsesflyt mangler | Avbrytbar bakgrunnsberegning og native voluminfo |
 
-## Prioritert kø: ferdige brukeroppgaver, ikke en stor omskriving
+## Opprinnelig prioritering fra basiskartet
+
+Punkt 1 og 2 er levert i 0.5/0.6, og første søkeflyt i 0.7/0.8.
+[Nåværende kø og nye designkrav](ROADMAP.md) er autoritativ for videre arbeid.
 
 1. **Naviger tilbake dit du var.** N03, med N02/N09 som regresjoner. Uavhengig
    Tilbake/Frem i hvert panel, tilgjengelig for mus og tastatur, som også tåler
