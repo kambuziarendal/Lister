@@ -6,6 +6,7 @@
 #include "PaneModel.h"
 #include "VirtualFile.h"
 #include <Bitmap.h>
+#include <MessageFilter.h>
 #include <ColumnListView.h>
 #include <ColumnTypes.h>
 #include <Entry.h>
@@ -78,6 +79,26 @@ public:
   }
 };
 
+class ContextClick : public BMessageFilter {
+  BColumnListView *list;
+  Pane *pane;
+public:
+  ContextClick(BColumnListView *view, Pane *owner)
+      : BMessageFilter(B_MOUSE_DOWN), list(view), pane(owner) {}
+  filter_result Filter(BMessage *message, BHandler **) override {
+    if (!(message->GetInt32("buttons", 0) & B_SECONDARY_MOUSE_BUTTON))
+      return B_DISPATCH_MESSAGE;
+    BPoint point;
+    if (message->FindPoint("where", &point) != B_OK) return B_SKIP_MESSAGE;
+    auto row = static_cast<FileRow *>(list->RowAt(point));
+    if (row && !row->entry->parent) {
+      const auto path = row->entry->path;
+      list->MakeFocus();
+      pane->ContextMenu(path, list->ScrollView()->ConvertToScreen(point));
+    }
+    return B_SKIP_MESSAGE;
+  }
+};
 class DetailsList : public BColumnListView {
 public:
   Pane *pane;
@@ -94,6 +115,7 @@ public:
     SetSelectionMode(B_MULTIPLE_SELECTION_LIST);
     SetSortColumn(name, false, true);
     SetInvocationMessage(new BMessage(kInvoke));
+    ScrollView()->AddFilter(new ContextClick(this, pane));
   }
   void AttachedToWindow() override {
     BColumnListView::AttachedToWindow();

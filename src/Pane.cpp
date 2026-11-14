@@ -354,6 +354,22 @@ void Pane::Select(int mode) {
   entries.Select(mode);
   SendSelection();
 }
+void Pane::ContextMenu(const std::string &path, BPoint screen) {
+  if (scanning) return;
+  for (auto entry : entries.Visible()) {
+    if (entry->path != path || entry->parent) continue;
+    auto selected = entries.IsSelected(path) ? entries.Selected() : std::vector<std::string>{path};
+    entries.SetSelection(selected, path);
+    SendSelection();
+    BMessage request(kContextMenu);
+    request.AddInt32("pane", id);
+    request.AddPoint("screen", screen);
+    request.AddBool("directory", entry->directory);
+    // Same window thread: no queued navigation can change this click's owner.
+    Window()->MessageReceived(&request);
+    return;
+  }
+}
 void Pane::SendSelection() {
   BString s;
   int32 visible = 0;

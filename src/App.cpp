@@ -2,6 +2,7 @@
 #include "Common.h"
 #include "FileClipboard.h"
 #include "FileDrop.h"
+#include "FileContextMenu.h"
 #include "NamedEntry.h"
 #include "PropertiesWindow.h"
 #include "OpenWith.h"
@@ -571,7 +572,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.13.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.14.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     auto menu = new BMenuBar("menu");
@@ -989,6 +990,47 @@ public:
     case kFilter:
       panes[source]->FocusFilter();
       break;
+    case kContextMenu: {
+      if (actionArea->Pending()) {
+        queue->ErrorInfo("Finish or cancel the open question first.");
+        break;
+      }
+      const int32 owner = m->GetInt32("pane", -1);
+      if (owner < 0 || owner > 1) break;
+      source = owner;
+      for (int i = 0; i < 2; ++i) panes[i]->SetSource(i == source);
+      const auto selected = panes[source]->Selected();
+      const std::string folder = panes[source]->Path(), destination = panes[1-source]->Path();
+      if (selected.empty()) break;
+      bool local = true;
+      for (const auto &path : selected) local &= !Lister::IsVirtual(path);
+      try {
+        BMessage snapshot;
+        if (local) snapshot = Lister::MakeFileSelection(selected);
+        struct stat before{};
+        const bool destinationKnown = !stat(destination.c_str(), &before);
+        BPoint screen;
+        if (m->FindPoint("screen", &screen) != B_OK) break;
+        const uint32 action = ShowFileContextMenu(screen, selected.size() == 1,
+                                                  m->GetBool("directory", false), local);
+        if (!action) break;
+        if (source != owner || selected != panes[owner]->Selected() ||
+            folder != panes[owner]->Path() || destination != panes[1-owner]->Path())
+          throw std::runtime_error("The panel changed. Open the file menu again.");
+        if (local) Lister::ReadFileClipboard(snapshot);
+        if (action == kCopy || action == kMove || action == kCreateLink) {
+          struct stat after{};
+          if (destinationKnown && (stat(destination.c_str(), &after) ||
+              before.st_dev != after.st_dev || before.st_ino != after.st_ino))
+            throw std::runtime_error("The destination changed. Open the file menu again.");
+        }
+        BMessage command(action);
+        // Dispatch before any queued activation/navigation message can redirect it.
+        if (action == kInvoke) panes[owner]->MessageReceived(&command);
+        else MessageReceived(&command);
+      } catch (const std::exception &e) { Notice(e.what()); }
+      break;
+    }
     case kOpenWith: {
       auto selected = panes[source]->Selected();
       if (selected.size() != 1) Notice("Select one local file for Open with.");

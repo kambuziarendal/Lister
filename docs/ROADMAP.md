@@ -221,3 +221,21 @@ Arne vil ikke bruke funksjonstastene. Fra 0.13.0 fjernes alle Listi-bindinger
 på F-taster og deres knappetekster. Alt+W beholdes som Haikus vanlige
 vinduslukking. Inline spørsmål skal ikke endre hovedvinduets størrelse,
 inkludert to detaljpaneler uten mappe-/forhåndsvisning.
+
+### Arbeidsoppsett, godkjent plan 14. november
+
+Arne godkjente retningen Enkel, Utforsker, Commander og Arbeidsbenk, men vil
+at vi tar det gradvis uten hast. Planlagt, ikke implementert i 0.14.0.
+
+- Enkel: ett filpanel, ingen nederste handlingsknapper. Tracker-aktig flyt.
+- Utforsker: mappetre og ett filpanel, ingen nederste handlingsknapper.
+- Commander: to filpaneler og dagens handlingsknapper.
+- Arbeidsbenk: to paneler, mappetre, forhåndsvisning og flere tilgjengelige
+  verktøy. Søk og operasjonslogg åpnes ved behov.
+
+Valg under Vis > Arbeidsoppsett. Samme filhandlinger og snarveier i alle,
+separat ikoner/detaljer per panel. Bytte skal bevare mapper og pågående jobber;
+siste valg huskes og oppsett skal kunne tilpasses. Ett avgrenset, kvalifisert
+trinn om gangen; ikke fire samtidige omskrivinger. Fullfør nåværende rettinger
+og høyreklikk før oppsettarbeidet. Konkret rekkefølge og detaljutforming kan
+justeres når hvert trinn planlegges.

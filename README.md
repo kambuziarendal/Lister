@@ -2,7 +2,7 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.13.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.14.0**. Published preview: **0.2.0**.
 
 Find files: **Command+Shift+F** opens cancellable recursive local name search
 and native BFS formulas, with optional live updates. Save named criteria and
@@ -33,6 +33,10 @@ Duplicate one local entry beside its original with **Command+Shift+D**.
 Create a relative or absolute symbolic link in the other panel with
 **Command+Shift+L**. Both require an unused name and preserve existing entries.
 See [behavior and limits](docs/NAMED-ENTRIES-0.13.0.md).
+
+Right-click a file or folder for context actions in either panel view.
+Existing multi-selection is preserved when clicking an already selected entry.
+See [context menu behavior](docs/CONTEXT-MENU-0.14.0.md).
 
 ## Workflow
 

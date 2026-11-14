@@ -12,6 +12,7 @@
 #include <vector>
 constexpr const char *kSignature = "application/x-vnd.Kambuzi-Lister";
 enum : uint32 {
+  kContextMenu = 'ctxm',
   kActivate = 'actv',
   kNavigate = 'navi',
   kBack = 'back',

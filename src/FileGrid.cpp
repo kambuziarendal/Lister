@@ -146,6 +146,16 @@ public:
     int index = int(point.y / cellHeight) * Columns() +
                 std::min(Columns() - 1,
                          int(point.x / ((Bounds().Width() + 1) / Columns())));
+    if (Window()->CurrentMessage()->GetInt32("buttons", 0) & B_SECONDARY_MOUSE_BUTTON) {
+      pressedIndex = -1;
+      dragging = deferredPick = false;
+      if (index >= 0 && index < int(model->Visible().size()) &&
+          !model->Visible()[index]->parent) {
+        const auto path = model->Visible()[index]->path;
+        pane->ContextMenu(path, ConvertToScreen(point));
+      }
+      return;
+    }
     int32 mods = modifiers();
     int32 clicks = Window()->CurrentMessage()->GetInt32("clicks", 1);
     pressed = point;
