@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "Common.h"
 #include "FileClipboard.h"
+#include "PropertiesWindow.h"
 #include "ExplicitSubmit.h"
 #include "SavedPlaces.h"
 #include "SavedSearches.h"
@@ -573,7 +574,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.9.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.10.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     auto menu = new BMenuBar("menu");
@@ -606,6 +607,7 @@ public:
     }
     files->AddItem(new BMenuItem("Open with system application",
                                  new BMessage(kOpenSystem)));
+    files->AddItem(new BMenuItem("Properties...", new BMessage(kProperties), 'I', B_SHIFT_KEY));
     files->AddSeparatorItem();
     files->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
     menu->AddItem(files);
@@ -742,6 +744,7 @@ public:
   }
   ~MainWindow() { delete queue; }
   bool QuitRequested() override {
+    if (!FilePropertiesAllowQuit()) return false;
     if (placesSaving || searchesSaving) {
       Notice("Saved places or searches are still being written. Please try quitting again shortly.");
       return false;
@@ -981,6 +984,12 @@ public:
     case kFilter:
       panes[source]->FocusFilter();
       break;
+    case kProperties: {
+      auto selected = panes[source]->Selected();
+      if (selected.size()!=1) Notice("Select one local file or folder for Properties.");
+      else OpenFileProperties(selected[0]);
+      break;
+    }
     case kClipboardCopy:
     case kClipboardCut:
     case kClipboardPaste:
@@ -1171,6 +1180,9 @@ public:
       placesError = "Saved places could not be loaded. The file has been preserved; changes are disabled. " + placesError;
       Notice(placesError.c_str());
     }
+  }
+  bool QuitRequested() override {
+    return FilePropertiesAllowQuit() && BApplication::QuitRequested();
   }
   void MessageReceived(BMessage *m) override {
     if (m->what == kPlacesSaved || m->what == kSearchesSaved) {

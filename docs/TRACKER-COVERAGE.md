@@ -20,6 +20,7 @@ ACCEPTANCE-0.4.0.md. D betyr delvis dekning, M betyr mangler egen brukerflyt,
 U betyr tilgjengelig mekanisme, men behovet er ikke tilstrekkelig verifisert.
 Oppdaterte søketrinn er versjonsmerket til 0.8.0, se ACCEPTANCE-0.8.0.md.
 Lokal filutklippstavle er kvalifisert i 0.9.0, se ACCEPTANCE-0.9.0.md.
+Egenskaper og typed BFS-attributter er avgrenset i PROPERTIES-0.10.0.md.
 Ingen rad nedenfor påstår full Tracker-likhet. Systemintegrasjon teller først
 når den kan startes fra Listi og hele oppgaven er prøvd.
 
@@ -36,7 +37,7 @@ når den kan startes fra Listi og hele oppgaven er prøvd.
 | T09 | Manuell plassering, justering og etikettvalg | M | Egen organisering, ikke kopi av Trackers ikonlayout | Tracker |
 | T10 | Sortering stigende/synkende med sekundærnøkkel | D | Detaljkolonner finnes, full flerfeltssortering uprøvd | Attributes |
 | T11 | Valgfrie og flyttbare attributtkolonner | M | Typer, bredder, rekkefølge og lagring per mappe | Attributes |
-| T12 | Vise og redigere typed BFS-attributter | M | People/mail/audio, validering og avbrutt redigering | Attributes |
+| T12 | Vise og redigere typed BFS-attributter | D (0.10) | Åtte lokale datatyper, validering og utkastvern. Systemattributter/binærdata, flere typer og egne People/mail/audio-flyter gjenstår | Attributes |
 | T13 | Velge etter mønster eller regulært uttrykk | M | Fryst utvalg, ugyldig uttrykk, tomt resultat | Tracker |
 | T14 | Vanlige flerutvalg, tastatur og drag | D | Egen liste/grid testet. Alle modifierkombinasjoner | Shortcuts |
 | T15 | BFS-søk på navn, typer, attributter og formler | D (0.7) | Lokalt navnesøk og native BFS-formler som snapshot; attributtbygger gjenstår | Queries |
@@ -46,7 +47,7 @@ når den kan startes fra Listi og hele oppgaven er prøvd.
 | T19 | Tidsuttrykk og logiske AND/OR-vilkår | D (0.7) | Native AND/OR-formler prøvd. Dato-/tidssonegrenser og vennlig byggeverktøy gjenstår | Queries |
 | T20 | Opprette mapper og filer fra maler | D | Ny mappe finnes. Filmaler, metadata og malmapper mangler | Tracker |
 | T21 | Åpne med og velge foretrukket program | D | Systemåpning finnes. Programvalg per fil/type mangler | Filetypes |
-| T22 | Filegenskaper, plassering, eier og rettigheter | M | Samlet inspeksjon og validerte endringer | Tracker |
+| T22 | Filegenskaper, plassering, eier og rettigheter | D (0.10) | Lokal inspeksjon og vanlige oktale rettigheter. Eierbytte, spesialbiter, rekursiv størrelse og virtuelle filkilder gjenstår | Tracker |
 | T23 | MIME-identifikasjon og korrigering av filtype | M | Identify/force-identify, feiltype og manglende type | Tracker |
 | T24 | Egendefinerte ikoner og filtypeinnstillinger | M | Native integrasjon, per-fil kontra globalt valg | Filetypes |
 | T25 | Kopiere, flytte, duplisere og endre navn | D | Sikker kø testet. Duplisering og bred metadata-matrise | Tracker |

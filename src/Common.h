@@ -33,6 +33,7 @@ enum : uint32 {
   kHome = 'home',
   kDesktop = 'desk',
   kDisks = 'disk',
+  kProperties = 'prop',
   kClipboardCopy = 'ccpy',
   kClipboardCut = 'ccut',
   kClipboardPaste = 'cpst',

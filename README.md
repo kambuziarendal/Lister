@@ -2,7 +2,7 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.9.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.10.0**. Published preview: **0.2.0**.
 
 Find files: **Command+Shift+F** opens cancellable recursive local name search
 and native BFS formulas, with optional live updates. Save named criteria and
@@ -24,6 +24,10 @@ Two independent resizable panels, editable paths and location menus, sortable
 name/size/date columns, multiselection, drag-copy, node monitoring, a command
 button bank, viewer, editor and terminal launch, and saved display preferences.
 Native Haiku controls and system colours, including dark themes.
+
+Properties: **Files > Properties** or **Command+Shift+I** opens one local entry.
+Inspect file information and edit supported typed BFS attributes and ordinary
+permissions explicitly. See [behavior and limits](docs/PROPERTIES-0.10.0.md).
 
 ## Workflow
 
