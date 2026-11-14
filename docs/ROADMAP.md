@@ -9,6 +9,17 @@ Dolphin-kravet og er ikke en påstand om ferdig funksjonslikhet.
 Vi leverer små, ferdige arbeidsflyter som samtidig peker mot den større visjonen.
 Vi bygger videre på 0.2.0. Ingen stor omskriving er en forutsetning.
 
+## Åpen kildekode, besluttet 14. november 2026
+
+Arne har valgt åpen kildekode som fast retning for Listi, i tråd med
+Haiku-økosystemet. Lukket kildekode er ikke lenger et produktmål.
+Eksisterende MIT-lisens for vår kildekode endres ikke ved denne beslutningen.
+Lisensvilkår, kildekodetilgjengelighet og nødvendige merknader for avhengigheter
+og den samlede distribusjonen skal følges, inkludert Samba/SMB.
+Åpen kildekode utelukker ikke senere betalte pakker, støtte eller donasjoner;
+ingen betalingsmodell er besluttet. Beslutningen gir ikke i seg selv fullmakt
+til offentlig publisering. Publiseringsgrensen nedenfor gjelder fortsatt.
+
 ## Arbeidsform og publiseringsgrense, oppdatert 14. november
 
 Det haster ikke. Nye ønsker legges i kø, ikke automatisk inn i pågående kodearbeid.
