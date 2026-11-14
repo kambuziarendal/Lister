@@ -34,3 +34,8 @@ claimed. This is a first preview, not a general backup or recovery product.
 Recovery: retain previous versioned HPKGs, reinstall the previous package.
 Preferences live in ~/config/settings/Lister_settings. Package changes do not
 reverse completed file operations. There is no undo/trash yet.
+
+Packaging: repeated `make package` succeeds from the same source and executable.
+Container checksums differ because Haiku records BFS access/creation timestamps;
+bit-for-bit HPKG reproducibility is not claimed. The installed executable hash
+is verified separately above.

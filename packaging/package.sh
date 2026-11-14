@@ -13,7 +13,8 @@ cp PackageInfo "$stage/.PackageInfo"
 cp LICENSE "$stage/data/licenses/MIT"
 cp README.md docs/*.md "$stage/documentation/packages/lister/"
 ln -s /boot/system/apps/Lister "$stage/data/deskbar/menu/Applications/Lister"
-# Stable package timestamps. Override for a release, otherwise use commit time.
+# Normalize mtimes. Haiku package also records filesystem atime/creation time,
+# so package-container bytes are not guaranteed identical across rebuilds.
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || echo 1794600000)}
 python3 - "$stage" <<'PY'
 import os,sys
