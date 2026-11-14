@@ -25,6 +25,12 @@ filtering, keyboard/mouse parity and understandable operation progress.
   window-manager project is required for the first milestone.
 - Use Haiku strengths fully. Plan 9 is a later implementation, not a requirement
   for identical features or a reason to weaken native UX.
+- Native icon identity: use Haiku/Tracker/MIME and per-file/application icons,
+  respecting the user's selected system appearance wherever the public APIs
+  expose it. Do not ship a competing Lister icon theme or copy generated mockup
+  icons. Existing file rows use `BNodeInfo::GetTrackerIcon`; future Places and
+  action controls should reuse suitable native resources. Do not assume a
+  universal icon-theme API exists; verify each integration on supported Haiku.
 
 ### First workflow increment: narrow, select, act
 

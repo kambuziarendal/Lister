@@ -4,6 +4,10 @@
 Vi leverer små, ferdige arbeidsflyter som samtidig peker mot den større visjonen.
 Vi bygger videre på 0.2.0. Ingen stor omskriving er en forutsetning.
 
+Fast designkrav: bruk native Haiku-ikoner og brukerens systemoppsett der Haiku
+støtter det. Fil-, mappe- og programikoner hentes fra systemet, ikke fra et eget
+Lister-tema. Ikonene i konseptbildet er plassholdere, ikke en grafisk spesifikasjon.
+
 ## Første milepæl: finn, velg og handle med oversikt
 
 1. Rask innsnevring i hvert panel. Synlig navnefilter, tastatursnarvei, tydelig

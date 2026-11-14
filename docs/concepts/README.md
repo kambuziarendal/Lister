@@ -9,6 +9,9 @@ action search, breadcrumbs and the integrated operation shelf in the concept are
 proposals. Theme, density and accessibility must be validated through native code,
 not copied pixel-for-pixel from a generated image. The prompt's use of source and
 destination colours is exploratory; labels must remain sufficient without colour.
+The illustrated icons are placeholders. The owner explicitly requires native
+Haiku icons and respect for the user's system appearance wherever supported;
+reuse Tracker/MIME/per-file/application resources rather than a custom Lister set.
 
 Generated using the built-in imagegen tool, not the CLI/API fallback.
 Prompt brief: a realistic native Haiku Lister window, yellow title tab, compact
