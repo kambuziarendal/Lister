@@ -5,7 +5,7 @@ dekkes i Listi, på vår egen måte. Se [Tracker-kartet](TRACKER-COVERAGE.md)
 for dokumentert tilbud, udekkede behov og akseptkrav. Dette erstatter ikke
 Dolphin-kravet og er ikke en påstand om ferdig funksjonslikhet.
 
-## Samlet status etter privat 0.8.0
+## Samlet status etter privat 0.9.0
 
 Kartet inneholder 81 brukerbehov fra Dolphin 26.08.3 og relevante tillegg.
 [Tracker-kartet](TRACKER-COVERAGE.md) supplerer med 40 behovsområder. Referansene
@@ -16,12 +16,12 @@ er dokument- og kildegransket, ikke kjørt som full praktisk sammenligning.
 | Historikk, N03 | 0.5.0: uavhengig Tilbake/Frem per panel, også virtuelle steder. [Bevis](NAVIGATION-0.5.0.md) | Faner/mappekort, flere vinduer og øktgjenoppretting er egne udekkede behov |
 | Lagrede steder, N05/R08 | 0.6.0: navngitte adresser uten innloggingsdata. [Bevis](PLACES-0.6.0.md) | Oppdagelse, kontohåndtering og bredere nettverkskvalifisering |
 | Søk, V08-V10/T15-T18 | 0.7.0 navnesøk og 0.8.0 levende BFS/lagrede kriterier med identitetskontroll. [Bevis](ACCEPTANCE-0.8.0.md) | Attributtbygger, innhold, flervolumvalg og Tracker-søkefiler gjenstår |
-| Filhandlinger og Haiku-samspill | Eksisterende operasjoner har kandidatspesifikke bevis, ikke generell full dekning | Tracker-utklippstavle, egenskaper/attributter, MIME/Åpne med, lenker, maler, masseomdøping, sammenligning og konfliktbevisst angre |
+| Filhandlinger og Haiku-samspill | 0.9.0: lokal filutklippstavle begge veier med Tracker, identitetskontroll og trygg avbruddsflyt. [Bevis](ACCEPTANCE-0.9.0.md) | Virtuell utklippstavle, egenskaper/attributter, MIME/Åpne med, lenker, maler, masseomdøping, sammenligning og konfliktbevisst angre |
 | Visninger og arbeidsflater | To paneler, detalj-/ikonvisning og mappetrær finnes | Mappekort/arbeidssett, visningsvalg, gruppering, skjulte filer og bredere tilgjengelighetsprøver |
 | Arkiver, filkilder og integrasjoner | Arkivlesing/uttrekk og SMB/SFTP/FTP har avgrensede syntetiske prøver | Arkivoppretting/redigering/passord, flere formater, ekte servervariasjon, nye protokoller, enheter, sky og VCS |
 
 Tabellene nedenfor beholder det daterte 0.4.0-basiskartet, med eksplisitt merkede
-senere radoppdateringer. De er ikke alle kontrollert på nytt på 0.8.0. Vi beregner
+senere radoppdateringer. De er ikke alle kontrollert på nytt på 0.9.0. Vi beregner
 ikke en dekningsprosent fra ulikt store behov. Oppdater denne samlede statusen ved
 hver kvalifisert leveranse, og behold utestede deler som åpne krav.
 
@@ -170,7 +170,7 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
 | F02 | Flytt lokalt; ikke marker ferdig før kilden er ryddet | D1 Edit-meny | D: native backend bestått, UI-flyttbevis historisk, T/H | Kjør ny sluttbrukerprøve før bredere flyttegaranti |
 | F03 | Kopier mellom lokal mappe og en nettverksdeling | D1 KIO; K1/K2 | D: SMB/SFTP/FTP-fixtures bestått, ikke ekstern NAS og bred UI/protokollmatrise | Samme kø og tydelige kapabiliteter per kilde/mål |
 | F04 | Flytt mellom ulike filkilder og gjenopprett etter delvis feil | D1 KIO og Edit-meny | D: samme-endepunkt rename/move; krysskilde-flytt avvises | Verifisert kopi/commit før kildeopprydding, ikke bare «kopier og slett» |
-| F05 | Klipp/kopier filer og lim inn i Listi eller Tracker | D1 Cut/Copy/Paste; D2 | M: Command+C er direkte panelkopi, ikke systemets filutklippstavle | Native referanser og interoperabilitet, med tydelig skille fra tekstklipp |
+| F05 | Klipp/kopier filer og lim inn i Listi eller Tracker | D1 Cut/Copy/Paste; D2 | D (0.9): lokal native utklippstavle begge veier prøvd, også avbrudd og nyere klipp | CLIPBOARD-0.9.0.md. Virtuelle filkilder og utvidede utklippstavlevalg gjenstår |
 | F06 | Dra et flervalg og velg kopi, flytt eller lenke | D1 dolphin-view-using | D: lokal flervalg-dragkopi prøvd; flytt/lenke og alle virtuelle retninger ikke dekket | Egen enkel drop-beslutning, frosset mål og utvalg |
 | F07 | Lag en mappe med et validert navn fra aktivt panel | D3 create_dir | V: installert inline-spørsmål og mappe på disk, UI | Behold liten native inline-flyt |
 | F08 | Opprett en ny fil eller fil fra en mal | D3 create_file; D1 Create New | M | Native filtyper og en liten eksplisitt malflyt |

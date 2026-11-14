@@ -61,7 +61,8 @@ som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
    treff, endret identitet, avbrudd, robust lagring og 0.7.0-tilbakeføring er prøvd.
    Se [akseptkvitteringen](ACCEPTANCE-0.8.0.md). Attributtbygger, innholdssøk,
    query-filutveksling og flere volumer beholdes som egne søketrinn.
-7. **Neste dagligflyt:** Tracker-utklippstavle, egenskaper/BFS-attributter,
+7. **Neste dagligflyt:** Lokal Tracker-utklippstavle levert i privat 0.9.0,
+   med tastatur/mus, identitetskontroll og avbrudd. Neste er egenskaper/BFS-attributter,
    MIME/Åpne med og tydelig drop-semantikk. Dypere kvalifisering av eksisterende
    protokoller/arkivformater følger relevante endringer, inkludert egen FTPS-prøve.
 8. **Trygg massebehandling:** maler, lenker, duplisering, masseomdøping med

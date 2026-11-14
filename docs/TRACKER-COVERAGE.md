@@ -19,6 +19,7 @@ Listi-basis: privat 0.5.0, med avgrenset testbevis i NAVIGATION-0.5.0.md og
 ACCEPTANCE-0.4.0.md. D betyr delvis dekning, M betyr mangler egen brukerflyt,
 U betyr tilgjengelig mekanisme, men behovet er ikke tilstrekkelig verifisert.
 Oppdaterte søketrinn er versjonsmerket til 0.8.0, se ACCEPTANCE-0.8.0.md.
+Lokal filutklippstavle er kvalifisert i 0.9.0, se ACCEPTANCE-0.9.0.md.
 Ingen rad nedenfor påstår full Tracker-likhet. Systemintegrasjon teller først
 når den kan startes fra Listi og hele oppgaven er prøvd.
 
@@ -50,7 +51,7 @@ når den kan startes fra Listi og hele oppgaven er prøvd.
 | T24 | Egendefinerte ikoner og filtypeinnstillinger | M | Native integrasjon, per-fil kontra globalt valg | Filetypes |
 | T25 | Kopiere, flytte, duplisere og endre navn | D | Sikker kø testet. Duplisering og bred metadata-matrise | Tracker |
 | T26 | Absolutte og relative lenker, åpne lenkemål | D | Lenker håndteres i motor. Oppretting/målflyt mangler | Tracker |
-| T27 | Filutklippstavle med cut/copy/paste | M | Interoperabilitet med Tracker, flyttestatus og feilhåndtering | Tracker |
+| T27 | Filutklippstavle med cut/copy/paste | D (0.9) | Native lokale referanser, begge veier med Tracker, kilde-/målidentitet og avbrudd prøvd. Virtuelle kilder og vedvarende cut-markering gjenstår | Tracker |
 | T28 | Utvide utklippstavleutvalg og lime inn som lenker | M | Egne synlige valg uten skjulte tastaturkrav | Tracker |
 | T29 | Trash, gjenoppretting og permanent sletting | D | Grunnflyt testet. Volumer, fulle rettigheter og flere konflikter | Tracker |
 | T30 | Angre og gjør om filhandlinger | M | Transaksjonsjournal, endrede mål og sikker gjenoppretting | Shortcuts |
