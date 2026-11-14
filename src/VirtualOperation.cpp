@@ -171,9 +171,12 @@ struct Runner {
       Hooks local = hooks;
       local.fileDone = {};
       local.fileFailed = {};
-      local.progress = [&](const std::string &, uint64_t) { control.Check(); };
+      // Local Run has its own cancellation type. Let its proceed callback
+      // drive cancellation and translate our conflict abort at the boundary.
+      local.progress = [](const std::string &, uint64_t) {};
       local.conflict = [&](const std::string &p) {
-        return Replace(p) ? Decision::Replace : Decision::Skip;
+        try { return Replace(p) ? Decision::Replace : Decision::Skip; }
+        catch (const Cancelled &) { return Decision::Abort; }
       };
       auto done = Run({Action::Copy, {temp.path}, ParentLocation(dst)}, local);
       if (done.cancelled)
