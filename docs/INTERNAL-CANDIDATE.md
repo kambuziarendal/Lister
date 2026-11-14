@@ -27,6 +27,21 @@ Native Haiku build succeeds. Executable SHA256:
   copy/conflict checks predate the last changes and are not a full UI regression
   for this exact executable. Compact/light-theme/package checks remain due.
 
+### Late focus fix
+
+After this checkpoint, Escape in the inline connection form crashed because
+native views can have a null `Name()`. Crash report confirmed `strcmp(nullptr)`
+inside `Keys::Filter`. Both Escape and Tab now guard unnamed controls. Native
+rebuild SHA256:
+`e8932fe97737e6326ade22956658e0ed9908a4072252da9777877a1bcb0cf3fe`.
+Actual keyboard checks passed: connection-address Escape, Tab through connection
+fields then Escape, new-folder Escape, filter Escape, and acknowledged graceful
+quit. Main window remained responsive and idle after each scenario. This later
+binary has only the focus-filter change since the 42+69 backend checks above;
+those are not presented as reruns on this exact hash. Evidence:
+`focus-regression.log`, `focus-after-fix.png`, `escape-crash.report` in the same
+private report directory. The failed check is retained, not counted as a pass.
+
 Run from the native build directory with owned fixtures only:
 
 ```
