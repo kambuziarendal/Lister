@@ -1,5 +1,58 @@
 # Design and boundaries
 
+## Product direction, 14 November 2026
+
+Lister is a native Haiku working environment for files. DOpus inspires freedom
+of action; contemporary workflows shape how it feels. Power must be discoverable,
+the target of each action visible, and safety supported by evidence.
+
+The first milestone is an excellent, distinctive file manager, not an architecture
+rewrite or desktop shell. Ship small complete workflows that already embody the
+future direction. Current priority: explicit source/destination, fast local view
+filtering, keyboard/mouse parity and understandable operation progress.
+
+- Judge features by today's work and native fit, not historical completeness.
+- Menus, buttons and future scripts should share user actions; internal rendering
+  and mouse events do not need a text protocol.
+- Resolve source/destination and freeze selected paths when accepting a job.
+  Focus/layout/query changes must not retarget it. Paths do not freeze content;
+  native identity/conflict checks remain necessary.
+- Live queries later represent originals: show origin and scope, and distinguish
+  removing a result from deleting its file. Start with local name filtering now.
+- Keep safe Trash and explicit permanent deletion. Do not promise universal undo;
+  a journal is not a backup, and recovery must not overwrite newer work.
+- Grow from two reliable panels to multiple listers and saved layouts. No embedded
+  window-manager project is required for the first milestone.
+- Use Haiku strengths fully. Plan 9 is a later implementation, not a requirement
+  for identical features or a reason to weaken native UX.
+
+### First workflow increment: narrow, select, act
+
+Each pane has a literal name filter, a visible Clear button and a filtered count.
+The platform's normal Command+F shortcut focuses the source pane's filter
+(Alt+F on default Haiku). Enter returns to the list; Escape in the filter clears
+and returns. No recursive search, shell expansion or filesystem read per keystroke.
+
+Rows are filtered in memory while the native scanner continues asynchronously.
+Hidden rows are deselected, cannot be dragged or included by Select All, and do not
+silently regain selection when shown again. The parent row remains navigable.
+New navigation clears the filter; refresh in the same directory preserves it.
+Node-monitor refresh applies the active filter to new results. No settings-format
+change or external scripting contract is introduced.
+
+### Short decision log
+
+- Accepted: first deliver a good daily file manager in small increments that
+  express the longer-term identity. Large portable-core migration is deferred.
+- Implemented candidate: local native name filtering, distinct from later BFS
+  queries/content search. This is a view operation, not a new filesystem provider.
+- Preserved: existing worker queue, Trash, settings and public scripting suite.
+- Deferred: grammar/config/platform proposals remain provisional. Obtain approval
+  for concrete hard-to-reverse contracts before migration or external exposure.
+- Deferred: Tracker replacement requires a separate compatibility/recovery report.
+
+## Existing native foundation
+
 The original Directory Opus 5.5 manual and DOpus5 guide were consulted, especially
 listers, source/destination selection, button banks and keyboard/mouse operation:
 https://github.com/mheyer32/dopus5allamigas/tree/master/documents

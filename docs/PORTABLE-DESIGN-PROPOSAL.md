@@ -1,5 +1,11 @@
 # Portable architecture proposal (awaiting design approval)
 
+Priority update, 14 November 2026: the owner wants a distinctive daily file
+manager first, in small usable increments aligned with the future vision.
+ROADMAP.md and DESIGN.md now govern sequencing. Broad portable extraction is
+deferred; the grammar/config/platform contracts below remain proposals, not
+prerequisites for improving the existing native workflow.
+
 ## Existing implementation
 
 Lister 0.2.0 is a new MIT C++ BeAPI application, not a GenesisCommander fork or a

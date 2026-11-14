@@ -1,3 +1,49 @@
+# Version 0.2.1 candidate verification
+
+14 November 2026. Native Haiku beta6 x86_64 in an owned QEMU overlay based on the
+retained 0.2.0 test VM. Source edited on the host, compiled/tested inside Haiku.
+Candidate only: this record does not claim public publication or physical testing.
+
+Passed:
+- Native build/package and 36 self-test checks: previous 29 filesystem/Trash
+  checks plus seven name-filter cases (empty, substring/ASCII case, literal
+  wildcard/punctuation, no match, parent navigation and exact UTF-8 text).
+- Installed 0.2.0 -> 0.2.1 upgrade. Built and installed executable SHA256 agree:
+  `0fce97c842235373171ebcd1b760c9468866c28a013d733954c78d4466957853`.
+  Preferences SHA256 unchanged across package installation.
+- Actual native controls: Select All, Alt+F, type `.txt`, Enter, F5. Only the two
+  visible selected text files were copied. Contents compared; hidden picture and
+  directory were absent from destination and retained at source.
+- Escape cleared the filter and returned focus to the list. The two previously
+  hidden entries did not regain selection. A no-match filter showed zero entries
+  while retaining `..`. Creating a matching file externally updated the filtered
+  list through node monitoring; Refresh preserved the filter. Opening the parent
+  cleared it. Clicking/typing in the other pane's filter selected that pane as
+  source, confirmed visually and through SourcePath scripting.
+- Native light/dark palettes at 1140x650 and 800x600. Field, clear control, counts
+  and actions remain accessible. A narrow window uses the existing list horizontal
+  scrollbar for columns. No new external scripting suite/settings migration.
+
+Not qualified: physical hardware, very large-directory filter latency, broad
+Unicode case equivalence, allocation failure, full disks/power loss. Existing
+file-operation limits below remain. Filter state is transient, not saved across
+restart. The generated design mockup is explicitly conceptual, not GUI evidence.
+
+Manual regression for the next round:
+1. In an owned folder create two `.txt` files, a `.jpg` and a directory.
+2. Select All, filter `.txt`, Enter, copy to an empty owned destination. Confirm
+   only the two matching files arrive and compare their contents.
+3. Clear filter; verify hidden entries remain unselected. Try a zero-match filter,
+   create a matching file externally, Refresh, then navigate via `..`.
+4. Repeat from the right pane; inspect SOURCE/DESTINATION and confirmation target.
+5. Check compact/normal windows and both real system palettes.
+
+Recovery: reinstall retained 0.2.0 HPKG without restoring old files or settings.
+The portable model experiment remains on a separate local draft branch and is
+not part of this candidate. Tests above concern the native application.
+
+---
+
 # Version 0.2.0 verification
 
 14 November 2026, native Haiku beta6 x86_64, GCC 13.3.0, installed haiku_devel.
