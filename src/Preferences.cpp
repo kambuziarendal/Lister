@@ -9,6 +9,7 @@
 #include <Window.h>
 #include <algorithm>
 #include <cstdio>
+#include <cmath>
 #include <cstdlib>
 rgb_color Preferences::Color(const BString &text) const {
   unsigned int r, g, b;
@@ -37,7 +38,9 @@ void Preferences::Load(const BMessage &m) {
   date = m.GetBool("date", true);
   buttons = m.GetBool("buttons", true);
   command = m.GetBool("command", false);
-  font.SetSize(m.GetFloat("fontSize", be_plain_font->Size()));
+  float fontSize = m.GetFloat("fontSize", be_plain_font->Size());
+  font.SetSize(std::isfinite(fontSize) && fontSize >= 8 && fontSize <= 40
+                   ? fontSize : 12);
   const char *family = m.GetString("fontFamily", "");
   if (*family)
     font.SetFamilyAndStyle(family, nullptr);
@@ -46,6 +49,18 @@ void Preferences::Load(const BMessage &m) {
   folders = m.GetString("folders", "system");
   files = m.GetString("files", "system");
   links = m.GetString("links", "system");
+}
+void Preferences::ApplyDialog(const BMessage &message) {
+  // The dialog edits appearance and launchers, not the live panel workspace.
+  Preferences updated = *this;
+  updated.Load(message);
+  for (int i = 0; i < 2; ++i) {
+    updated.paneMode[i] = paneMode[i];
+    updated.paneTree[i] = paneTree[i];
+  }
+  updated.preview = preview;
+  updated.folderModes = folderModes;
+  *this = updated;
 }
 BMessage Preferences::Save() const {
   BMessage m;
@@ -155,7 +170,7 @@ public:
     }
     char *end = nullptr;
     float n = strtof(fontSize->Text(), &end);
-    if (*end || n < 8 || n > 40) {
+    if (*end || !std::isfinite(n) || n < 8 || n > 40) {
       (new BAlert("size", "Font size must be 8 to 40.", "OK"))->Go(nullptr);
       return;
     }

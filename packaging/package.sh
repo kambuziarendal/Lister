@@ -14,6 +14,8 @@ cp "$1" "$stage/apps/Listi"
 cp PackageInfo "$stage/.PackageInfo"
 cp LICENSE "$stage/data/licenses/MIT"
 cp README.md docs/*.md "$stage/documentation/packages/lister/"
+mkdir -p "$stage/documentation/packages/lister/reference"
+cp docs/reference/*.json "$stage/documentation/packages/lister/reference/"
 ln -s /boot/system/apps/Listi "$stage/data/deskbar/menu/Applications/Listi"
 # Normalize mtimes. Haiku package also records filesystem atime/creation time,
 # so package-container bytes are not guaranteed identical across rebuilds.

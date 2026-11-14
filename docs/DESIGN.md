@@ -1,5 +1,10 @@
 # Design and boundaries
 
+**Tilleggskrav 14. november 2026:** Alle Trackers brukeroppgaver skal også
+dekkes i Listi, på vår egen måte. Se [Tracker-kartet](TRACKER-COVERAGE.md)
+for dokumentert tilbud, udekkede behov og akseptkrav. Dette erstatter ikke
+Dolphin-kravet og er ikke en påstand om ferdig funksjonslikhet.
+
 Listi is the owner-selected name. The visible app, executable and Deskbar launcher
 use Listi. Keep the `lister` package identity, application signature, scripting
 suite and `Lister_settings` path for in-place upgrades and settings compatibility.

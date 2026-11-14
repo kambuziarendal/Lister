@@ -3,6 +3,7 @@
 #include "Common.h"
 #include "PaneModel.h"
 #include "NavigationHistory.h"
+#include "SavedPlaces.h"
 #include <Button.h>
 #include <Looper.h>
 #include <StringView.h>
@@ -13,6 +14,7 @@ class FileGrid;
 class FolderTree;
 class BCardView;
 class BMenuField;
+class BMenu;
 class BMessageRunner;
 class Pane : public BView {
 public:
@@ -22,6 +24,7 @@ public:
   void MessageReceived(BMessage *) override;
   void Navigate(const char *path);
   void Reload();
+  void SetPlaces(const Lister::SavedPlaces &, bool writable);
   void SetSource(bool);
   void Apply(const Preferences &);
   void Select(int mode);
@@ -52,6 +55,10 @@ private:
   int32 mode = 0;
   void SetDisplayMode(int32);
   void PublishDisplay(bool folder = false, bool forget = false);
+  BMenu *placesMenu;
+  Lister::SavedPlaces places;
+  bool placesWritable = true, locationValid = false;
+  void UpdatePlaces();
   BTextControl *edit;
   BButton *back, *forward;
   Lister::NavigationHistory history;
@@ -60,6 +67,7 @@ private:
   BTextControl *filter;
   BButton *clearFilter;
   BStringView *status;
+  void SetStatus(const char *);
   BStringView *role;
   bool active = false;
   struct Transfer {

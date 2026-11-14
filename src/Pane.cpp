@@ -74,6 +74,10 @@ Pane::Pane(int32 number, const Preferences &p)
   uint32 codes[] = {kParent, kRoot, kHome, kDesktop, kDisks, kTrashFolder};
   for (int i = 0; i < 6; i++)
     menu->AddItem(new BMenuItem(names[i], new BMessage(codes[i])));
+  menu->AddSeparatorItem();
+  placesMenu = new BMenu("Places");
+  menu->AddItem(placesMenu);
+  UpdatePlaces();
   auto field = new BMenuField("go", "", menu);
   menu->SetRadioMode(false);
   menu->SetLabelFromMarked(false);
@@ -127,6 +131,8 @@ Pane::Pane(int32 number, const Preferences &p)
   content->SetCollapsible(0, false);
   content->SetCollapsible(1, false);
   status = new BStringView("status", "Ready");
+  status->SetTruncation(B_TRUNCATE_END);
+  status->SetExplicitMinSize(BSize(0, B_SIZE_UNSET));
   status->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
   BLayoutBuilder::Group<>(this, B_VERTICAL, 5)
       .SetInsets(6)
@@ -164,6 +170,7 @@ void Pane::AttachedToWindow() {
   edit->TextView()->AddFilter(new PaneInput(this, false));
   auto field = dynamic_cast<BMenuField *>(FindView("go"));
   field->Menu()->SetTargetForItems(this);
+  placesMenu->SetTargetForItems(this);
   scanner = CreateDirectoryScanner(BMessenger(this), generation);
   scanner->Run();
   Apply(prefs);
@@ -260,10 +267,43 @@ void Pane::Navigate(const char *p) {
     if (Lister::IsVirtual(request))
       request = Lister::ParseLocation(request).URL();
   } catch (const std::exception &error) {
-    status->SetText(error.what());
+    SetStatus(error.what());
     return;
   }
   StartNavigation(request);
+}
+void Pane::SetStatus(const char *text) {
+  status->SetText(text);
+  status->SetToolTip(text);
+}
+void Pane::SetPlaces(const Lister::SavedPlaces &value, bool writable) {
+  places = value;
+  placesWritable = writable;
+  UpdatePlaces();
+}
+void Pane::UpdatePlaces() {
+  while (auto item = placesMenu->RemoveItem(int32(0))) delete item;
+  const char *labels[] = {"Save this place...", "Rename this saved place...",
+                          "Forget this saved place..."};
+  bool saved = places.Find(path.String()) != nullptr;
+  for (int32 i = 0; i < 3; ++i) {
+    auto message = new BMessage(kPlaceAction);
+    message->AddInt32("action", i);
+    auto item = new BMenuItem(labels[i], message);
+    item->SetEnabled(placesWritable && (i ? saved :
+        locationValid && !saved && places.Items().size() < Lister::SavedPlaces::Limit));
+    placesMenu->AddItem(item);
+  }
+  placesMenu->AddSeparatorItem();
+  for (auto &place : places.Items()) {
+    auto message = new BMessage(kNavigate);
+    message->AddString("path", place.path.c_str());
+    message->AddBool("place", true);
+    auto item = new BMenuItem(place.name.c_str(), message);
+    item->SetMarked(place.path == path.String());
+    placesMenu->AddItem(item);
+  }
+  if (Window()) placesMenu->SetTargetForItems(this);
 }
 void Pane::UpdateNavigation() {
   back->SetEnabled(history.Back() >= 0);
@@ -284,13 +324,15 @@ void Pane::StartNavigation(const std::string &request, int target, bool trash) {
                                                  : view->second);
   edit->SetText(path);
   scanning = true;
+  locationValid = false;
+  UpdatePlaces();
   refreshPending = false;
   serial++;
   history.Begin(serial, request, target, trash);
   UpdateNavigation();
   generation->store(serial);
   ClearRows();
-  status->SetText("Reading directory...");
+  SetStatus("Reading directory...");
   BMessage m(kScan);
   m.AddString("path", path);
   m.AddInt64("serial", serial);
@@ -323,7 +365,7 @@ void Pane::SendSelection() {
       << " entries (filtered)";
   else
     s << " entries";
-  status->SetText(s);
+  SetStatus(s);
   list->SyncSelection();
   grid->Update();
   if (Window()) {
@@ -418,7 +460,7 @@ void Pane::MessageReceived(BMessage *m) {
   case kRememberView:
     if (prefs.folderModes.size() >= 4096 &&
         !prefs.folderModes.count(path.String())) {
-      status->SetText("Folder view limit reached");
+      SetStatus("Folder view limit reached");
       break;
     }
     prefs.folderModes[path.String()] = mode;
@@ -449,9 +491,22 @@ void Pane::MessageReceived(BMessage *m) {
     Activate();
     FocusList();
     break;
+  case kPlaceAction: {
+    if (!placesWritable) break;
+    int32 action = m->GetInt32("action", 0);
+    if ((action == 0 && (!locationValid || places.Find(path.String()))) ||
+        (action != 0 && !places.Find(path.String()))) break;
+    BMessage request(*m);
+    request.AddString("path", path);
+    request.AddInt32("pane", id);
+    Window()->PostMessage(&request);
+    Activate();
+    break;
+  }
   case kNavigate:
     if (m->HasInt64("serial") && m->GetInt64("serial", -1) != serial)
       break;
+    if (m->GetBool("place", false)) Activate();
     Navigate(m->GetString("path", edit->Text()));
     if (m->GetBool("tree", false))
       Activate();
@@ -474,7 +529,7 @@ void Pane::MessageReceived(BMessage *m) {
       Navigate(Lister::ParentLocation(path == "@disks" ? "/" : path.String())
                    .c_str());
     } catch (const std::exception &e) {
-      status->SetText(e.what());
+      SetStatus(e.what());
     }
     break;
   }
@@ -489,7 +544,7 @@ void Pane::MessageReceived(BMessage *m) {
     break;
   case kTrashFolder: {
     if (path == "@disks" || Lister::IsVirtual(path.String())) {
-      status->SetText("Trash requires a local supported volume.");
+      SetStatus("Trash requires a local supported volume.");
       break;
     }
     StartNavigation(path.String(), -1, true);
@@ -561,7 +616,9 @@ void Pane::MessageReceived(BMessage *m) {
       break;
     scanning = false;
     path = m->GetString("path", path);
-    history.Complete(serial, path.String(), !m->HasString("error"));
+    locationValid = !m->HasString("error");
+    UpdatePlaces();
+    history.Complete(serial, path.String(), locationValid);
     UpdateNavigation();
     auto view = prefs.folderModes.find(path.String());
     SetDisplayMode(view == prefs.folderModes.end() ? prefs.paneMode[id]
@@ -572,7 +629,7 @@ void Pane::MessageReceived(BMessage *m) {
     if (m->FindString("error", &error) == B_OK) {
       BString s("Cannot open: ");
       s << error;
-      status->SetText(s);
+      SetStatus(s);
     } else {
       SendSelection();
       const void *p;

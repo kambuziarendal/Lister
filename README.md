@@ -2,7 +2,16 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.5.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.6.0**. Published preview: **0.2.0**.
+
+Saved work locations: each panel's Go > Places menu can save the current
+location, rename it or forget it. Names are shared across the two panels and
+persist across restarts. Local folders, archive folders, server addresses and
+the disks overview are supported. Credentials remain session-only; reconnect
+to an authenticated server before reopening its saved location after restart.
+See [saved places and bughunt](docs/PLACES-0.6.0.md) and the additional
+[Tracker capability requirements](docs/TRACKER-COVERAGE.md).
+
 
 Two independent resizable panels, editable paths and location menus, sortable
 name/size/date columns, multiselection, drag-copy, node monitoring, a command
@@ -57,7 +66,7 @@ is a local view filter, not recursive search or wildcard expansion.
 
 Install the privately supplied candidate in Haiku:
 
-    pkgman install ./Listi-0.5.0-1-x86_64.hpkg
+    pkgman install ./Listi-0.6.0-1-x86_64.hpkg
 
 Listi replaces Lister in Apps and Deskbar. The package identity (`lister`),
 application signature (`application/x-vnd.Kambuzi-Lister`), scripting suite and
@@ -76,7 +85,7 @@ C core will have separate POSIX tests; it does not exist in this release.
 
 `make` uses Haiku makefile-engine. The executable is in
 `src/objects.*-release/Listi`, not the project root. `make package` uses
-PackageInfo and produces `dist/Listi-0.5.0-1-x86_64.hpkg`. Retain previous
+PackageInfo and produces `dist/Listi-0.6.0-1-x86_64.hpkg`. Retain previous
 packages for rollback; reinstalling one does not restore or roll back files you
 have copied, moved or deleted.
 

@@ -1,5 +1,10 @@
 # Arbeidsplan for Listi
 
+**Tilleggskrav 14. november 2026:** Alle Trackers brukeroppgaver skal også
+dekkes i Listi, på vår egen måte. Se [Tracker-kartet](TRACKER-COVERAGE.md)
+for dokumentert tilbud, udekkede behov og akseptkrav. Dette erstatter ikke
+Dolphin-kravet og er ikke en påstand om ferdig funksjonslikhet.
+
 14. november 2026. Første mål er en god, særpreget filbehandler til daglig bruk.
 Vi leverer små, ferdige arbeidsflyter som samtidig peker mot den større visjonen.
 Vi bygger videre på 0.2.0. Ingen stor omskriving er en forutsetning.
@@ -37,7 +42,7 @@ Neste produkttrinn er funksjonsmatrisen og et konkret betabehov, ikke automatisk
 publisering eller en ny stor omskriving. De opprinnelige deltrinnene følger under
 som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
 
-### Nåværende trinn og kø, oppdatert for 0.5.0
+### Nåværende trinn og kø, oppdatert for 0.6.0
 
 1. Sikkerhet/modulgrenser, arkiv/nettverksgrunnlag, panelvisninger og intern
    operasjonsvisning er samlet og kvalifisert innenfor den private 0.4.0-kandidatens
@@ -48,7 +53,9 @@ som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
 3. **Uavhengig navigasjonshistorikk er implementert i privat 0.5.0.**
    Atferd og verifikasjon står i [NAVIGATION-0.5.0.md](NAVIGATION-0.5.0.md).
    Opprinnelige ferdigkrav beholdes i NEXT-NAVIGATION.md.
-4. Deretter: lagrede arbeidssteder, avbrytbart søk, dypere kvalifisering av eksisterende
+4. Lagrede arbeidssteder og målrettet bughunt inngår i privat 0.6.0. Se
+   [atferd og verifikasjon](PLACES-0.6.0.md).
+5. Deretter: avbrytbart søk, inkludert BFS-behovene fra Tracker, dypere kvalifisering av eksisterende
    filkilder, Tracker-samspill, trygg massebehandling og flere providers. Restbehovene
    beholdes i matrisen. Ingen funksjon avskrives fordi en lignende funksjon finnes.
 

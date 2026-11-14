@@ -1,7 +1,14 @@
 # Funksjonsdekning: Listi på egne premisser
 
+**Tilleggskrav 14. november 2026:** Alle Trackers brukeroppgaver skal også
+dekkes i Listi, på vår egen måte. Se [Tracker-kartet](TRACKER-COVERAGE.md)
+for dokumentert tilbud, udekkede behov og akseptkrav. Dette erstatter ikke
+Dolphin-kravet og er ikke en påstand om ferdig funksjonslikhet.
+
 **Delta etter basiskartet:** N03 er implementert i privat 0.5.0 med uavhengig,
 begrenset panelhistorikk. Se [kandidatens verifikasjon](NAVIGATION-0.5.0.md).
+Lagrede arbeidssteder er videre implementert i privat 0.6.0, se
+[atferd og verifikasjon](PLACES-0.6.0.md).
 Tabellene og statusantallene nedenfor er fortsatt det daterte 0.4.0-basiskartet,
 ikke en påstand om at alle behov er kontrollert på nytt.
 

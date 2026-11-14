@@ -1,0 +1,44 @@
+[
+  {
+    "url": "https://www.haiku-os.org/docs/userguide/en/tracker.html",
+    "status": 200,
+    "sha256": "0ceaa5732ede5153830f2b681a4ad5cbc2c62a58ece8500213d4fa8396573380",
+    "bytes": 22891,
+    "retrieved_at": "2026-11-14T13:00:52.674623+00:00"
+  },
+  {
+    "url": "https://www.haiku-os.org/docs/userguide/en/attributes.html",
+    "status": 200,
+    "sha256": "d1f4c50775064d551262a19be5f8e2601782c1d03bce27cb1e56944c9083b526",
+    "bytes": 10593,
+    "retrieved_at": "2026-11-14T13:00:52.637320+00:00"
+  },
+  {
+    "url": "https://www.haiku-os.org/docs/userguide/en/queries.html",
+    "status": 200,
+    "sha256": "7881754957eb989b158c7577833377656b65087032f597221119391a2e6a7586",
+    "bytes": 12285,
+    "retrieved_at": "2026-11-14T13:00:52.718896+00:00"
+  },
+  {
+    "url": "https://www.haiku-os.org/docs/userguide/en/filetypes.html",
+    "status": 200,
+    "sha256": "b7a4a2b16ede609920824e836f2f14c5a8740a93f795654451d4c66c3197508c",
+    "bytes": 9134,
+    "retrieved_at": "2026-11-14T13:00:52.913040+00:00"
+  },
+  {
+    "url": "https://www.haiku-os.org/docs/userguide/en/tracker-add-ons.html",
+    "status": 200,
+    "sha256": "8364c05370e3beddf28a016df814736b105a6199ea121e7ec95aa0237b24f69f",
+    "bytes": 5956,
+    "retrieved_at": "2026-11-14T13:00:53.196463+00:00"
+  },
+  {
+    "url": "https://www.haiku-os.org/docs/userguide/en/keyboard-shortcuts.html",
+    "status": 200,
+    "sha256": "0db499adc50f0d08a6b0599bfcf04717a8b7a66921598267f8335eca12249e23",
+    "bytes": 17964,
+    "retrieved_at": "2026-11-14T13:00:53.180533+00:00"
+  }
+]

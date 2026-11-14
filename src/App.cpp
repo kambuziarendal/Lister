@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "Common.h"
+#include "ExplicitSubmit.h"
+#include "SavedPlaces.h"
 #include "ImagePreview.h"
 #include "InlineAction.h"
 #include "OperationQueue.h"
@@ -48,10 +50,10 @@ static std::string Quote(const std::string &s) {
     out += c == '\'' ? "'\\''" : std::string(1, c);
   return out + "'";
 }
-static BString SettingsPath() {
+static BString SettingsPath(const char *name = "Lister_settings") {
   BPath p;
   find_directory(B_USER_SETTINGS_DIRECTORY, &p);
-  p.Append("Lister_settings");
+  p.Append(name);
   return p.Path();
 }
 class Services : public BLooper {
@@ -60,6 +62,19 @@ class Services : public BLooper {
 public:
   Services(BMessenger a) : BLooper("file viewer and launcher"), app(a) {}
   void MessageReceived(BMessage *m) override {
+    if (m->what == kSavePlaces) {
+      BMessage reply(kPlacesSaved);
+      reply.AddInt64("serial", m->GetInt64("serial", -1));
+      try {
+        Lister::SavedPlaces::FromMessage(*m).Save(SettingsPath("Lister_places").String());
+      } catch (const std::exception &e) {
+        std::string error = "Could not save places. The previous list is unchanged. ";
+        error += e.what();
+        reply.AddString("error", error.c_str());
+      }
+      app.SendMessage(&reply);
+      return;
+    }
     if (m->what == kSavePreferences) {
       BString path = SettingsPath(), tmp = path;
       tmp << ".tmp";
@@ -317,6 +332,12 @@ public:
 };
 class MainWindow : public BWindow {
   Preferences prefs;
+  Lister::SavedPlaces places, pendingPlaces;
+  bool placesWritable = true, placesSaving = false;
+  int64 placesSerial = 0;
+  void PublishPlaces() {
+    for (auto pane : panes) pane->SetPlaces(places, placesWritable && !placesSaving);
+  }
   Pane *panes[2];
   ImagePreview *preview;
   BMenuItem *previewMenu;
@@ -484,10 +505,11 @@ class MainWindow : public BWindow {
   }
 
 public:
-  MainWindow(const Preferences &p, BMessenger svc)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.5.0", B_TITLED_WINDOW,
+  MainWindow(const Preferences &p, BMessenger svc,
+             const Lister::SavedPlaces &saved, bool writable)
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.6.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
-        prefs(p), service(svc) {
+        prefs(p), places(saved), placesWritable(writable), service(svc) {
     auto menu = new BMenuBar("menu");
     auto files = new BMenu("Files");
     struct Item {
@@ -574,7 +596,9 @@ public:
         "Command + letter (normally Alt). Tab: other panel. Command+F: filter. "
         "Command+K: connect. Escape: close dialog."));
     bank->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
-    command = new BTextControl("Command:", "", new BMessage(kCommand));
+    command = new BTextControl("Command:", "", nullptr);
+    command->TextView()->AddFilter(
+        new Lister::ExplicitSubmit(BMessenger(this), BMessage(kCommand)));
     command->SetToolTip(
         "Runs a shell command in the active directory using Terminal.");
     queue = new OperationQueue(BMessenger(this));
@@ -596,6 +620,7 @@ public:
     AddCommonFilter(new Keys());
 
     Apply();
+    PublishPlaces();
     panes[0]->SetSource(true);
     panes[1]->SetSource(false);
     panes[0]->FocusList();
@@ -638,6 +663,10 @@ public:
   }
   ~MainWindow() { delete queue; }
   bool QuitRequested() override {
+    if (placesSaving) {
+      Notice("Saved places are still being written. Please try quitting again shortly.");
+      return false;
+    }
     if (queue->Busy()) {
       queue->Show();
       Notice("File operations are still running. Let them finish, or use "
@@ -684,6 +713,65 @@ public:
       }
     }
     switch (m->what) {
+    case kPlaceAction: {
+      if (!placesWritable || placesSaving) {
+        Notice("Saved places are unavailable or still being saved.");
+        break;
+      }
+      const char *path = m->GetString("path", "");
+      int32 action = m->GetInt32("action", -1);
+      auto place = places.Find(path);
+      if (action < 0 || action > 2 || (action != 0 && !place)) break;
+      BMessage accepted(*m);
+      accepted.what = kPlaceAccepted;
+      accepted.AddBool("placeLabel", true);
+      std::string initial = place ? place->name : Lister::LocationLeaf(path);
+      if (initial.empty()) initial = path;
+      std::string question = action == 0 ? "Save this work location: " :
+          action == 1 ? "Rename saved place: " : "Forget saved place: ";
+      question += path;
+      AskInline(question.c_str(), action == 0 ? "Save place" :
+          action == 1 ? "Rename place" : "Forget place", accepted,
+          action == 2 ? nullptr : initial.c_str());
+      break;
+    }
+    case kPlaceAccepted: {
+      if (!placesWritable || placesSaving) {
+        Notice("Saved places are unavailable or still being saved.");
+        break;
+      }
+      try {
+        auto next = places;
+        const char *path = m->GetString("path", "");
+        const char *name = m->GetString("name", "");
+        switch (m->GetInt32("action", -1)) {
+        case 0: next.Add(name, path); break;
+        case 1: next.Rename(path, name); break;
+        case 2: next.Remove(path); break;
+        default: break;
+        }
+        BMessage save = next.Message();
+        save.what = kSavePlaces;
+        save.AddInt64("serial", ++placesSerial);
+        pendingPlaces = next;
+        placesSaving = true;
+        if (service.SendMessage(&save) != B_OK) {
+          placesSaving = false;
+          throw std::runtime_error("Could not queue saved places.");
+        }
+        PublishPlaces();
+      } catch (const std::exception &e) { Notice(e.what()); }
+      break;
+    }
+    case kPlacesSaved:
+      if (placesSaving && m->GetInt64("serial", -1) == placesSerial) {
+        placesSaving = false;
+        if (m->HasString("error")) Notice(m->GetString("error", "Save failed."));
+        else places = pendingPlaces;
+        pendingPlaces = {};
+        PublishPlaces();
+      }
+      break;
     case kInlineNotice:
       if (actionArea->Pending()) {
         queue->ErrorInfo(m->GetString("error", "Operation failed"));
@@ -886,7 +974,7 @@ public:
       OpenPreferences(BMessenger(this), prefs);
       break;
     case kApplyPreferences: {
-      prefs.Load(*m);
+      prefs.ApplyDialog(*m);
       Apply();
       BMessage save(prefs.Save());
       save.what = kSavePreferences;
@@ -917,11 +1005,23 @@ public:
       prefs.Load(settings);
     services = new Services(BMessenger(this));
     services->Run();
-    auto window = new MainWindow(prefs, BMessenger(services));
+    Lister::SavedPlaces places;
+    std::string placesError;
+    try { places = Lister::SavedPlaces::Load(SettingsPath("Lister_places").String()); }
+    catch (const std::exception &e) { placesError = e.what(); }
+    auto window = new MainWindow(prefs, BMessenger(services), places, placesError.empty());
     mainWindow = BMessenger(window);
     window->Show();
+    if (!placesError.empty()) {
+      placesError = "Saved places could not be loaded. The file has been preserved; changes are disabled. " + placesError;
+      Notice(placesError.c_str());
+    }
   }
   void MessageReceived(BMessage *m) override {
+    if (m->what == kPlacesSaved) {
+      mainWindow.SendMessage(m);
+      return;
+    }
     if (m->what == kServiceError) {
       BMessage error(*m);
       error.what = kInlineNotice;

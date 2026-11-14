@@ -90,8 +90,8 @@ void InlineAction::MessageReceived(BMessage *message) {
   if (message->what == kAccept) {
     if (name) {
       std::string value = name->Text();
-      if (value.empty() || value == "." || value == ".." ||
-          value.find('/') != std::string::npos) {
+      if (value.empty() || (!result.GetBool("placeLabel", false) &&
+          (value == "." || value == ".." || value.find('/') != std::string::npos))) {
         name->SetToolTip("Enter one file or folder name, without a slash");
         return;
       }

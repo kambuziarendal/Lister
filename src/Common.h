@@ -16,6 +16,10 @@ enum : uint32 {
   kNavigate = 'navi',
   kBack = 'back',
   kForward = 'frwd',
+  kPlaceAction = 'plac',
+  kPlaceAccepted = 'pacc',
+  kSavePlaces = 'psav',
+  kPlacesSaved = 'psvd',
   kScan = 'scan',
   kRows = 'rows',
   kScanDone = 'done',
@@ -79,6 +83,7 @@ struct Preferences {
   BString folders = "system", files = "system", links = "system";
   rgb_color Color(const BString &value) const;
   void Load(const BMessage &);
+  void ApplyDialog(const BMessage &);
   BMessage Save() const;
 };
 void OpenPreferences(BMessenger target, const Preferences &);

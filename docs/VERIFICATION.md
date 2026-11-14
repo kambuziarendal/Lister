@@ -1,3 +1,8 @@
+# Current private candidate: 0.6.0
+
+See [saved places and targeted bughunt](PLACES-0.6.0.md). Earlier candidate
+results below remain historical, not new test runs.
+
 # Current private navigation candidate: 0.5.0
 
 See [navigation behavior and verification](NAVIGATION-0.5.0.md). Earlier
