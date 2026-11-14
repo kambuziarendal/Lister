@@ -88,3 +88,42 @@ Rollback testing must compare preference values after explicitly saving in an
 older app, not only flattened-file bytes: BMessage routing header fields can
 change during a Save while every persisted setting remains identical. The
 separate places file must still remain byte-identical when the old app saves.
+
+## Final installed receipt, 14 November 2026
+
+Code/package source: `b5bb09f12b4da761e8162f5bc5e50dd329a83505`.
+This receipt is a later documentation-only addition, not a repack.
+All 44 native source/resource/build inputs matched the guest. All 73 tracked
+package inputs matched the isolated package stage.
+
+- Installed executable SHA-256:
+  `1ef66f16a25b30273fec85cf2a4b39879e6b8d36b7930a917f6446cf661e9ee3`
+- HPKG SHA-256:
+  `331cc0d2298346e4ed4f39faf8d9aa1756aa37554b1324326721aa30e2bcae5a`
+- Private ZIP SHA-256:
+  `b50a8905f799762fcb5f8267dd2500c5952075d9cb7731c48be61c07cf05cf96`
+
+The final installed binary passed 55 local and 96 archive/network checks.
+Together with the 86 native module/metadata checks above, the qualifying suites
+contain 237 checks with zero failures. The module implementations remained
+unchanged by the later text-colour fix. These counts do not include exploratory
+failed runs, repeated pre-final runs or GUI checks.
+
+17 final installed UI assertions plus screenshot inspection cover both pane
+menus, persisted-name changes, frozen copy conflicts, explicit replacement into
+the original destination, source retention, command blur, offline errors and
+compact light/dark layout. The pending question's text is readable in both themes.
+
+Actual final-package 0.6.0 -> 0.5.0 -> 0.6.0 roundtrip passed. The prior app was
+launched and its Preferences Save used. Places remained byte-identical, all
+persisted preference values matched, and owned file data was unchanged. The
+re-upgraded executable matched the final hash and opened the saved location with
+its retained name. The old 0.5.0 executable hash was verified as
+`6c0438775dc9733bd746d62d80483a570d0064462f45f7050014422f0cf89af4`.
+
+Evidence: `/home/lobster/kambuzi/reports/listi-places-20261114/`, especially
+`final-installed-native.log`, `native-modules.log`, `attributes-final.log`,
+`final-installed-ui.log`, `final-installed-complete-ui.log`, `final-roundtrip.log`
+and `final-ui/`. Haiku beta6 hrev59866+79 x86_64 VM, not physical hardware.
+The app and owned fixture servers were stopped after acceptance; inherited VM
+retained. No public release, push or Depot change.
