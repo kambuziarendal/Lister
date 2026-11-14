@@ -1,5 +1,5 @@
 name lister
-version 0.11.0-1
+version 0.12.0-1
 architecture x86_64
 summary "Listi: a native source/destination file commander"
 description "Two resizable panels with folder trees, icons and previews, local archive browsing, SMB/SFTP/FTP connections, background file operations and inline conflict handling. Private native file-manager candidate. Inspired by Directory Opus 5 workflows; independently implemented with Haiku BeAPI."
@@ -8,9 +8,9 @@ vendor "Kambuzi EDB"
 copyrights { "2026 Kambuzi EDB" }
 licenses { "MIT" }
 provides {
- lister = 0.11.0
- app:listi = 0.11.0
- app:lister = 0.11.0
+ lister = 0.12.0
+ app:listi = 0.12.0
+ app:lister = 0.12.0
 }
 requires {
  haiku >= r1~beta6

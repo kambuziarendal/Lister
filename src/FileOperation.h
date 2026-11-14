@@ -18,7 +18,7 @@ struct Job {
   Action action = Action::Copy;
   std::vector<std::string> sources;
   std::string destination;
-  // Optional identity guards for operations frozen from the system clipboard.
+  // Optional identity guards for operations frozen from the system clipboard or a drop.
   std::map<std::string, NodeIdentity> expectedSources;
   NodeIdentity expectedDestination;
   int64_t tag = 0;

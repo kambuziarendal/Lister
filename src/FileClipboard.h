@@ -21,6 +21,7 @@ struct ClipboardPaste {
 };
 // Tracker's native file-reference wire format. No text paths or credentials.
 std::vector<ClipboardItem> ReadFileClipboard(const BMessage &);
+BMessage MakeFileSelection(const std::vector<std::string> &, bool cut = false);
 void PutFileClipboard(const std::vector<std::string> &, bool cut,
                       BClipboard *clipboard = be_clipboard);
 ClipboardPaste PrepareFilePaste(const std::string &destination,

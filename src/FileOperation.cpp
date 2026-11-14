@@ -78,11 +78,11 @@ struct Runner {
     if (expected == guardedJob->expectedSources.end() ||
         lstat(guardedSource.c_str(), &st) ||
         st.st_dev != expected->second.device || st.st_ino != expected->second.inode)
-      throw std::runtime_error(guardedSource + ": clipboard source changed; left untouched");
+      throw std::runtime_error(guardedSource + ": selected source changed; left untouched");
     const auto &destination = guardedJob->expectedDestination;
     if (stat(guardedJob->destination.c_str(), &st) || !S_ISDIR(st.st_mode) ||
         st.st_dev != destination.device || st.st_ino != destination.inode)
-      throw std::runtime_error("Clipboard destination changed; operation stopped.");
+      throw std::runtime_error("Selected destination changed; operation stopped.");
   }
   bool deferCompletion = false;
   std::vector<std::pair<std::string, std::string>> copied;

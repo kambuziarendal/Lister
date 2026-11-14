@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include "FileDrop.h"
 #include "FileGrid.h"
 #include "Pane.h"
 #include "PaneModel.h"
@@ -172,16 +173,9 @@ public:
     GetMouse(&current, &buttons);
     if (!(buttons & B_PRIMARY_MOUSE_BUTTON))
       return;
-    BMessage drag(B_SIMPLE_DATA);
-    for (const auto &path : model->Selected()) {
-      entry_ref ref;
-      if (!Lister::IsVirtual(path) && get_ref_for_path(path.c_str(), &ref) == B_OK)
-        drag.AddRef("refs", &ref);
-      else
-        drag.AddString("listi:path", path.c_str());
-    }
-    if (!drag.HasRef("refs") && !drag.HasString("listi:path"))
-      return;
+    BMessage drag;
+    try { drag = Lister::MakeFileDrag(model->Selected()); }
+    catch (const std::exception &e) { pane->ShowStatus(e.what()); return; }
     dragging = true;
     DragMessage(&drag, BRect(point.x, point.y, point.x + 90, point.y + 22));
   }
@@ -264,6 +258,7 @@ public:
     if (m->WasDropped()) {
       BMessage dropped(*m);
       dropped.what = kDrop;
+      dropped.RemoveName("destination");
       dropped.AddString("destination", pane->Path());
       Window()->PostMessage(&dropped);
       return;

@@ -11,7 +11,7 @@ public:
   explicit InlineAction(BMessenger target);
   bool Pending() const { return pending; }
   bool Ask(const char *text, const char *button, const BMessage &result,
-           const char *initial = nullptr);
+           const char *initial = nullptr, const char *alternative = nullptr);
   bool Connect(BMessenger pane);
   void Close();
   void MessageReceived(BMessage *) override;

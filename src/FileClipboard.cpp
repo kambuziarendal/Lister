@@ -138,7 +138,7 @@ std::vector<ClipboardItem> ReadFileClipboard(const BMessage &message) {
   return items;
 }
 
-void PutFileClipboard(const std::vector<std::string> &paths, bool cut, BClipboard *clipboard) {
+BMessage MakeFileSelection(const std::vector<std::string> &paths, bool cut) {
   if (paths.empty() || paths.size() > kMaximumEntries)
     throw std::runtime_error("Select between 1 and 1024 local entries first.");
   BMessage message;
@@ -151,6 +151,12 @@ void PutFileClipboard(const std::vector<std::string> &paths, bool cut, BClipboar
     Require(message.AddInt32(Key('m', node).c_str(), cut ? kCutMode : kCopyMode), "Add clipboard mode");
     Require(message.AddRef(Key('r', node).c_str(), &ref), "Add clipboard file");
   }
+  ReadFileClipboard(message);
+  return message;
+}
+
+void PutFileClipboard(const std::vector<std::string> &paths, bool cut, BClipboard *clipboard) {
+  auto message = MakeFileSelection(paths, cut);
   auto items = ReadFileClipboard(message);
   { Lock lock(clipboard); Commit(clipboard, message); }
   if (clipboard == be_clipboard) Notify(items, true, false);

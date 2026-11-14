@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "Common.h"
 #include "FileClipboard.h"
+#include "FileDrop.h"
 #include "PropertiesWindow.h"
 #include "OpenWith.h"
 #include "ExplicitSubmit.h"
@@ -42,7 +43,7 @@
 #include <set>
 #include <sys/stat.h>
 #include <unistd.h>
-constexpr uint32 kConfirm = 'cfir', kViewLoaded = 'vloa',
+constexpr uint32 kDropAccepted = 'dacc', kConfirm = 'cfir', kViewLoaded = 'vloa',
                  kServiceError = 'serr', kSavePreferences = 'save',
                  kNetwork = 'netw', kOpenSystem = 'osys',
                  kInlineNotice = 'inot', kInlineCancel = 'ican';
@@ -388,6 +389,7 @@ class MainWindow : public BWindow {
   InlineAction *actionArea;
   void CloseAction() {
     actionArea->Close();
+    pendingDrop = {};
     ShowBank(prefs.buttons);
     panes[source]->FocusList();
   }
@@ -400,6 +402,7 @@ class MainWindow : public BWindow {
   }
   int source = 0;
   int64 clipboardSerial = 0;
+  Lister::Job pendingDrop;
   Lister::ClipboardPaste clipboardPaste;
   std::set<int64> clipboardJobs;
   std::vector<std::string> clipboardMoved;
@@ -575,7 +578,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.11.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.12.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     auto menu = new BMenuBar("menu");
@@ -1041,25 +1044,31 @@ public:
       break;
     }
     case kDrop: {
-      Lister::Job j;
-      j.destination = m->GetString("destination", "");
-      if (j.destination == "@disks")
+      if (actionArea->Pending()) {
+        queue->ErrorInfo("Finish or cancel the open question before dropping files.");
         break;
-      entry_ref r;
-      for (int i = 0; m->FindRef("refs", i, &r) == B_OK; i++) {
-        BEntry e(&r);
-        BPath p;
-        if (e.GetPath(&p) == B_OK)
-          j.sources.push_back(p.Path());
       }
-      const char *virtualPath;
-      for (int i = 0; m->FindString("listi:path", i, &virtualPath) == B_OK; ++i)
-        j.sources.push_back(virtualPath);
-      if (j.sources.empty())
-        break;
-      queue->Enqueue(j);
+      try {
+        pendingDrop = Lister::PrepareFileDrop(*m, m->GetString("destination", ""));
+        std::string text = "Drop " + std::to_string(pendingDrop.sources.size()) +
+            " item(s) into:\n" + pendingDrop.destination +
+            (pendingDrop.expectedSources.empty()
+              ? "\nCopy only for network/archive transfers. Originals are kept."
+              : "\nCopy keeps originals. Move removes originals after transfer.");
+        ShowBank(false);
+        actionArea->Ask(text.c_str(), "Copy here", BMessage(kDropAccepted),
+                        nullptr, pendingDrop.expectedSources.empty() ? nullptr : "Move here");
+      } catch (const std::exception &e) { Notice(e.what()); }
       break;
     }
+    case kDropAccepted:
+      if (!pendingDrop.sources.empty()) {
+        const bool move = m->GetInt32("which", 0) == 2 && !pendingDrop.expectedSources.empty();
+        pendingDrop.action = move ? Lister::Action::Move : Lister::Action::Copy;
+        queue->Enqueue(pendingDrop);
+        pendingDrop = {};
+      }
+      break;
     case kFileProgress:
       for (auto p : panes) {
         p->MessageReceived(m);

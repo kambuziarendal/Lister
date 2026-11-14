@@ -9,7 +9,7 @@
 #include "ThemeTextView.h"
 #include <string>
 namespace {
-constexpr uint32 kAccept = 'iacc', kCancel = 'iccl', kClosed = 'ican';
+constexpr uint32 kAccept = 'iacc', kAlternate = 'ialt', kCancel = 'iccl', kClosed = 'ican';
 }
 InlineAction::InlineAction(BMessenger receiver)
     : BGroupView(B_VERTICAL, 5), target(receiver) {}
@@ -33,13 +33,14 @@ void InlineAction::Close() {
   }
 }
 bool InlineAction::Ask(const char *text, const char *button,
-                       const BMessage &accepted, const char *initial) {
+                       const BMessage &accepted, const char *initial, const char *alternative) {
   if (pending)
     return false;
   ++serial;
   result = accepted;
   auto explanation = new ThemeTextView("question", B_PANEL_BACKGROUND_COLOR, B_PANEL_TEXT_COLOR);
   explanation->SetText(text);
+  explanation->SetToolTip(text);
   explanation->MakeEditable(false);
   explanation->MakeSelectable(false);
   explanation->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
@@ -60,6 +61,11 @@ bool InlineAction::Ask(const char *text, const char *button,
   auto buttons = new BGroupView(B_HORIZONTAL, 8);
   BLayoutBuilder::Group<>(buttons, B_HORIZONTAL, 8)
       .AddGlue().Add(cancel).Add(accept);
+  if (alternative) {
+    auto alternate = new BButton(alternative, new BMessage(Event(kAlternate)));
+    buttons->AddChild(alternate);
+    alternate->SetTarget(this);
+  }
   AddChild(buttons);
   cancel->SetTarget(this);
   accept->SetTarget(this);
@@ -68,6 +74,8 @@ bool InlineAction::Ask(const char *text, const char *button,
   if (name) {
     name->MakeFocus(true);
     name->TextView()->SelectAll();
+  } else if (alternative) {
+    cancel->MakeFocus(true);
   }
   return true;
 }
@@ -81,14 +89,14 @@ bool InlineAction::Connect(BMessenger pane) {
   return true;
 }
 void InlineAction::MessageReceived(BMessage *message) {
-  if (message->what != kAccept && message->what != kCancel) {
+  if (message->what != kAccept && message->what != kAlternate && message->what != kCancel) {
     BGroupView::MessageReceived(message);
     return;
   }
   if (!pending || message->GetInt64("question", -1) != serial)
     return;
   BMessage accepted(result);
-  if (message->what == kAccept) {
+  if (message->what == kAccept || message->what == kAlternate) {
     if (name) {
       std::string value = name->Text();
       if (value.empty() || (!result.GetBool("placeLabel", false) &&
@@ -98,11 +106,11 @@ void InlineAction::MessageReceived(BMessage *message) {
       }
       accepted.AddString("name", value.c_str());
     } else
-      accepted.AddInt32("which", 1);
+      accepted.AddInt32("which", message->what == kAlternate ? 2 : 1);
   }
   Close();
   // No queued close event may cancel an unrelated later question.
-  if (message->what == kAccept && accepted.what != kClosed)
+  if ((message->what == kAccept || message->what == kAlternate) && accepted.what != kClosed)
     target.SendMessage(&accepted);
   target.SendMessage(kInlineClosed);
 }

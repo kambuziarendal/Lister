@@ -23,6 +23,9 @@ private:
   color_which foreground;
   void RefreshTextColor() {
     rgb_color color = ui_color(foreground);
+    // The no-range overload changes only the selection/insertion style.
+    // Recolor every existing run, then set the style for newly inserted text.
+    SetFontAndColor(0, TextLength(), nullptr, B_FONT_ALL, &color);
     SetFontAndColor(nullptr, B_FONT_ALL, &color);
     Invalidate();
   }

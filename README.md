@@ -136,3 +136,7 @@ source, not every library provided by Haiku packages.
 Private 0.11.0 adds MIME inspection and one-time native application choice via
 Files > Open with (Command+Shift+O). Associations remain unchanged.
 See docs/OPEN-WITH-0.11.0.md for scope and recovery.
+
+Private 0.12.0 adds explicit Copy here / Move here / Cancel for local drops.
+The destination is always the receiving panel's current folder, shown before
+transfer. Network/archive drops retain explicit copy only. See docs/DROP-0.12.0.md.
