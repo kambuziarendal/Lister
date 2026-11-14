@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "ConnectionView.h"
 #include "Common.h"
+#include "ExplicitSubmit.h"
 #include "VirtualFile.h"
 #include <Button.h>
 #include <GroupView.h>
@@ -27,9 +28,11 @@ public:
   ConnectionView(BMessenger target, BMessenger close, const BMessage &message)
       : BGroupView(B_VERTICAL, 6), pane(target), closeTarget(close),
         closeMessage(message) {
-    url = new BTextControl("Address:", "smb://", new BMessage(kConnect));
-    user = new BTextControl("Username:", "", new BMessage(kConnect));
-    password = new BTextControl("Password:", "", new BMessage(kConnect));
+    // BTextControl invokes its message on focus loss as well as Enter. Never
+    // submit partially entered credentials when the user tabs between fields.
+    url = new BTextControl("Address:", "smb://", nullptr);
+    user = new BTextControl("Username:", "", nullptr);
+    password = new BTextControl("Password:", "", nullptr);
     password->TextView()->HideTyping(true);
     domain = new BTextControl("SMB domain:", "", nullptr);
     key = new BTextControl("SSH private key:", "", nullptr);
@@ -70,8 +73,11 @@ public:
         auto child = view->ChildAt(i);
         if (auto button = dynamic_cast<BButton *>(child))
           button->SetTarget(this);
-        if (auto control = dynamic_cast<BTextControl *>(child))
+        if (auto control = dynamic_cast<BTextControl *>(child)) {
           control->SetTarget(this);
+          control->TextView()->AddFilter(
+              new Lister::ExplicitSubmit(BMessenger(this), BMessage(kConnect)));
+        }
         self(self, child);
       }
     };

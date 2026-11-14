@@ -14,6 +14,8 @@ constexpr const char *kSignature = "application/x-vnd.Kambuzi-Lister";
 enum : uint32 {
   kActivate = 'actv',
   kNavigate = 'navi',
+  kBack = 'back',
+  kForward = 'frwd',
   kScan = 'scan',
   kRows = 'rows',
   kScanDone = 'done',

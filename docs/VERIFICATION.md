@@ -1,3 +1,8 @@
+# Current private navigation candidate: 0.5.0
+
+See [navigation behavior and verification](NAVIGATION-0.5.0.md). Earlier
+0.4.0 and 0.3.0 results below remain historical, not new test runs.
+
 # Private 0.4.0 acceptance
 
 [Installed results and recovery](ACCEPTANCE-0.4.0.md) identify the exact

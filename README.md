@@ -2,7 +2,7 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.4.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.5.0**. Published preview: **0.2.0**.
 
 Two independent resizable panels, editable paths and location menus, sortable
 name/size/date columns, multiselection, drag-copy, node monitoring, a command
@@ -21,6 +21,14 @@ available for list type-ahead. In path, filter, command and name fields,
 Command+A/C/X/V selects/copies/cuts/pastes text, never files. Press Enter after
 editing a path or filter to return to the list. Escape cancels a name dialog.
 F3/F4/F5/F6/F7/F8/F9 remain secondary aliases outside text fields.
+
+Each panel has its own **< Back / > Forward** path buttons. **Command+[ / ]**
+work while browsing that panel, not while editing text or answering a question.
+Up to 64 successful locations are kept for this session only, including local,
+archive, server, volume and Trash locations. Failed or cancelled scans do not
+become visits. Back from a failed open first retries the last successful place.
+Refresh preserves the forward branch; visiting a new place discards it. Returning
+reloads contents without restoring an old selection. History is not file undo.
 
 Operations run on a worker queue. The inline Operations area shows progress,
 Pause/Resume, Cancel and Replace/Replace all/Skip/Skip all/Abort conflicts.
@@ -49,7 +57,7 @@ is a local view filter, not recursive search or wildcard expansion.
 
 Install the privately supplied candidate in Haiku:
 
-    pkgman install ./Listi-0.4.0-1-x86_64.hpkg
+    pkgman install ./Listi-0.5.0-1-x86_64.hpkg
 
 Listi replaces Lister in Apps and Deskbar. The package identity (`lister`),
 application signature (`application/x-vnd.Kambuzi-Lister`), scripting suite and
@@ -68,7 +76,7 @@ C core will have separate POSIX tests; it does not exist in this release.
 
 `make` uses Haiku makefile-engine. The executable is in
 `src/objects.*-release/Listi`, not the project root. `make package` uses
-PackageInfo and produces `dist/Listi-0.4.0-1-x86_64.hpkg`. Retain previous
+PackageInfo and produces `dist/Listi-0.5.0-1-x86_64.hpkg`. Retain previous
 packages for rollback; reinstalling one does not restore or roll back files you
 have copied, moved or deleted.
 
@@ -77,7 +85,7 @@ See [design](docs/DESIGN.md), [roadmap](docs/ROADMAP.md) and
 
 ## Internal 0.4.0 features and limits
 
-Use **Command+K** to connect to SMB, SFTP, FTP or FTPS. Credentials stay in memory.
+Use **Command+K** to connect to SMB, SFTP, FTP or FTPS. Credentials stay in memory. Tab between fields without connecting; use Connect or Enter to submit.
 SFTP needs an existing trusted known_hosts file. FTP is unencrypted. Package
 requirements install libarchive, libcurl and libsmbclient; backend errors are
 reported without pretending an unsupported operation succeeded. SMB, SFTP and

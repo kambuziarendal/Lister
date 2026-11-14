@@ -2,6 +2,7 @@
 #pragma once
 #include "Common.h"
 #include "PaneModel.h"
+#include "NavigationHistory.h"
 #include <Button.h>
 #include <Looper.h>
 #include <StringView.h>
@@ -52,6 +53,10 @@ private:
   void SetDisplayMode(int32);
   void PublishDisplay(bool folder = false, bool forget = false);
   BTextControl *edit;
+  BButton *back, *forward;
+  Lister::NavigationHistory history;
+  void StartNavigation(const std::string &, int target = -1, bool trash = false);
+  void UpdateNavigation();
   BTextControl *filter;
   BButton *clearFilter;
   BStringView *status;

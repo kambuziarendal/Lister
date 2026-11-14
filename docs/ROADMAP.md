@@ -37,7 +37,7 @@ Neste produkttrinn er funksjonsmatrisen og et konkret betabehov, ikke automatisk
 publisering eller en ny stor omskriving. De opprinnelige deltrinnene følger under
 som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
 
-### Nåværende trinn og kø, oppdatert etter 0.4.0
+### Nåværende trinn og kø, oppdatert for 0.5.0
 
 1. Sikkerhet/modulgrenser, arkiv/nettverksgrunnlag, panelvisninger og intern
    operasjonsvisning er samlet og kvalifisert innenfor den private 0.4.0-kandidatens
@@ -45,8 +45,9 @@ som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
 2. Første [funksjonskart](FUNCTION-COVERAGE.md) er laget mot Dolphin 26.08.3,
    med separate protokoller/tillegg, brukerflyter og teststatus. Referansen er
    kildekontrollert, ikke runtime-kvalifisert. Den er ikke en designoppskrift.
-3. **Neste byggepunkt: uavhengig navigasjonshistorikk i hvert panel.** Avgrensning
-   og ferdigkrav står i [NEXT-NAVIGATION.md](NEXT-NAVIGATION.md).
+3. **Uavhengig navigasjonshistorikk er implementert i privat 0.5.0.**
+   Atferd og verifikasjon står i [NAVIGATION-0.5.0.md](NAVIGATION-0.5.0.md).
+   Opprinnelige ferdigkrav beholdes i NEXT-NAVIGATION.md.
 4. Deretter: lagrede arbeidssteder, avbrytbart søk, dypere kvalifisering av eksisterende
    filkilder, Tracker-samspill, trygg massebehandling og flere providers. Restbehovene
    beholdes i matrisen. Ingen funksjon avskrives fordi en lignende funksjon finnes.

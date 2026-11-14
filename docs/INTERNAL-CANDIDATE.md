@@ -1,3 +1,8 @@
+# Current private navigation candidate: 0.5.0
+
+See [navigation behavior and verification](NAVIGATION-0.5.0.md). Earlier
+0.4.0 and 0.3.0 results below remain historical, not new test runs.
+
 # Internal development checkpoint, 14 November 2026
 
 Private 0.4.0 candidate. Development remains local on `work/smb-first`;

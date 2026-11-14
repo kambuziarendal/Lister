@@ -78,6 +78,15 @@ Pane::Pane(int32 number, const Preferences &p)
   menu->SetRadioMode(false);
   menu->SetLabelFromMarked(false);
   edit = new BTextControl("path", "", path, new BMessage(kNavigate));
+  back = new BButton("back", "<", new BMessage(kBack));
+  forward = new BButton("forward", ">", new BMessage(kForward));
+  for (auto button : {back, forward}) {
+    button->SetExplicitMinSize(BSize(32, B_SIZE_UNSET));
+    button->SetExplicitMaxSize(BSize(32, B_SIZE_UNSET));
+  }
+  back->SetToolTip("Back in this panel (Command+[ while browsing)");
+  forward->SetToolTip("Forward in this panel (Command+] while browsing)");
+  UpdateNavigation();
   edit->SetExplicitMinSize(BSize(120, B_SIZE_UNSET));
   filter = new BTextControl("filter", "Filter:", "", new BMessage(kFilterDone));
   filter->SetModificationMessage(new BMessage(kFilterChanged));
@@ -126,7 +135,11 @@ Pane::Pane(int32 number, const Preferences &p)
       .Add(field)
       .Add(display)
       .End()
+      .AddGroup(B_HORIZONTAL, 3)
+      .Add(back)
+      .Add(forward)
       .Add(edit)
+      .End()
       .AddGroup(B_HORIZONTAL, 5)
       .Add(filter)
       .Add(clearFilter)
@@ -143,6 +156,8 @@ Pane::~Pane() {
 void Pane::AttachedToWindow() {
   display->Menu()->SetTargetForItems(this);
   edit->SetTarget(this);
+  back->SetTarget(this);
+  forward->SetTarget(this);
   filter->SetTarget(this);
   clearFilter->SetTarget(this);
   filter->TextView()->AddFilter(new PaneInput(this, true));
@@ -237,14 +252,29 @@ void Pane::Navigate(const char *p) {
   std::string request = p;
   if (request.empty())
     return;
-  if (request[0] != '/' && request != "@disks" && !Lister::IsVirtual(request))
-    request = Lister::IsVirtual(path.String())
+  try {
+    if (request[0] != '/' && request != "@disks" && !Lister::IsVirtual(request))
+      request = Lister::IsVirtual(path.String())
                   ? Lister::ChildLocation(path.String(), request)
                   : Lister::Join(path.String(), request);
+    if (Lister::IsVirtual(request))
+      request = Lister::ParseLocation(request).URL();
+  } catch (const std::exception &error) {
+    status->SetText(error.what());
+    return;
+  }
+  StartNavigation(request);
+}
+void Pane::UpdateNavigation() {
+  back->SetEnabled(history.Back() >= 0);
+  forward->SetEnabled(history.Forward() >= 0);
+}
+void Pane::StartNavigation(const std::string &request, int target, bool trash) {
   stop_watching(this);
   savedSelection =
-      (path == request.c_str()) ? Selected() : std::vector<std::string>{};
-  if (path != request.c_str()) {
+      (target < 0 && !trash && path == request.c_str())
+          ? Selected() : std::vector<std::string>{};
+  if (trash || path != request.c_str()) {
     filter->SetText("");
     clearFilter->SetEnabled(false);
   }
@@ -256,6 +286,8 @@ void Pane::Navigate(const char *p) {
   scanning = true;
   refreshPending = false;
   serial++;
+  history.Begin(serial, request, target, trash);
+  UpdateNavigation();
   generation->store(serial);
   ClearRows();
   status->SetText("Reading directory...");
@@ -264,6 +296,7 @@ void Pane::Navigate(const char *p) {
   m.AddInt64("serial", serial);
   m.AddBool("icons", prefs.icons || mode > 0);
   m.AddInt32("iconSize", mode == 0 ? 16 : 96);
+  m.AddBool("trash", trash);
   scanner->PostMessage(&m);
 }
 void Pane::Reload() {
@@ -425,6 +458,17 @@ void Pane::MessageReceived(BMessage *m) {
     else
       FocusList();
     break;
+  case kBack:
+  case kForward: {
+    int target = m->what == kBack ? history.Back() : history.Forward();
+    if (target >= 0) {
+      std::string destination = history.At(target);
+      StartNavigation(destination, target);
+      Activate();
+      FocusList();
+    }
+    break;
+  }
   case kParent: {
     try {
       Navigate(Lister::ParentLocation(path == "@disks" ? "/" : path.String())
@@ -448,22 +492,7 @@ void Pane::MessageReceived(BMessage *m) {
       status->SetText("Trash requires a local supported volume.");
       break;
     }
-    stop_watching(this);
-    serial++;
-    generation->store(serial);
-    scanning = true;
-    refreshPending = false;
-    ClearRows();
-    savedSelection.clear();
-    filter->SetText("");
-    clearFilter->SetEnabled(false);
-    status->SetText("Opening Trash...");
-    BMessage scan(kScan);
-    scan.AddInt64("serial", serial);
-    scan.AddString("path", path);
-    scan.AddBool("icons", prefs.icons);
-    scan.AddBool("trash", true);
-    scanner->PostMessage(&scan);
+    StartNavigation(path.String(), -1, true);
     break;
   }
   case kDisks:
@@ -532,6 +561,11 @@ void Pane::MessageReceived(BMessage *m) {
       break;
     scanning = false;
     path = m->GetString("path", path);
+    history.Complete(serial, path.String(), !m->HasString("error"));
+    UpdateNavigation();
+    auto view = prefs.folderModes.find(path.String());
+    SetDisplayMode(view == prefs.folderModes.end() ? prefs.paneMode[id]
+                                                 : view->second);
     edit->SetText(path);
     tree->ShowPath(path.String());
     const char *error;

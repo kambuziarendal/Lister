@@ -1,4 +1,7 @@
-# Neste byggepunkt: finn tilbake i hvert panel
+# Opprinnelig byggeplan: finn tilbake i hvert panel
+
+Implementert i privat 0.5.0. Se [resultat og verifikasjon](NAVIGATION-0.5.0.md).
+Kravene under beholdes som den opprinnelige avgrensningen.
 
 14. november 2026. Avgrenset plan etter den interne 0.4.0-kandidaten.
 Referansebehov: N03 i FUNCTION-COVERAGE.md. Dette er en Listi-løsning, ikke en
@@ -66,5 +69,5 @@ nødvendig for denne funksjonen.
 8. Én ferdig native kandidat: relevant samlet regresjon, faktisk installasjon og
    bevart oppsett før eventuell privat pakke. Ingen offentlig push eller release.
 
-Dette dokumentet beskriver neste implementasjon. Ingen av disse nye historikk-
-testene er kjørt, og funksjonen finnes ikke i 0.4.0-pakken som allerede er levert.
+Funksjonen finnes ikke i den tidligere leverte 0.4.0-pakken. Resultatene fra
+0.5.0-kontrollene dokumenteres separat, slik at planen ikke blir et testbevis.

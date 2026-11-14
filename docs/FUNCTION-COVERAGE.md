@@ -1,5 +1,11 @@
 # Funksjonsdekning: Listi på egne premisser
 
+**Delta etter basiskartet:** N03 er implementert i privat 0.5.0 med uavhengig,
+begrenset panelhistorikk. Se [kandidatens verifikasjon](NAVIGATION-0.5.0.md).
+Tabellene og statusantallene nedenfor er fortsatt det daterte 0.4.0-basiskartet,
+ikke en påstand om at alle behov er kontrollert på nytt.
+
+
 14. november 2026. Arbeidsgrunnlag, ikke en påstand om funksjonslikhet.
 
 ## Produktkravet

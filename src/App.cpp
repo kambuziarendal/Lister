@@ -258,6 +258,21 @@ public:
       if (bytes[0] == B_FUNCTION_KEY)
         return B_DISPATCH_MESSAGE;
     }
+    // Browsing-only shortcuts: text fields and inline questions retain their
+    // own editing keys. Resolve the actual focused pane, not a queued role.
+    int32 modifiers = m->GetInt32("modifiers", 0);
+    int32 raw = m->GetInt32("raw_char", bytes[0]);
+    if (!text && (modifiers & (B_COMMAND_KEY | B_CONTROL_KEY | B_OPTION_KEY |
+                               B_SHIFT_KEY)) == B_COMMAND_KEY &&
+        (raw == '[' || raw == ']')) {
+      auto view = window ? window->CurrentFocus() : nullptr;
+      while (view && !dynamic_cast<Pane *>(view))
+        view = view->Parent();
+      if (view) {
+        Looper()->PostMessage(raw == '[' ? kBack : kForward, view);
+        return B_SKIP_MESSAGE;
+      }
+    }
     if (bytes[0] == B_TAB) {
       auto view = dynamic_cast<BView *>(*target);
       while (view) {
@@ -470,7 +485,7 @@ class MainWindow : public BWindow {
 
 public:
   MainWindow(const Preferences &p, BMessenger svc)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.4.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.5.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), service(svc) {
     auto menu = new BMenuBar("menu");

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "InlineAction.h"
 #include "ConnectionView.h"
+#include "ExplicitSubmit.h"
 #include <Button.h>
 #include <LayoutBuilder.h>
 #include <TextControl.h>
@@ -47,9 +48,11 @@ bool InlineAction::Ask(const char *text, const char *button,
   explanation->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 75));
   AddChild(explanation);
   if (initial) {
-    name = new BTextControl("Name:", initial, new BMessage(Event(kAccept)));
+    name = new BTextControl("Name:", initial, nullptr);
     AddChild(name);
     name->SetTarget(this);
+    name->TextView()->AddFilter(
+        new Lister::ExplicitSubmit(BMessenger(this), Event(kAccept)));
   }
   auto cancel = new BButton("Cancel", new BMessage(Event(kCancel)));
   auto accept = new BButton(button, new BMessage(Event(kAccept)));
