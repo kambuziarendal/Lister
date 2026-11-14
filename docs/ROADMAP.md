@@ -75,7 +75,7 @@ som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
 7. **Neste dagligflyt:** Lokal Tracker-utklippstavle levert i privat 0.9.0,
    med tastatur/mus, identitetskontroll og avbrudd. Egenskaper og typed lokale
    BFS-attributter inngår i 0.10.0, se PROPERTIES-0.10.0.md for avgrensning.
-   MIME-visning og engangsvalg av program bygges i privat 0.11.0, se
+   MIME-visning og engangsvalg av program er kvalifisert i privat 0.11.0, se
    OPEN-WITH-0.11.0.md. Standardtilknytninger og MIME-redigering gjenstår.
    Neste avgrensede flyt er tydelig drop-semantikk. Dypere kvalifisering av eksisterende
    protokoller/arkivformater følger relevante endringer, inkludert egen FTPS-prøve.

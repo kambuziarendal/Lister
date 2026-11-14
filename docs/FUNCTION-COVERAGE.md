@@ -16,7 +16,7 @@ er dokument- og kildegransket, ikke kjørt som full praktisk sammenligning.
 | Historikk, N03 | 0.5.0: uavhengig Tilbake/Frem per panel, også virtuelle steder. [Bevis](NAVIGATION-0.5.0.md) | Faner/mappekort, flere vinduer og øktgjenoppretting er egne udekkede behov |
 | Lagrede steder, N05/R08 | 0.6.0: navngitte adresser uten innloggingsdata. [Bevis](PLACES-0.6.0.md) | Oppdagelse, kontohåndtering og bredere nettverkskvalifisering |
 | Søk, V08-V10/T15-T18 | 0.7.0 navnesøk og 0.8.0 levende BFS/lagrede kriterier med identitetskontroll. [Bevis](ACCEPTANCE-0.8.0.md) | Attributtbygger, innhold, flervolumvalg og Tracker-søkefiler gjenstår |
-| Filhandlinger og Haiku-samspill | 0.9.0: lokal filutklippstavle begge veier med Tracker, identitetskontroll og trygg avbruddsflyt. [Bevis](ACCEPTANCE-0.9.0.md) | Virtuell utklippstavle, utvidede egenskaper/attributter, MIME/Åpne med, lenker, maler, masseomdøping, sammenligning og konfliktbevisst angre |
+| Filhandlinger og Haiku-samspill | 0.9.0: lokal filutklippstavle begge veier med Tracker, identitetskontroll og trygg avbruddsflyt. [Bevis](ACCEPTANCE-0.9.0.md) | Virtuell utklippstavle, utvidede egenskaper/attributter, MIME-redigering/standardtilknytninger, lenker, maler, masseomdøping, sammenligning og konfliktbevisst angre |
 | Visninger og arbeidsflater | To paneler, detalj-/ikonvisning og mappetrær finnes | Mappekort/arbeidssett, visningsvalg, gruppering, skjulte filer og bredere tilgjengelighetsprøver |
 | Arkiver, filkilder og integrasjoner | Arkivlesing/uttrekk og SMB/SFTP/FTP har avgrensede syntetiske prøver | Arkivoppretting/redigering/passord, flere formater, ekte servervariasjon, nye protokoller, enheter, sky og VCS |
 
@@ -185,7 +185,7 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
 | F17 | Sammenlign to filer eller mappetrær | D1 compare-files, valgfri Kompare | M | Egen sammenligningsflyt eller native verktøyintegrasjon med valgt par |
 | F18 | Se jobbstatus, pause/avbryt og behold kontroll ved navigasjon | D2/KIO jobbmodell | D: kø/avbrudd og feilbaner prøvd; pause-UI er historisk, T/O/H | Viderefør native kø, synlig delvis resultat og eget eierskap |
 | F19 | Velg Replace/Skip/Abort for riktig konflikt; bevar original ved avbrudd | D1 filhandlinger; KIO | V: faktisk installert konflikt/avbrudd og feilinjeksjon, UI/O | Tokenidentifisert spørsmål og dokumenterte gjenopprettingsstier |
-| F20 | Åpne valgt fil med riktig app eller et eksplisitt redigeringsverktøy | D1 view-using/Properties | D: lokal launcher/editor finnes; aktuell MIME/åpne-med-bredde ikke kvalifisert, H | Haiku MIME og native appvalg; ingen skjult remote-upload |
+| F20 | Åpne valgt fil med riktig app eller et eksplisitt redigeringsverktøy | D1 view-using/Properties | D (0.11): lokal MIME-visning og engangsvalg av native program, installert UI; globale tilknytninger, batch og virtuelle filer gjenstår | Haiku MIME og native appvalg; ingen skjult remote-upload |
 
 ## Arkiver, protokoller og eksterne filkilder
 

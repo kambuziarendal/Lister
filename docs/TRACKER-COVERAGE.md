@@ -46,9 +46,9 @@ når den kan startes fra Listi og hele oppgaven er prøvd.
 | T18 | Lagrede søk, søkemaler og gjenåpning/redigering | D (0.8) | Listi-kriterier lagres, redigeres og kjøres på nytt. Tracker query-filer, import/eksport og maler gjenstår | Queries |
 | T19 | Tidsuttrykk og logiske AND/OR-vilkår | D (0.7) | Native AND/OR-formler prøvd. Dato-/tidssonegrenser og vennlig byggeverktøy gjenstår | Queries |
 | T20 | Opprette mapper og filer fra maler | D | Ny mappe finnes. Filmaler, metadata og malmapper mangler | Tracker |
-| T21 | Åpne med og velge foretrukket program | D | Systemåpning finnes. Programvalg per fil/type mangler | Filetypes |
+| T21 | Åpne med og velge foretrukket program | D | 0.11: engangsvalg, native programvelger og MIME-visning prøvd i installert pakke. Lagrede per-fil/type-standarder gjenstår | Filetypes |
 | T22 | Filegenskaper, plassering, eier og rettigheter | D (0.10) | Lokal inspeksjon og vanlige oktale rettigheter. Eierbytte, spesialbiter, rekursiv størrelse og virtuelle filkilder gjenstår | Tracker |
-| T23 | MIME-identifikasjon og korrigering av filtype | M | Identify/force-identify, feiltype og manglende type | Tracker |
+| T23 | MIME-identifikasjon og korrigering av filtype | D | 0.11: lagret eller oppdaget MIME vises uten skriving. Korrigering/force-identify gjenstår | Tracker |
 | T24 | Egendefinerte ikoner og filtypeinnstillinger | M | Native integrasjon, per-fil kontra globalt valg | Filetypes |
 | T25 | Kopiere, flytte, duplisere og endre navn | D | Sikker kø testet. Duplisering og bred metadata-matrise | Tracker |
 | T26 | Absolutte og relative lenker, åpne lenkemål | D | Lenker håndteres i motor. Oppretting/målflyt mangler | Tracker |
