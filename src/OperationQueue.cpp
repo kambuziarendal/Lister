@@ -338,15 +338,28 @@ void OperationQueue::Pause() {
   changed.notify_all();
 }
 void OperationQueue::Cancel() {
+  std::vector<int64> discardedTags;
   {
     std::lock_guard<std::mutex> l(mutex);
     cancel = true;
     paused = false;
+    for (const auto &job : jobs)
+      if (job.tag) discardedTags.push_back(job.tag);
     count -= jobs.size();
     jobs.clear();
     answer = int(Lister::Decision::Abort);
   }
   changed.notify_all();
+  // Queued jobs never reach Loop(), but their clipboard leases still need a
+  // terminal result. Send outside the mutex and do not dismiss active choices.
+  for (int64 tag : discardedTags) {
+    BMessage done(kJobDone);
+    done.AddInt64("tag", tag);
+    done.AddBool("complete", false);
+    done.AddBool("idle", count.load() == 0);
+    done.AddString("result", "Cancelled before starting.");
+    main.SendMessage(&done);
+  }
 }
 bool OperationQueue::Answer(Lister::Decision d, int64 request) {
   {
