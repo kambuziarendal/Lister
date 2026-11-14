@@ -30,3 +30,11 @@ are preserved across live switches; this does not add session path persistence.
 Rollback to 0.14.0 ignores the new preference keys. If preferences are saved by
 0.14.0, those unknown keys are dropped and the subsequent upgrade starts in
 Commander. Existing preferences, places, searches and user files remain intact.
+
+## 0.16.0 minimal refinement
+
+Simple additionally hides the Go/view controls, filter and back/forward buttons.
+The address stays editable. View > File view remains available in both presets.
+Both splitter handles and the empty footer disappear, leaving two-pixel pane
+insets. A retained Commander filter is suspended while Simple is visible; its
+text and filtering return in Commander. The status does not claim hidden filtering.

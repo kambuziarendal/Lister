@@ -2,6 +2,8 @@
 #include "FileDrop.h"
 // Only this renderer depends on Haiku's private ColumnListView API.
 #include "FileDetails.h"
+#include "RubberBand.h"
+#include <Region.h>
 #include "Pane.h"
 #include "PaneModel.h"
 #include "VirtualFile.h"
@@ -105,8 +107,9 @@ public:
   PaneModel *model;
   NameColumn *name;
   bool syncing = false;
+  RubberBand *band;
   DetailsList(Pane *p, PaneModel *state, const Preferences &prefs)
-      : BColumnListView("files", B_WILL_DRAW | B_NAVIGABLE, B_FANCY_BORDER),
+      : BColumnListView("files", B_WILL_DRAW | B_NAVIGABLE | B_DRAW_ON_CHILDREN, B_FANCY_BORDER),
         pane(p), model(state) {
     name = new NameColumn(prefs);
     AddColumn(name, 0);
@@ -116,6 +119,39 @@ public:
     SetSortColumn(name, false, true);
     SetInvocationMessage(new BMessage(kInvoke));
     ScrollView()->AddFilter(new ContextClick(this, pane));
+    band = new RubberBand(ScrollView());
+    band->ready = [this] { return !pane->IsScanning(); };
+    band->path = [this] { return std::string(pane->Path()); };
+    band->selection = [this] { return model->Selected(); };
+    band->restoreSelection = [this](const auto &paths) {
+      model->SetSelection(paths, paths.empty() ? "" : paths.back());
+      pane->SendSelection();
+    };
+    band->activate = [this] { MakeFocus(); };
+    band->redraw = [this] { Invalidate(); };
+    band->empty = [this](BPoint point) { return RowAt(point) == nullptr || ColumnAt(point) == nullptr; };
+    band->select = [this](BRect rect, const auto &base) {
+      auto paths = base;
+      for (int32 i = 0; i < CountRows(); ++i) {
+        auto row = static_cast<FileRow *>(RowAt(i));
+        BRect frame;
+        if (!row->entry->parent && GetRowRect(row, &frame) && rect.Intersects(frame))
+          paths.push_back(row->entry->path);
+      }
+      model->SetSelection(paths, paths.empty() ? "" : paths.back());
+      pane->SendSelection();
+    };
+    ScrollView()->AddFilter(band);
+  }
+  void DrawAfterChildren(BRect) override {
+    if (!band->Active()) return;
+    auto view = ScrollView();
+    BRect clip = ConvertFromScreen(view->ConvertToScreen(view->Bounds()));
+    BRegion region(clip);
+    ConstrainClippingRegion(&region);
+    SetHighUIColor(B_KEYBOARD_NAVIGATION_COLOR);
+    StrokeRect(ConvertFromScreen(view->ConvertToScreen(band->Rect())));
+    ConstrainClippingRegion(nullptr);
   }
   void AttachedToWindow() override {
     BColumnListView::AttachedToWindow();
@@ -202,6 +238,7 @@ public:
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0).Add(list);
   }
   ~DetailsView() { list->syncing = true; }
+  bool CancelSelectionGesture() override { return list->band->Escape(); }
   void MakeFocus(bool focus = true) override { list->MakeFocus(focus); }
   void Redraw() override { list->Invalidate(); }
   void Apply(const Preferences &p) override {

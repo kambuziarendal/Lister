@@ -1,0 +1,302 @@
+// SPDX-License-Identifier: MIT
+#include "DynamicLibrary.h"
+#include "ArchiveBackend.h"
+#include <memory>
+#include <algorithm>
+#include <archive.h>
+#include <archive_entry.h>
+#include <cctype>
+#include <cerrno>
+#include <cstring>
+#include <exception>
+#include <fcntl.h>
+#include <map>
+#include <unistd.h>
+
+namespace Lister {
+namespace {
+DynamicLibrary &Library() {
+  // An optional system package may be installed while Listi is running.
+  // Per-worker ownership avoids racing dlopen/replacement with another reader.
+  thread_local std::unique_ptr<DynamicLibrary> lib;
+  if (!lib || !lib->Available())
+    lib.reset(new DynamicLibrary({"libarchive.so", "libarchive.so.13"}));
+  return *lib;
+}
+struct Reader {
+  DynamicLibrary &lib = Library();
+  struct archive *handle = nullptr;
+  int fd = -1;
+  const TransferControl &control;
+  std::exception_ptr failure;
+  std::vector<char> buffer = std::vector<char>(131072);
+  explicit Reader(const std::string &path, const TransferControl &c)
+      : control(c) {
+    if (!lib.Available())
+      throw std::runtime_error(
+          "Install libarchive from HaikuDepot to browse archives");
+    fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW);
+    if (fd < 0)
+      throw std::runtime_error(path + ": " + strerror(errno));
+    handle = LIBCALL(lib, archive_read_new)();
+    if (!handle) {
+      close(fd);
+      fd = -1;
+      throw std::runtime_error("Could not allocate archive reader");
+    }
+    try {
+      LIBCALL(lib, archive_read_support_filter_all)(handle);
+      // Compressed single files must not be guessed as mtree (ordinary text
+      // can look like an mtree manifest). Explicit tar containers still use
+      // format detection; standalone compression exposes one decoded file.
+      std::string lower = path;
+      std::transform(lower.begin(), lower.end(), lower.begin(),
+                     [](unsigned char ch) { return std::tolower(ch); });
+      auto dot = lower.find_last_of('.');
+      auto extension = dot == std::string::npos ? "" : lower.substr(dot);
+      auto stem = dot == std::string::npos ? lower : lower.substr(0, dot);
+      bool compressed = extension == ".gz" || extension == ".bz2" ||
+                        extension == ".xz" || extension == ".zst" ||
+                        extension == ".lz" || extension == ".lzma" ||
+                        extension == ".lz4" || extension == ".z";
+      bool tar = stem.size() >= 4 && stem.substr(stem.size() - 4) == ".tar";
+      if (!compressed || tar)
+        LIBCALL(lib, archive_read_support_format_all)(handle);
+      LIBCALL(lib, archive_read_support_format_raw)(handle);
+      LIBCALL(lib, archive_read_set_seek_callback)(handle, &Seek);
+      int result = LIBCALL(lib, archive_read_open)(handle, this, nullptr, &Read,
+                                                   nullptr);
+      Rethrow();
+      if (result != ARCHIVE_OK)
+        Error();
+    } catch (...) {
+      LIBCALL(lib, archive_read_free)(handle);
+      handle = nullptr;
+      close(fd);
+      fd = -1;
+      throw;
+    }
+  }
+  ~Reader() {
+    if (handle)
+      LIBCALL(lib, archive_read_free)(handle);
+    if (fd >= 0)
+      close(fd);
+  }
+  static la_ssize_t Read(struct archive *, void *data, const void **out) {
+    auto &self = *static_cast<Reader *>(data);
+    try {
+      self.control.Check();
+      *out = self.buffer.data();
+      ssize_t n;
+      do {
+        n = read(self.fd, self.buffer.data(), self.buffer.size());
+      } while (n < 0 && errno == EINTR);
+      if (n < 0)
+        throw std::runtime_error(std::string("Archive read failed: ") +
+                                 strerror(errno));
+      return n;
+    } catch (...) {
+      self.failure = std::current_exception();
+      return -1;
+    }
+  }
+  static la_int64_t Seek(struct archive *, void *data, la_int64_t offset, int whence) {
+    auto &self = *static_cast<Reader *>(data);
+    try {
+      self.control.Check();
+      off_t result = lseek(self.fd, offset, whence);
+      if (result < 0) throw std::runtime_error(std::string("Archive seek failed: ") + strerror(errno));
+      return result;
+    } catch (...) {
+      self.failure = std::current_exception();
+      return -1;
+    }
+  }
+  void Rethrow() {
+    if (failure)
+      std::rethrow_exception(failure);
+  }
+  [[noreturn]] void Error() {
+    Rethrow();
+    const char *s = LIBCALL(lib, archive_error_string)(handle);
+    std::string error = s ? s : "Unsupported or damaged archive";
+    if (error.find("unable to run program") != std::string::npos) {
+      const char *package = error.find("zstd") != std::string::npos ? "zstd_bin" :
+                            error.find("lz4") != std::string::npos ? "lz4" : nullptr;
+      if (package) error = std::string("This compression needs the optional ") + package +
+          " package. Install it from HaikuDepot, then open the archive again in Listi.";
+    }
+    throw std::runtime_error(error);
+  }
+  struct archive_entry *Next() {
+    control.Check();
+    struct archive_entry *entry = nullptr;
+    int r = LIBCALL(lib, archive_read_next_header)(handle, &entry);
+    Rethrow();
+    if (r == ARCHIVE_EOF)
+      return nullptr;
+    if (r != ARCHIVE_OK)
+      Error();
+    return entry;
+  }
+  bool CompressedOrArchive() const {
+    return (LIBCALL(lib, archive_format)(handle) != ARCHIVE_FORMAT_RAW &&
+            LIBCALL(lib, archive_format)(handle) != ARCHIVE_FORMAT_EMPTY) ||
+           LIBCALL(lib, archive_filter_code)(handle, 0) != ARCHIVE_FILTER_NONE;
+  }
+};
+std::string SafeName(const char *raw) {
+  if (!raw)
+    throw std::runtime_error("Archive entry has no name");
+  std::string name = raw;
+  if (name.size() > 32768)
+    throw std::runtime_error("Archive path is too long");
+  if (!name.empty() && (name[0] == '/' || name[0] == '\\'))
+    throw std::runtime_error("Archive contains an unsafe absolute path");
+  if (name.find('\\') != std::string::npos ||
+      name.find_first_of("\r\n") != std::string::npos)
+    throw std::runtime_error("Archive contains an unsupported path");
+  std::string out;
+  size_t at = 0;
+  while (at < name.size()) {
+    auto end = name.find('/', at);
+    if (end == std::string::npos)
+      end = name.size();
+    auto part = name.substr(at, end - at);
+    if (part == ".." || (out.empty() && part.size() > 1 && part[1] == ':'))
+      throw std::runtime_error(
+          "Archive contains an unsafe parent or drive path");
+    if (!part.empty() && part != ".") {
+      if (!out.empty())
+        out += '/';
+      out += part;
+    }
+    at = end + 1;
+  }
+  return out;
+}
+std::string EntryName(Reader &reader, struct archive_entry *entry,
+                      const Location &location) {
+  auto name = SafeName(LIBCALL(reader.lib, archive_entry_pathname)(entry));
+  if (LIBCALL(reader.lib, archive_format)(reader.handle) ==
+      ARCHIVE_FORMAT_RAW) {
+    name = LocationLeaf(location.archive);
+    auto dot = name.find_last_of('.');
+    if (dot != std::string::npos)
+      name.resize(dot);
+    if (name.empty())
+      name = "contents";
+  }
+  return name;
+}
+} // namespace
+bool LibarchiveAvailable() { return Library().Available(); }
+std::string LibarchiveOpen(const std::string &path, const TransferControl &c) {
+  if (IsVirtual(path))
+    return "";
+  bool expected = ArchiveExtension(path);
+  if (!LibarchiveAvailable()) {
+    if (expected)
+      throw std::runtime_error(
+          "Archive support is not installed. Install libarchive from HaikuDepot, "
+          "then open this file again. Browsing and extraction stay in Listi.");
+    return "";
+  }
+  try {
+    Reader reader(path, c);
+    reader.Next();
+    if (!reader.CompressedOrArchive()) {
+      if (expected)
+        throw std::runtime_error("The installed archive engine cannot read this format. "
+                                "It needs an additional Listi archive adapter; no external app was opened.");
+      return "";
+    }
+    Location location;
+    location.scheme = "archive";
+    location.archive = path;
+    location.path = "/";
+    return location.URL();
+  } catch (const Cancelled &) {
+    throw;
+  } catch (const std::exception &) {
+    if (expected)
+      throw;
+    return "";
+  }
+}
+std::vector<FileEntry> LibarchiveList(const Location &location,
+                                   const TransferControl &c) {
+  Reader reader(location.archive, c);
+  std::map<std::string, FileEntry> children;
+  std::string prefix =
+      location.path == "/" ? "" : location.path.substr(1) + "/";
+  size_t count = 0;
+  while (auto entry = reader.Next()) {
+    if (++count > 200000)
+      throw std::runtime_error("Archive has too many entries for this view");
+    auto name = EntryName(reader, entry, location);
+    if (name.empty() || name.compare(0, prefix.size(), prefix) != 0)
+      continue;
+    auto rest = name.substr(prefix.size());
+    if (rest.empty())
+      continue;
+    auto slash = rest.find('/');
+    std::string leaf = rest.substr(0, slash);
+    auto type = LIBCALL(reader.lib, archive_entry_filetype)(entry);
+    auto &item = children[leaf];
+    item.name = leaf;
+    item.path = ChildLocation(location.URL(), leaf);
+    bool implied = slash != std::string::npos;
+    if (implied) {
+      if (!item.directory)
+        item.permissions = 0755;
+      item.directory = true;
+    } else if (type == AE_IFDIR) {
+      item.directory = true;
+      item.permissions = LIBCALL(reader.lib, archive_entry_perm)(entry) & 0777;
+      item.modified = LIBCALL(reader.lib, archive_entry_mtime)(entry);
+    } else {
+      item.link = type == AE_IFLNK ||
+                  LIBCALL(reader.lib, archive_entry_hardlink)(entry) != nullptr;
+      item.size = LIBCALL(reader.lib, archive_entry_size)(entry);
+      item.sizeKnown = LIBCALL(reader.lib, archive_entry_size_is_set)(entry);
+      item.modified = LIBCALL(reader.lib, archive_entry_mtime)(entry);
+      item.permissions = LIBCALL(reader.lib, archive_entry_perm)(entry) & 0777;
+      if (type != AE_IFREG && !item.link)
+        throw std::runtime_error("Archive contains a special device entry");
+    }
+  }
+  std::vector<FileEntry> out;
+  for (auto &pair : children)
+    out.push_back(pair.second);
+  return out;
+}
+void LibarchiveRead(const Location &location, const DataSink &sink,
+                 const TransferControl &c) {
+  Reader reader(location.archive, c);
+  std::string wanted = location.path.substr(1);
+  while (auto entry = reader.Next()) {
+    if (EntryName(reader, entry, location) != wanted)
+      continue;
+    if (LIBCALL(reader.lib, archive_entry_filetype)(entry) != AE_IFREG ||
+        LIBCALL(reader.lib, archive_entry_hardlink)(entry))
+      throw std::runtime_error(
+          "Archive links and special entries are not extracted");
+    std::vector<char> data(131072);
+    for (;;) {
+      c.Check();
+      la_ssize_t n = LIBCALL(reader.lib, archive_read_data)(reader.handle, data.data(),
+                                                            data.size());
+      reader.Rethrow();
+      if (n < 0)
+        reader.Error();
+      if (!n)
+        return;
+      sink(data.data(), n);
+      c.Tick(n);
+    }
+  }
+  throw std::runtime_error("Archive entry no longer exists");
+}
+} // namespace Lister

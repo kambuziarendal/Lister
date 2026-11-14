@@ -14,6 +14,8 @@ class FileDetails;
 class FileGrid;
 class FolderTree;
 class BCardView;
+class BGroupView;
+class BSplitView;
 class BMenuField;
 class BMenu;
 class BMessageRunner;
@@ -32,6 +34,7 @@ public:
   void Select(int mode);
   std::vector<std::string> Selected() const;
   const char *Path() const { return path.String(); }
+  bool CancelSelectionGesture();
   void FocusList();
   void FocusFilter();
   void Activate();
@@ -55,6 +58,10 @@ private:
   FolderTree *tree;
   bool treeVisible = true, simple = false;
   BCardView *cards;
+  BGroupView *header, *filterRow;
+  BSplitView *content;
+  bool chromeVisible = true;
+  float contentSplitterSize = 0;
   BMenuField *display;
   int32 mode = 0;
   void SetDisplayMode(int32);

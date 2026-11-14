@@ -7,6 +7,7 @@ struct Preferences;
 class FileDetails : public BView {
 public:
   using BView::BView;
+  virtual bool CancelSelectionGesture() = 0;
   virtual void Apply(const Preferences &) = 0;
   virtual void Refresh() = 0;
   virtual void SyncSelection() = 0;

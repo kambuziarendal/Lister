@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "FileDrop.h"
 #include "FileGrid.h"
+#include "RubberBand.h"
 #include "Pane.h"
 #include "PaneModel.h"
 #include "ImagePreview.h"
@@ -59,6 +60,7 @@ class GridView : public FileGrid {
   std::shared_ptr<std::atomic<int64>> generation;
   std::map<std::string, std::unique_ptr<BBitmap>> thumbnails;
   std::set<std::string> pending;
+  RubberBand *band;
   BPoint pressed;
   int pressedIndex = -1;
   bool dragging = false, deferredPick = false;
@@ -90,6 +92,32 @@ public:
       : FileGrid("file grid", B_WILL_DRAW | B_NAVIGABLE | B_FRAME_EVENTS |
                                B_FULL_UPDATE_ON_RESIZE),
         pane(p), model(state), generation(std::make_shared<std::atomic<int64>>(0)) {
+    band = new RubberBand(this);
+    band->ready = [this] { return !pane->IsScanning(); };
+    band->path = [this] { return std::string(pane->Path()); };
+    band->selection = [this] { return model->Selected(); };
+    band->restoreSelection = [this](const auto &paths) {
+      model->SetSelection(paths, paths.empty() ? "" : paths.back());
+      pane->SendSelection();
+    };
+    band->activate = [this] { MakeFocus(); pressedIndex = -1; deferredPick = false; };
+    band->redraw = [this] { Invalidate(); };
+    band->empty = [this](BPoint p) {
+      for (int i = 0; i < int(model->Visible().size()); ++i)
+        if (Cell(i).InsetByCopy(4, 4).Contains(p)) return false;
+      return true;
+    };
+    band->select = [this](BRect rect, const auto &base) {
+      auto paths = base;
+      for (int i = 0; i < int(model->Visible().size()); ++i) {
+        auto entry = model->Visible()[i];
+        if (!entry->parent && rect.Intersects(Cell(i).InsetByCopy(4, 4)))
+          paths.push_back(entry->path);
+      }
+      model->SetSelection(paths, paths.empty() ? "" : paths.back());
+      pane->SendSelection();
+    };
+    AddFilter(band);
     SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
     SetLowUIColor(B_DOCUMENT_BACKGROUND_COLOR);
     SetHighUIColor(B_DOCUMENT_TEXT_COLOR);
@@ -104,7 +132,9 @@ public:
     loader->Run();
     Update();
   }
+  bool CancelSelectionGesture() override { return band->Escape(); }
   void Reset() {
+    band->Cancel();
     pressedIndex = -1;
     dragging = deferredPick = false;
     ++*generation;
@@ -134,7 +164,7 @@ public:
     }
     Invalidate();
   }
-  void FrameResized(float, float) override { Update(); }
+  void FrameResized(float, float) override { band->Cancel(); Update(); }
   void MakeFocus(bool focus = true) override {
     BView::MakeFocus(focus);
     if (focus)
@@ -346,6 +376,10 @@ public:
         SetHighUIColor(B_KEYBOARD_NAVIGATION_COLOR);
         StrokeRoundRect(cell, 4, 4);
       }
+    }
+    if (band->Active()) {
+      SetHighUIColor(B_KEYBOARD_NAVIGATION_COLOR);
+      StrokeRect(band->Rect());
     }
   }
 };

@@ -57,7 +57,7 @@ public:
     return B_DISPATCH_MESSAGE;
   }
 };
-constexpr uint32 kGridMode = 'gmod', kRememberView = 'grem',
+constexpr uint32 kRememberView = 'grem',
                  kForgetView = 'gfor', kExpireProgress = 'expr',
                  kToggleTree = 'ttre';
 } // namespace
@@ -124,7 +124,8 @@ Pane::Pane(int32 number, const Preferences &p)
   modes->AddSeparatorItem();
   modes->AddItem(new BMenuItem("Folder tree", new BMessage(kToggleTree)));
   tree = new FolderTree();
-  auto content = new BSplitView(B_HORIZONTAL, 4);
+  content = new BSplitView(B_HORIZONTAL, 4);
+  contentSplitterSize = content->SplitterSize();
   content->AddChild(tree);
   content->AddChild(cards);
   content->SetCollapsible(0, false);
@@ -133,24 +134,26 @@ Pane::Pane(int32 number, const Preferences &p)
   status->SetTruncation(B_TRUNCATE_END);
   status->SetExplicitMinSize(BSize(0, B_SIZE_UNSET));
   status->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+  header = new BGroupView(B_HORIZONTAL, 5);
+  header->SetName("panel toolbar");
+  header->AddChild(role);
+  header->AddChild(field);
+  header->AddChild(display);
+  filterRow = new BGroupView(B_HORIZONTAL, 5);
+  filterRow->SetName("filter toolbar");
+  filterRow->AddChild(filter);
+  filterRow->AddChild(clearFilter);
   BLayoutBuilder::Group<>(this, B_VERTICAL, 5)
       .SetInsets(6)
-      .AddGroup(B_HORIZONTAL, 5)
-      .Add(role)
-      .Add(field)
-      .Add(display)
-      .End()
-      .AddGroup(B_HORIZONTAL, 3)
+      .Add(header, 0)
+      .AddGroup(B_HORIZONTAL, 3, 0)
       .Add(back)
       .Add(forward)
       .Add(edit)
       .End()
-      .AddGroup(B_HORIZONTAL, 5)
-      .Add(filter)
-      .Add(clearFilter)
-      .End()
+      .Add(filterRow, 0)
       .Add(content)
-      .Add(status);
+      .Add(status, 0);
   SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
 }
 Pane::~Pane() {
@@ -219,6 +222,7 @@ void Pane::FocusList() {
     grid->MakeFocus(true);
 }
 void Pane::FocusFilter() {
+  if (simple) return;
   Activate();
   filter->MakeFocus(true);
   filter->TextView()->SelectAll();
@@ -229,15 +233,31 @@ void Pane::ClearRows() {
   grid->Reset();
 }
 void Pane::ApplyFilter() {
-  entries.Filter(filter->Text());
+  entries.Filter(simple ? "" : filter->Text());
   list->Refresh();
   clearFilter->SetEnabled(filter->Text()[0] != 0);
   if (!scanning)
     SendSelection();
 }
 void Pane::SetSimple(bool value) {
+  const bool changed = simple != value;
   simple = value;
   prefs.simple = value;
+  if (chromeVisible == simple) {
+    chromeVisible = !simple;
+    for (BView* control : {static_cast<BView*>(header), static_cast<BView*>(filterRow),
+                          static_cast<BView*>(back), static_cast<BView*>(forward)}) {
+      if (chromeVisible) control->Show(); else control->Hide();
+    }
+  }
+  auto layout = static_cast<BGroupLayout*>(GetLayout());
+  layout->SetInsets(simple ? 2 : 6);
+  layout->SetSpacing(simple ? 2 : 5);
+  content->SetSpacing(simple ? 0 : 4);
+  content->SetSplitterSize(simple ? 0 : contentSplitterSize);
+  // A hidden filter must not silently hide entries in the minimal workspace.
+  // Keep its text for Commander, but suspend its effect while it is hidden.
+  if (changed) { ApplyFilter(); grid->Update(); }
   const bool visible = prefs.paneTree[id] && !simple;
   if (treeVisible != visible) {
     treeVisible = visible;
@@ -376,6 +396,11 @@ void Pane::ContextMenu(const std::string &path, BPoint screen) {
     return;
   }
 }
+bool Pane::CancelSelectionGesture() {
+  bool a = list->CancelSelectionGesture();
+  bool b = grid->CancelSelectionGesture();
+  return a || b;
+}
 void Pane::SendSelection() {
   BString s;
   int32 visible = 0;
@@ -383,7 +408,7 @@ void Pane::SendSelection() {
     if (!entry->parent)
       ++visible;
   s << int32(Selected().size()) << " selected / " << visible;
-  if (filter->Text()[0])
+  if (!simple && filter->Text()[0])
     s << " of " << (visible + int32(entries.HiddenCount()))
       << " entries (filtered)";
   else
@@ -645,7 +670,7 @@ void Pane::MessageReceived(BMessage *m) {
       }
       entries.Add(std::move(row));
     }
-    entries.Filter(filter->Text());
+    entries.Filter(simple ? "" : filter->Text());
     entries.RestoreSelection(savedSelection);
     list->Refresh();
     grid->Update();

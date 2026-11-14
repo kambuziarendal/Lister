@@ -2,7 +2,7 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.15.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.16.0**. Published preview: **0.2.0**.
 
 Find files: **Command+Shift+F** opens cancellable recursive local name search
 and native BFS formulas, with optional live updates. Save named criteria and
@@ -109,7 +109,7 @@ C core will have separate POSIX tests; it does not exist in this release.
 
 `make` uses Haiku makefile-engine. The executable is in
 `src/objects.*-release/Listi`, not the project root. `make package` uses
-PackageInfo and produces `dist/Listi-0.6.0-1-x86_64.hpkg`. Retain previous
+PackageInfo and produces `dist/Listi-0.16.0-1-x86_64.hpkg`. Retain previous
 packages for rollback; reinstalling one does not restore or roll back files you
 have copied, moved or deleted.
 
@@ -120,14 +120,19 @@ See [design](docs/DESIGN.md), [roadmap](docs/ROADMAP.md) and
 
 Use **Command+K** to connect to SMB, SFTP, FTP or FTPS. Credentials stay in memory. Tab between fields without connecting; use Connect or Enter to submit.
 SFTP needs an existing trusted known_hosts file. FTP is unencrypted. Package
-requirements install libarchive, libcurl and libsmbclient; backend errors are
+requirements install libcurl and libsmbclient. Archive support uses the optional
+`libarchive` system package; install it from HaikuDepot when needed. Backend errors are
 reported without pretending an unsupported operation succeeded. SMB, SFTP and
 FTP are tested with synthetic servers; FTPS and external NAS models are not yet
 qualified.
 
-ZIP and tar containers open in a panel for browsing and extraction. Standalone
-`.gz`, `.bz2` and `.xz` files expose a decoded file; use `.tar.gz`, `.tar.bz2` or
-`.tar.xz` for compressed tar containers. Archives are read-only and must be local.
+Archive browsing and extraction stay inside Listi. The adapter loads the system's
+optional libarchive, not an archive GUI or a bundled private engine. ZIP, 7z,
+RAR/RAR5, tar, CPIO, ar, ISO, XAR, CAB and LHA are covered by native fixture tests.
+Single-file gzip/bzip2/xz/lzma and compressed tar are supported. LZ4 needs the
+optional `lz4` package; Zstandard needs `zstd_bin`. Install system packages through
+HaikuDepot and retry without restarting Listi. See [archive support](docs/ARCHIVES-0.16.0.md)
+for tested variants and current limits. Archives remain read-only and local.
 Cross-location moves are refused with Copy guidance; remote Trash is not emulated.
 
 Each panel's View menu selects details, icons, large icons or thumbnails, remembers
@@ -154,3 +159,14 @@ transfer. Network/archive drops retain explicit copy only. See docs/DROP-0.12.0.
 Workspace candidate: View > Workspace > Simple or Commander. Simple keeps one
 file panel without the action bank; clipboard and right-click actions remain
 available. See [workspace behavior](docs/WORKSPACES-0.15.0.md).
+
+## Minimal workspace and mouse selection (0.16.0)
+
+Simple shows the address, file list and compact status only. Go, the pane view
+selector, filter and navigation buttons are hidden. Use View > File view for
+Details/Icons/Large icons/Thumbnails. Hidden Commander filters are suspended in
+Simple and restored when returning to Commander. No function keys are assigned.
+
+Drag from empty list space to select a rectangle in either renderer. Ctrl or
+Shift adds to the original selection. Escape restores that original selection.
+Dragging an item still starts file drag-and-drop. Selection scrolls at the edges.

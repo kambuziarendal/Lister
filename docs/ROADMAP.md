@@ -245,3 +245,20 @@ justeres når hvert trinn planlegges.
 Enkel og veksling tilbake til Commander er implementert først. Utforsker og
 Arbeidsbenk står fortsatt i planen. Privat kvalifisering dokumenteres separat.
 Se WORKSPACES-0.15.0.md for konkret oppførsel.
+
+### Arkiver, presisert av Arne 15. november
+
+Bred formatdekning skal betjenes direkte i Listi. Det er ikke tilstrekkelig å
+åpne Expander eller et annet arkivprogram. Bruk systemets biblioteker og verktøy
+som bakgrunnsmotorer, med utskiftbare arkivadaptere og valgfrie ekstra pakker via
+HaikuDepot. Ikke bygg alle motorer inn i appen eller lag et eget pakkesystem.
+Oppdag installert støtte ved bruk; vis konkret manglende motor ved ukjent format.
+Kvalifiser lesing, browsing og uttrekk per format, inkludert 7z/RAR og relevante
+krypterte/oppdelte/feilaktige prøver. Ikke lov alle varianter før de er prøvd.
+Simple-forenklingen fullføres først. Arkivarbeidet følger som eget avgrenset trinn.
+
+0.16.0 implements the first optional system-libarchive adapter and qualifies a
+broader read/extract matrix, with lz4/zstd_bin helpers installed separately.
+Follow-up: password UI, multipart inputs, additional engines for unsupported
+families and archive extraction from the single-pane workspace. Do not substitute
+an external archive GUI for those missing internal workflows.

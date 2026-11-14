@@ -351,6 +351,10 @@ class MainWindow : public BWindow {
   ImagePreview *preview;
   BMenuItem *previewMenu, *simpleMenu, *commanderMenu;
   BMenuBar *menu;
+  BSplitView *split;
+  BGroupView *footer;
+  bool footerVisible = true;
+  float splitterSize = 0;
   bool paneVisible[2] = {true, true};
   bool previewVisible = true;
   void Save() {
@@ -463,7 +467,13 @@ class MainWindow : public BWindow {
     }
     previewMenu->SetMarked(showPreview);
     previewMenu->SetEnabled(!prefs.simple);
-    for (auto action : {kCopy, kMove, kSame, kSwitch})
+    split->SetSpacing(prefs.simple ? 0 : 6);
+    split->SetSplitterSize(prefs.simple ? 0 : splitterSize);
+    if (footerVisible == prefs.simple) {
+      footerVisible = !prefs.simple;
+      if (footerVisible) footer->Show(); else footer->Hide();
+    }
+    for (auto action : {kCopy, kMove, kSame, kSwitch, kFilter})
       if (auto item = menu->FindItem(action)) item->SetEnabled(!prefs.simple);
     queue->SetCompact(prefs.simple);
     simpleMenu->SetMarked(prefs.simple);
@@ -598,7 +608,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.15.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.16.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.simple ? prefs.singlePane : 0;
@@ -656,6 +666,14 @@ public:
     workspace->AddItem(simpleMenu);
     workspace->AddItem(commanderMenu);
     viewMenu->AddItem(workspace);
+    auto fileView = new BMenu("File view");
+    const char* viewNames[] = {"Details", "Icons", "Large icons", "Thumbnails"};
+    for (int32 i = 0; i < 4; ++i) {
+      auto choice = new BMessage(kGridMode);
+      choice->AddInt32("mode", i);
+      fileView->AddItem(new BMenuItem(viewNames[i], choice));
+    }
+    viewMenu->AddItem(fileView);
     menu->AddItem(viewMenu);
     auto view = new BMenu("Listi");
     view->AddItem(new BMenuItem("Switch panel", new BMessage(kSwitch), 'S'));
@@ -677,7 +695,8 @@ public:
     menu->AddItem(view);
     panes[0] = new Pane(0, prefs);
     panes[1] = new Pane(1, prefs);
-    auto split = new BSplitView(B_HORIZONTAL, 6);
+    split = new BSplitView(B_HORIZONTAL, 6);
+    splitterSize = split->SplitterSize();
     split->AddChild(panes[0]);
     split->AddChild(panes[1]);
     preview = new ImagePreview();
@@ -727,16 +746,17 @@ public:
     actionArea->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     actionArea->GroupLayout()->SetInsets(8, 6, 8, 6);
     actionArea->Hide();
+    footer = new BGroupView(B_VERTICAL, 5);
+    footer->SetName("command footer");
+    footer->GroupLayout()->SetInsets(8, 4, 8, 8);
+    footer->AddChild(bank);
+    footer->AddChild(command);
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
         .Add(menu)
         .Add(split)
         .Add(actionArea, 0)
         .Add(queue->View(), 0)
-        .AddGroup(B_VERTICAL, 5, 0)
-        .SetInsets(8, 4, 8, 8)
-        .Add(bank)
-        .Add(command)
-        .End();
+        .Add(footer, 0);
     // Child visibility must not impose a transient maximum on the window.
     // Apply after attachment: Haiku replaces layout explicit-data proxies.
     GetLayout()->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
@@ -953,6 +973,7 @@ public:
         panes[source]->FocusList();
       break;
     case kInlineCancel:
+      if (panes[source]->CancelSelectionGesture()) break;
       if (actionArea->Pending())
         CloseAction();
       else
@@ -994,6 +1015,9 @@ public:
       panes[0]->FolderModes(prefs.folderModes);
       panes[1]->FolderModes(prefs.folderModes);
       Save();
+      break;
+    case kGridMode:
+      panes[source]->MessageReceived(m);
       break;
     case kWorkspace:
       SetWorkspace(m->GetBool("simple", false));
