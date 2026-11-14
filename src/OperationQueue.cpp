@@ -171,15 +171,23 @@ public:
       if (auto button = dynamic_cast<BButton *>(choices->ChildAt(i)))
         button->SetTarget(this);
   }
+  bool compact = false, visible = true;
+  void UpdateVisibility() {
+    const bool show = !compact || expanded || choicesVisible || owner->Busy();
+    if (visible == show) return;
+    visible = show;
+    if (show) BView::Show(); else BView::Hide();
+  }
+  void SetCompact(bool value) { compact = value; UpdateVisibility(); }
   void Expand(bool show) {
-    if (expanded == show)
-      return;
+    if (expanded == show) { UpdateVisibility(); return; }
     expanded = show;
     if (show)
       details->Show();
     else
       details->Hide();
     detailsButton->SetLabel(show ? "Less" : "Details");
+    UpdateVisibility();
   }
   void Toggle() { Expand(!expanded); }
   void Dismiss() {
@@ -247,7 +255,7 @@ public:
         bar->Reset();
         bar->SetMaxValue(float(std::max<int64>(1, m->GetInt64("total", 1))));
         pause->SetLabel("Pause");
-        summary->SetText("Working. You can keep using both panels.");
+        summary->SetText("Working. You can keep browsing.");
       }
       title->SetText(m->GetString("title", title->Text()));
       file->SetText(m->GetString("path", file->Text()));
@@ -296,6 +304,7 @@ public:
       BView::MessageReceived(m);
       break;
     }
+    UpdateVisibility();
   }
 };
 OperationQueue::OperationQueue(BMessenger m) : main(m) {
@@ -318,6 +327,7 @@ OperationQueue::~OperationQueue() {
   if (thread.joinable())
     thread.join();
 }
+void OperationQueue::SetCompact(bool value) { view->SetCompact(value); }
 void OperationQueue::Show() { view->Expand(true); }
 void OperationQueue::Toggle() { view->Toggle(); }
 void OperationQueue::Collapse() { view->Dismiss(); }

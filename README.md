@@ -2,7 +2,7 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.14.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.15.0**. Published preview: **0.2.0**.
 
 Find files: **Command+Shift+F** opens cancellable recursive local name search
 and native BFS formulas, with optional live updates. Save named criteria and
@@ -150,3 +150,7 @@ See docs/OPEN-WITH-0.11.0.md for scope and recovery.
 Private 0.12.0 adds explicit Copy here / Move here / Cancel for local drops.
 The destination is always the receiving panel's current folder, shown before
 transfer. Network/archive drops retain explicit copy only. See docs/DROP-0.12.0.md.
+
+Workspace candidate: View > Workspace > Simple or Commander. Simple keeps one
+file panel without the action bank; clipboard and right-click actions remain
+available. See [workspace behavior](docs/WORKSPACES-0.15.0.md).

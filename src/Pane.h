@@ -28,6 +28,7 @@ public:
   void SetPlaces(const Lister::SavedPlaces &, bool writable);
   void SetSource(bool);
   void Apply(const Preferences &);
+  void SetSimple(bool);
   void Select(int mode);
   std::vector<std::string> Selected() const;
   const char *Path() const { return path.String(); }
@@ -52,7 +53,7 @@ private:
   FileDetails *list;
   FileGrid *grid;
   FolderTree *tree;
-  bool treeVisible = true;
+  bool treeVisible = true, simple = false;
   BCardView *cards;
   BMenuField *display;
   int32 mode = 0;

@@ -349,7 +349,9 @@ class MainWindow : public BWindow {
   }
   Pane *panes[2];
   ImagePreview *preview;
-  BMenuItem *previewMenu;
+  BMenuItem *previewMenu, *simpleMenu, *commanderMenu;
+  BMenuBar *menu;
+  bool paneVisible[2] = {true, true};
   bool previewVisible = true;
   void Save() {
     auto saved = prefs.Save();
@@ -358,7 +360,7 @@ class MainWindow : public BWindow {
   }
   void UpdatePreview() {
     auto selected = panes[source]->Selected();
-    preview->ShowFile(prefs.preview && selected.size() == 1 ? selected[0] : "");
+    preview->ShowFile(prefs.preview && !prefs.simple && selected.size() == 1 ? selected[0] : "");
   }
   InlineAction *actionArea;
   void CloseAction() {
@@ -384,7 +386,7 @@ class MainWindow : public BWindow {
       return;
     }
     try {
-      auto job = Lister::PrepareNamedEntry(action, panes[source]->Selected(), panes[1-source]->Path());
+      auto job = Lister::PrepareNamedEntry(action, panes[source]->Selected(), panes[prefs.simple ? source : 1-source]->Path());
       const bool duplicate = action == Lister::Action::Duplicate;
       std::string text = std::string(duplicate ? "Duplicate: " : "Link to: ") + job.sources[0] +
           "\nIn: " + job.destination;
@@ -435,6 +437,7 @@ class MainWindow : public BWindow {
   BMessenger service;
   bool bankVisible = true, commandVisible = true;
   void ShowBank(bool visible) {
+    visible = visible && !prefs.simple;
     if (bankVisible == visible)
       return;
     bankVisible = visible;
@@ -443,28 +446,47 @@ class MainWindow : public BWindow {
     else
       bank->Hide();
   }
-  void Apply() {
-    if (prefs.preview != previewVisible) {
-      previewVisible = prefs.preview;
-      if (previewVisible)
-        preview->Show();
-      else
-        preview->Hide();
+  void ApplyWorkspace() {
+    for (int i = 0; i < 2; ++i) {
+      const bool visible = !prefs.simple || i == source;
+      if (visible != paneVisible[i]) {
+        paneVisible[i] = visible;
+        if (visible) panes[i]->Show(); else panes[i]->Hide();
+      }
+      panes[i]->SetSimple(prefs.simple);
+      panes[i]->SetSource(i == source);
     }
-    previewMenu->SetMarked(prefs.preview);
-    UpdatePreview();
-    for (auto p : panes) {
-      p->Apply(prefs);
-      p->Reload();
+    const bool showPreview = prefs.preview && !prefs.simple;
+    if (showPreview != previewVisible) {
+      previewVisible = showPreview;
+      if (showPreview) preview->Show(); else preview->Hide();
     }
+    previewMenu->SetMarked(showPreview);
+    previewMenu->SetEnabled(!prefs.simple);
+    for (auto action : {kCopy, kMove, kSame, kSwitch})
+      if (auto item = menu->FindItem(action)) item->SetEnabled(!prefs.simple);
+    queue->SetCompact(prefs.simple);
+    simpleMenu->SetMarked(prefs.simple);
+    commanderMenu->SetMarked(!prefs.simple);
     ShowBank(prefs.buttons && !actionArea->Pending());
-    if (prefs.command != commandVisible) {
-      commandVisible = prefs.command;
-      if (prefs.command)
-        command->Show();
-      else
-        command->Hide();
+    const bool showCommand = prefs.command && !prefs.simple;
+    if (commandVisible != showCommand) {
+      commandVisible = showCommand;
+      if (showCommand) command->Show(); else command->Hide();
     }
+    UpdatePreview();
+  }
+  void SetWorkspace(bool simple) {
+    if (prefs.simple == simple) return;
+    prefs.simple = simple;
+    prefs.singlePane = source;
+    ApplyWorkspace();
+    if (!actionArea->Pending()) panes[source]->FocusList();
+    Save();
+  }
+  void Apply() {
+    for (auto p : panes) { p->Apply(prefs); p->Reload(); }
+    ApplyWorkspace();
   }
   Lister::Job Snapshot(Lister::Action a) {
     Lister::Job j;
@@ -493,6 +515,10 @@ class MainWindow : public BWindow {
   void Operation(Lister::Action a) {
     if (actionArea->Pending()) {
       queue->ErrorInfo("Finish or cancel the open question first.");
+      return;
+    }
+    if (prefs.simple && (a == Lister::Action::Copy || a == Lister::Action::Move)) {
+      Notice("Use Copy or Cut, then navigate and Paste. Panel transfers need Commander.");
       return;
     }
     auto job = Snapshot(a);
@@ -572,10 +598,11 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.14.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.15.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
-    auto menu = new BMenuBar("menu");
+    source = prefs.simple ? prefs.singlePane : 0;
+    menu = new BMenuBar("menu");
     auto files = new BMenu("Files");
     struct Item {
       const char *label;
@@ -620,6 +647,16 @@ public:
         new BMenuItem("None", new BMessage(kNone), 'A', B_SHIFT_KEY));
     select->AddItem(new BMenuItem("Invert", new BMessage(kInvert), 'I'));
     menu->AddItem(select);
+    auto viewMenu = new BMenu("View");
+    auto workspace = new BMenu("Workspace");
+    auto simpleMessage = new BMessage(kWorkspace);
+    simpleMessage->AddBool("simple", true);
+    simpleMenu = new BMenuItem("Simple", simpleMessage);
+    commanderMenu = new BMenuItem("Commander", new BMessage(kWorkspace));
+    workspace->AddItem(simpleMenu);
+    workspace->AddItem(commanderMenu);
+    viewMenu->AddItem(workspace);
+    menu->AddItem(viewMenu);
     auto view = new BMenu("Listi");
     view->AddItem(new BMenuItem("Switch panel", new BMessage(kSwitch), 'S'));
     view->AddItem(new BMenuItem("Same folder in other panel",
@@ -708,13 +745,14 @@ public:
 
     Apply();
     PublishPlaces();
-    panes[0]->SetSource(true);
-    panes[1]->SetSource(false);
-    panes[0]->FocusList();
+    panes[source]->FocusList();
     ResizeTo(1140, 650);
   }
   status_t GetSupportedSuites(BMessage *m) override {
-    static property_info properties[] = {{"SourcePath",
+    static property_info properties[] = {{"Workspace",
+                                          {B_GET_PROPERTY, 0},
+                                          {B_DIRECT_SPECIFIER, 0},
+                                          "Current workspace", 0}, {"SourcePath",
                                           {B_GET_PROPERTY, B_SET_PROPERTY, 0},
                                           {B_DIRECT_SPECIFIER, 0},
                                           "Source directory",
@@ -742,7 +780,7 @@ public:
   }
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *spec,
                              int32 what, const char *property) override {
-    if (!strcmp(property, "SourcePath") ||
+    if (!strcmp(property, "Workspace") || !strcmp(property, "SourcePath") ||
         !strcmp(property, "DestinationPath") || !strcmp(property, "Busy") ||
         !strcmp(property, "PathReady"))
       return this;
@@ -786,7 +824,9 @@ public:
             }
           }
           reply.AddString("result", pane->Path());
-        } else if (!strcmp(property, "PathReady"))
+        } else if (!strcmp(property, "Workspace"))
+          reply.AddString("result", prefs.simple ? "Simple" : "Commander");
+        else if (!strcmp(property, "PathReady"))
           reply.AddBool("result",
                         !panes[0]->IsScanning() && !panes[1]->IsScanning());
         else if (!strcmp(property, "Busy"))
@@ -919,6 +959,7 @@ public:
         queue->Collapse();
       break;
     case kPreviewToggle:
+      if (prefs.simple) break;
       prefs.preview = !prefs.preview;
       if (prefs.preview != previewVisible) {
         previewVisible = prefs.preview;
@@ -954,13 +995,19 @@ public:
       panes[1]->FolderModes(prefs.folderModes);
       Save();
       break;
+    case kWorkspace:
+      SetWorkspace(m->GetBool("simple", false));
+      break;
     case kActivate:
+      if (m->GetInt32("pane", source) < 0 || m->GetInt32("pane", source) > 1) break;
+      if (prefs.simple && m->GetInt32("pane", source) != source) break;
       source = m->GetInt32("pane", source);
       for (int i = 0; i < 2; i++)
         panes[i]->SetSource(i == source);
       UpdatePreview();
       break;
     case kSwitch:
+      if (prefs.simple) break;
       source = 1 - source;
       for (int i = 0; i < 2; i++)
         panes[i]->SetSource(i == source);
@@ -968,6 +1015,7 @@ public:
       UpdatePreview();
       break;
     case kSame:
+      if (prefs.simple) break;
       panes[1 - source]->Navigate(panes[source]->Path());
       break;
     case kRefresh:
@@ -982,6 +1030,7 @@ public:
       int32 which = m->GetInt32("pane", -1);
       if (which < 0 || which > 1) break;
       source = which;
+      if (prefs.simple) { prefs.singlePane = source; ApplyWorkspace(); Save(); }
       for (int i = 0; i < 2; ++i) panes[i]->SetSource(i == source);
       panes[source]->MessageReceived(m);
       Activate(); panes[source]->FocusList();
@@ -996,7 +1045,7 @@ public:
         break;
       }
       const int32 owner = m->GetInt32("pane", -1);
-      if (owner < 0 || owner > 1) break;
+      if (owner < 0 || owner > 1 || (prefs.simple && owner != source)) break;
       source = owner;
       for (int i = 0; i < 2; ++i) panes[i]->SetSource(i == source);
       const auto selected = panes[source]->Selected();
@@ -1012,7 +1061,7 @@ public:
         BPoint screen;
         if (m->FindPoint("screen", &screen) != B_OK) break;
         const uint32 action = ShowFileContextMenu(screen, selected.size() == 1,
-                                                  m->GetBool("directory", false), local);
+                                                  m->GetBool("directory", false), local, !prefs.simple);
         if (!action) break;
         if (source != owner || selected != panes[owner]->Selected() ||
             folder != panes[owner]->Path() || destination != panes[1-owner]->Path())

@@ -16,8 +16,17 @@ int main() {
   stale.ReplaceBool("icons",false);stale.ReplaceFloat("fontSize",17);
   live.paneMode[0]=3;live.paneMode[1]=2;
   live.paneTree[0]=true;live.paneTree[1]=true;
+  live.simple=true;live.singlePane=1;
   live.preview=true;live.folderModes["/synthetic"]=1;
   live.ApplyDialog(stale);
+  check(live.simple && live.singlePane==1,"stale preferences dialog preserves active workspace");
+  Preferences restored;restored.Load(live.Save());
+  check(restored.simple && restored.singlePane==1,"workspace and chosen panel survive restart");
+  check(restored.buttons && restored.paneTree[1] && restored.preview,"hidden Commander options remain stored");
+  BMessage legacy;restored.Load(legacy);
+  check(!restored.simple && restored.singlePane==0,"older settings default to Commander");
+  legacy.AddBool("simpleWorkspace",true);legacy.AddInt32("singlePane",42);restored.Load(legacy);
+  check(restored.simple && restored.singlePane==0,"invalid stored pane cannot select outside workspace");
   check(!live.icons && live.font.Size()==17,"dialog appearance fields apply");
   check(live.paneMode[0]==3 && live.paneMode[1]==2,"stale dialog preserves current pane modes");
   check(live.paneTree[0] && live.paneTree[1],"stale dialog preserves both trees");

@@ -12,6 +12,7 @@ public:
   explicit OperationQueue(BMessenger main);
   ~OperationQueue();
   void Enqueue(const Lister::Job &);
+  void SetCompact(bool);
   void Show();
   void Toggle();
   void Collapse();

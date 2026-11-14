@@ -239,3 +239,9 @@ siste valg huskes og oppsett skal kunne tilpasses. Ett avgrenset, kvalifisert
 trinn om gangen; ikke fire samtidige omskrivinger. Fullfør nåværende rettinger
 og høyreklikk før oppsettarbeidet. Konkret rekkefølge og detaljutforming kan
 justeres når hvert trinn planlegges.
+
+### Neste avgrensede trinn: 0.15.0
+
+Enkel og veksling tilbake til Commander er implementert først. Utforsker og
+Arbeidsbenk står fortsatt i planen. Privat kvalifisering dokumenteres separat.
+Se WORKSPACES-0.15.0.md for konkret oppførsel.

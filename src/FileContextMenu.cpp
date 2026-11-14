@@ -3,7 +3,7 @@
 #include "Common.h"
 #include <MenuItem.h>
 #include <PopUpMenu.h>
-uint32 ShowFileContextMenu(BPoint screen, bool single, bool directory, bool local) {
+uint32 ShowFileContextMenu(BPoint screen, bool single, bool directory, bool local, bool dual) {
   BPopUpMenu menu("File actions", false, false);
   auto add = [&](const char *label, uint32 action, bool enabled = true) {
     auto item = new BMenuItem(label, new BMessage(action));
@@ -19,8 +19,8 @@ uint32 ShowFileContextMenu(BPoint screen, bool single, bool directory, bool loca
   menu.AddSeparatorItem();
   add("Copy", kClipboardCopy, local);
   add("Cut", kClipboardCut, local);
-  add("Copy to other panel", kCopy);
-  add("Move to other panel", kMove, local);
+  add("Copy to other panel", kCopy, dual);
+  add("Move to other panel", kMove, local && dual);
   menu.AddSeparatorItem();
   add("Rename...", kRename, single && local);
   add("Duplicate...", kDuplicate, single && local);

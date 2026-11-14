@@ -185,8 +185,8 @@ void Pane::Activate() {
 }
 void Pane::SetSource(bool source) {
   active = source;
-  BString label(id == 0 ? "Left panel" : "Right panel");
-  if (source)
+  BString label(simple ? "Files" : id == 0 ? "Left panel" : "Right panel");
+  if (source && !simple)
     label << " (active)";
   role->SetText(label);
   role->SetHighUIColor(B_PANEL_TEXT_COLOR);
@@ -235,16 +235,22 @@ void Pane::ApplyFilter() {
   if (!scanning)
     SendSelection();
 }
+void Pane::SetSimple(bool value) {
+  simple = value;
+  prefs.simple = value;
+  const bool visible = prefs.paneTree[id] && !simple;
+  if (treeVisible != visible) {
+    treeVisible = visible;
+    if (visible) tree->Show(); else tree->Hide();
+  }
+  if (visible) tree->ShowPath(path.String());
+  display->Menu()->ItemAt(8)->SetMarked(treeVisible);
+  display->Menu()->ItemAt(8)->SetEnabled(!simple);
+  SetSource(active);
+}
 void Pane::Apply(const Preferences &p) {
   prefs = p;
-  if (treeVisible != p.paneTree[id]) {
-    treeVisible = p.paneTree[id];
-    if (treeVisible)
-      tree->Show();
-    else
-      tree->Hide();
-  }
-  display->Menu()->ItemAt(8)->SetMarked(treeVisible);
+  SetSimple(p.simple);
   tree->ShowPath(path.String());
   auto view = prefs.folderModes.find(path.String());
   SetDisplayMode(view == prefs.folderModes.end() ? prefs.paneMode[id]
@@ -452,6 +458,7 @@ void Pane::MessageReceived(BMessage *m) {
     Reload();
     break;
   case kToggleTree:
+    if (simple) break;
     tree->Reset();
     prefs.paneTree[id] = !prefs.paneTree[id];
     treeVisible = prefs.paneTree[id];

@@ -12,6 +12,7 @@
 #include <vector>
 constexpr const char *kSignature = "application/x-vnd.Kambuzi-Lister";
 enum : uint32 {
+  kWorkspace = 'wksp',
   kContextMenu = 'ctxm',
   kActivate = 'actv',
   kNavigate = 'navi',
@@ -87,6 +88,8 @@ struct Preferences {
   int32 paneMode[2] = {0, 0};
   bool paneTree[2] = {false, false};
   bool preview = false;
+  bool simple = false;
+  int32 singlePane = 0;
   std::map<std::string, int32> folderModes;
   BString editor = "/boot/system/apps/StyledEdit",
           terminal = "/boot/system/apps/Terminal";
