@@ -31,7 +31,7 @@
 constexpr uint32 kConfirm = 'cfir', kViewLoaded = 'vloa',
                  kServiceError = 'serr', kSavePreferences = 'save';
 static void Notice(const char *text) {
-  (new BAlert("Lister", text, "OK", nullptr, nullptr, B_WIDTH_AS_USUAL,
+  (new BAlert("Listi", text, "OK", nullptr, nullptr, B_WIDTH_AS_USUAL,
               B_WARNING_ALERT))
       ->Go(nullptr);
 }
@@ -113,7 +113,7 @@ public:
       script += mode == "command" ? std::string(m->GetString("command", "")) +
                                         "; exec /bin/bash"
                                   : "exec /bin/bash";
-      const char *args[] = {"-t", "Lister", "/bin/bash", "-c", script.c_str()};
+      const char *args[] = {"-t", "Listi", "/bin/bash", "-c", script.c_str()};
       s = be_roster->Launch(&ref, 5, args);
     } else {
       entry_ref ref;
@@ -358,7 +358,7 @@ class MainWindow : public BWindow {
 
 public:
   MainWindow(const Preferences &p, BMessenger svc)
-      : BWindow(BRect(70, 70, 1170, 710), "Lister 0.2.1", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.3.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), service(svc) {
     auto menu = new BMenuBar("menu");
@@ -388,7 +388,7 @@ public:
         new BMenuItem("None", new BMessage(kNone), 'A', B_SHIFT_KEY));
     select->AddItem(new BMenuItem("Invert", new BMessage(kInvert), 'I'));
     menu->AddItem(select);
-    auto view = new BMenu("Lister");
+    auto view = new BMenu("Listi");
     view->AddItem(
         new BMenuItem("Swap source / destination", new BMessage(kSwitch), 'S'));
     view->AddItem(new BMenuItem("Same folder in destination",

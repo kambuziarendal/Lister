@@ -1,11 +1,14 @@
 # Design and boundaries
 
-Lister is a working title. The owner will choose the final name; keep application
-signature, package identity and settings paths unchanged until that decision.
+Listi is the owner-selected name. The visible app, executable and Deskbar launcher
+use Listi. Keep the `lister` package identity, application signature, scripting
+suite and `Lister_settings` path for in-place upgrades and settings compatibility.
+Internal C++ namespaces and temporary-file prefixes remain stable. No repository
+rename or public release is part of this candidate.
 
 ## Product direction, 14 November 2026
 
-Lister is a native Haiku working environment for files. DOpus inspires freedom
+Listi is a native Haiku working environment for files. DOpus inspires freedom
 of action; contemporary workflows shape how it feels. Power must be discoverable,
 the target of each action visible, and safety supported by evidence.
 
@@ -38,7 +41,7 @@ filtering, keyboard/mouse parity and understandable operation progress.
   for identical features or a reason to weaken native UX.
 - Native icon identity: use Haiku/Tracker/MIME and per-file/application icons,
   respecting the user's selected system appearance wherever the public APIs
-  expose it. Do not ship a competing Lister icon theme or copy generated mockup
+  expose it. Do not ship a competing Listi icon theme or copy generated mockup
   icons. Existing file rows use `BNodeInfo::GetTrackerIcon`; future Places and
   action controls should reuse suitable native resources. Do not assume a
   universal icon-theme API exists; verify each integration on supported Haiku.

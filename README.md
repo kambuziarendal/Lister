@@ -1,8 +1,8 @@
-# Lister
+# Listi
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.2.1**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.3.0**. Published preview: **0.2.0**.
 
 Two independent resizable panels, editable paths and location menus, sortable
 name/size/date columns, multiselection, drag-copy, node monitoring, a command
@@ -29,7 +29,7 @@ regular file. A partially copied directory can remain.
 
 ## Narrow, select, act
 
-Each panel has a literal name filter. Use **Lister > Filter names** (Alt+F on
+Each panel has a literal name filter. Use **Listi > Filter names** (Alt+F on
 default Haiku), type part of a name, then Enter to return to the list. Escape in
 the field or Clear removes the filter. The status shows the visible/total count.
 Hidden entries are deselected and stay deselected when revealed again. Select All
@@ -39,9 +39,15 @@ is a local view filter, not recursive search or wildcard expansion.
 
 ## Install and build
 
-Download the HPKG from GitHub Releases, then:
+Install the privately supplied candidate in Haiku:
 
-    pkgman install ./Lister-0.2.0-1-x86_64.hpkg
+    pkgman install ./Listi-0.3.0-1-x86_64.hpkg
+
+Listi replaces Lister in Apps and Deskbar. The package identity (`lister`),
+application signature (`application/x-vnd.Kambuzi-Lister`), scripting suite and
+preferences (`~/config/settings/Lister_settings`) intentionally remain compatible.
+There is no settings migration or duplicate Lister launcher. Keep the old HPKG
+for application rollback; the GitHub repository name has not changed.
 
 Build the current native application **inside Haiku x86_64**. A future portable
 C core will have separate POSIX tests; it does not exist in this release.
@@ -53,8 +59,8 @@ C core will have separate POSIX tests; it does not exist in this release.
     make package
 
 `make` uses Haiku makefile-engine. The executable is in
-`src/objects.*-release/Lister`, not the project root. `make package` uses
-PackageInfo and produces `dist/Lister-0.2.1-1-x86_64.hpkg`. Retain previous
+`src/objects.*-release/Listi`, not the project root. `make package` uses
+PackageInfo and produces `dist/Listi-0.3.0-1-x86_64.hpkg`. Retain previous
 packages for rollback; reinstalling one does not restore or roll back files you
 have copied, moved or deleted.
 

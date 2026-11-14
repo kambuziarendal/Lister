@@ -1,4 +1,4 @@
-NAME = Lister
+NAME = Listi
 TYPE = APP
 SRCS = App.cpp Pane.cpp FileOperation.cpp Trash.cpp OperationQueue.cpp Preferences.cpp SelfTest.cpp
 LIBS = be columnlistview tracker $(STDCPPLIBS)

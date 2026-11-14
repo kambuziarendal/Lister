@@ -60,7 +60,7 @@ class PreferencesWindow : public BWindow {
 
 public:
   PreferencesWindow(BMessenger t, const Preferences &p)
-      : BWindow(BRect(0, 0, 550, 500), "Lister preferences", B_TITLED_WINDOW,
+      : BWindow(BRect(0, 0, 550, 500), "Listi preferences", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         target(t), prefs(p) {
     icons = new BCheckBox("Show file icons", nullptr);

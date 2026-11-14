@@ -1,4 +1,4 @@
-# Arbeidsplan for Lister
+# Arbeidsplan for Listi
 
 14. november 2026. Første mål er en god, særpreget filbehandler til daglig bruk.
 Vi leverer små, ferdige arbeidsflyter som samtidig peker mot den større visjonen.
@@ -6,7 +6,7 @@ Vi bygger videre på 0.2.0. Ingen stor omskriving er en forutsetning.
 
 Fast designkrav: bruk native Haiku-ikoner og brukerens systemoppsett der Haiku
 støtter det. Fil-, mappe- og programikoner hentes fra systemet, ikke fra et eget
-Lister-tema. Ikonene i konseptbildet er plassholdere, ikke en grafisk spesifikasjon.
+Listi-tema. Ikonene i konseptbildet er plassholdere, ikke en grafisk spesifikasjon.
 Snarveiene skal ligge nær fingrene: kommandotast pluss bokstav som hovedspor,
 ikke F-raden. Følg Haikus tastaturoppsett og bevar tekstfeltets vanlige snarveier.
 F-tastene kan beholdes som sekundære valg. Gjør bindingene konfigurerbare senere.
