@@ -46,6 +46,32 @@ filtering, keyboard/mouse parity and understandable operation progress.
   action controls should reuse suitable native resources. Do not assume a
   universal icon-theme API exists; verify each integration on supported Haiku.
 
+### Adaptable without configuration overload
+
+People work differently. Good defaults must make Listi useful before anyone opens
+preferences. Offer depth progressively, not as a mandatory setup exercise.
+
+- Put view mode, icon/thumbnail size, preview and folder-tree controls beside the
+  pane they affect. Left and right panes are independently configurable.
+- Offer explicit "Remember for this folder" and "Use defaults again" at that
+  same point. Distinguish a temporary view choice from a saved folder override.
+- Use a predictable precedence: application defaults, saved workspace when
+  explicitly loaded, folder-specific override, then current session choice.
+  This describes intended behavior, not an implemented workspace/config schema.
+- Keep shared preferences small and grouped by user task. Avoid duplicating
+  controls with different meanings in several menus. Advanced options are
+  reachable without dominating normal use. Changes should be visible immediately
+  where practical, reversible, and never silently reset unrelated customizations.
+- Queue named workspaces such as Laptop and Large screen for later. Do not infer
+  an automatic layout switch from plugging in a monitor. Preserve deliberate
+  choices, and offer a simple reset of the current view without wiping everything.
+- Evaluate with two acceptance flows: a new user can navigate/copy without setup;
+  an experienced user can customize one pane and remember a photo-folder view
+  without searching a global settings catalog. Both mouse and keyboard work.
+
+This is a design constraint for each increment, not a request for a generic
+settings framework or a large configuration subsystem now.
+
 ### First workflow increment: narrow, select, act
 
 Each pane has a literal name filter, a visible Clear button and a filtered count.

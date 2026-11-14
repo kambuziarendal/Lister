@@ -4,6 +4,50 @@
 Vi leverer små, ferdige arbeidsflyter som samtidig peker mot den større visjonen.
 Vi bygger videre på 0.2.0. Ingen stor omskriving er en forutsetning.
 
+## Arbeidsform og publiseringsgrense, oppdatert 14. november
+
+Det haster ikke. Nye ønsker legges i kø, ikke automatisk inn i pågående kodearbeid.
+Vi fullfører én avgrenset, gjennomgått og testet arbeidsflyt om gangen. En samlet
+intern kandidat kan inneholde flere slike trinn; den skal ikke bygges som én stor,
+uverifisert endring. Rene modulgrenser og forståelig kode er ferdigkrav.
+
+**Listi holdes intern.** Ingen nye offentlige utgivelser, offentlige kandidatfiler
+eller publisering av kandidatgrenen. Tidligere offentlig Lister-historikk endres
+ikke uten egen avklaring. Intern betatesting og privat pakkeleveranse kan fortsette.
+
+Målet før offentlig lansering er minst Dolphins funksjonsdekning, med bedre
+respons og vesentlig lavere ressursbruk. Dette er et mål, ikke en dokumentert
+egenskap ved kandidaten. Før lansering må vi lage en sporbar funksjonsmatrise mot
+en navngitt Dolphin-versjon, inkludert relevante tillegg og protokoller. Hvert
+punkt trenger faktisk brukerflyt og kjent teststatus. Native Haiku-løsninger kan
+oppfylle samme behov uten å kopiere KDEs implementasjon.
+
+Ytelse må måles med dokumentert maskinvare, datasett og varm/kald cache:
+oppstart, store mapper, søk/filtrering, thumbnails, nettverk og filoperasjoner.
+Registrer ventetid, CPU, minne og disk-I/O, også tomgang og avbrudd. Sammenligning
+på forskjellige operativsystemer må beskrive forskjellene. Vi lover ingen bestemt
+ressursbrøk før målingene finnes. Tracker-erstatning er en senere, separat etappe.
+
+### Aktivt trinn og kø
+
+1. **Aktivt: filoperasjonenes sikkerhet og modulgrenser.** Gjennomgå dispatch,
+   konflikter, avbrudd, kildeendringer og ferdigmarkering. Test uten å avhenge av UI.
+2. Arkiv- og nettverkspaneler: fullfør SMB, arkiver, SFTP/FTP og tydelige
+   feil/kapabiliteter. Eksisterende kode er en kandidat, ikke ferdig funksjonsdekning.
+3. Panelvisninger: detaljer, ikoner og thumbnails, valgfri bildevisning,
+   mappevalg og uavhengige mappetrær. Test fokus, utvalg og kompakt laptopoppsett.
+4. Intern operasjonsvisning: status, konflikter, per-fil fremdrift og avbrudd.
+   Grønt betyr bekreftet ferdig, ikke bare at data er lest eller sendt.
+5. Samlet intern kandidat: installasjon, bevart konfigurasjon og brukerflyt på Haiku.
+6. Kartlegg Dolphin-funksjoner og prioriter neste konkrete bruksbehov fra matrisen.
+
+Tilpasning skal følge prinsippet i DESIGN.md: gode standardvalg, lokale
+panelkontroller, eksplisitte mappevalg og en enkel vei tilbake. Lagrede
+arbeidsoppsett som «Laptop» og «Stor skjerm» ligger i kø, ikke i aktivt trinn.
+
+Påbegynt UI-kode i punkt 3 og 4 beholdes, men utvides ikke mens punkt 1 sikres.
+Ingen av disse punktene er automatisk autorisasjon til offentlig publisering.
+
 Fast designkrav: bruk native Haiku-ikoner og brukerens systemoppsett der Haiku
 støtter det. Fil-, mappe- og programikoner hentes fra systemet, ikke fra et eget
 Listi-tema. Ikonene i konseptbildet er plassholdere, ikke en grafisk spesifikasjon.
@@ -38,6 +82,11 @@ Bevar innstillinger og sikre filoperasjoner. Skill testet kandidat fra publiseri
 ## Neste små leveranser: faktisk daglig filarbeid
 
 Prioritet endret etter Arnes bruk av 0.3.0, 14. november:
+Lever SMB, SFTP, FTP, arkivnavigasjon og vindussnarveier samlet i én versjon.
+Arkiver som mapper er et umiddelbart kjernekrav, og bygges tidlig sammen med
+nettverksgrunnlaget. Ingen separat offentlig SMB-delleveranse. Egne Source- og
+Destination-knapper fjernes: aktivt panel er kilde, motsatt panel er mål.
+Mål og utvalg fryses ved jobbstart og endres ikke når fokus eller navigasjon endres.
 
 1. **SMB/Samba først.** Åpne en nettverksdeling i et panel, naviger og kopier
    filer begge veier mot det lokale panelet. Tydelig tilkoblingsstatus,
@@ -56,9 +105,10 @@ Prioritet endret etter Arnes bruk av 0.3.0, 14. november:
    Listi; kommandotast+W, Escape for dialoger, kommandotast+Q for appen.
    Avklar hovedvinduets livssyklus, bevar jobber og vis alltid aktivt fokus.
 
-Forhåndsvisning, kommandopalett, batch-navneendring og større arbeidsoppsett
-kommer etter disse konkrete bruksfunksjonene. Ingen kosmetisk milepæl skal
-fortrenge filarbeidet Arne trenger i hverdagen.
+Forhåndsvisning, thumbnails, mappevalg og mappetrær inngår i den interne køen
+ovenfor. Kommandopalett, batch-navneendring og større arbeidsoppsett prioriteres
+etter sikre grunnoperasjoner. Ingen kosmetisk milepæl skal fortrenge filarbeidet
+Arne trenger i hverdagen.
 
 ## Senere visjoner som første etappe skal tåle
 
