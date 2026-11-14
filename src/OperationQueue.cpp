@@ -138,7 +138,8 @@ public:
     history->SetLowUIColor(B_DOCUMENT_BACKGROUND_COLOR);
     history->SetHighUIColor(B_DOCUMENT_TEXT_COLOR);
     auto scroll = new BScrollView("history-scroll", history, 0, false, true);
-    scroll->SetExplicitMinSize(BSize(440, 65));
+    scroll->SetExplicitMinSize(BSize(440, 55));
+    scroll->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 55));
     details = new BGroupView(B_VERTICAL, 5);
     BLayoutBuilder::Group<>(details, B_VERTICAL, 5).Add(choices).Add(scroll);
     details->Hide();
@@ -195,6 +196,8 @@ public:
       Expand(true);
       history->Insert(m->GetString("error", ""));
       history->Insert("\n");
+      if (history->TextLength() > 65536)
+        history->Delete(0, history->TextLength() - 65536);
       history->Select(history->TextLength(), history->TextLength());
       history->ScrollToSelection();
       break;
@@ -262,6 +265,8 @@ public:
         history->Insert(error);
         history->Insert("\n");
       }
+      if (history->TextLength() > 65536)
+        history->Delete(0, history->TextLength() - 65536);
       history->Select(history->TextLength(), history->TextLength());
       history->ScrollToSelection();
       if (m->GetBool("idle", false)) {

@@ -2,6 +2,8 @@
 set -eu
 [ "$(uname -s)" = Haiku ] || { echo 'Build and package inside Haiku.' >&2; exit 1; }
 version=${1:?version required}
+metadata_version=$(awk '$1 == "version" { print $2 }' PackageInfo)
+[ "$metadata_version" = "$version-1" ] || { echo 'Package version mismatch.' >&2; exit 1; }
 set -- src/objects.*-release/Listi
 [ "$#" = 1 ] && [ -x "$1" ] || { echo 'Expected one linked release binary.' >&2; exit 1; }
 mkdir -p build dist

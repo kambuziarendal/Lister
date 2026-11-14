@@ -18,6 +18,7 @@ public:
   void ShowPath(const std::string &);
   void NavigateSelection(const std::string &);
   void ExpandPath(const std::string &);
+  void Reset();
 
 private:
   TreeList *list;

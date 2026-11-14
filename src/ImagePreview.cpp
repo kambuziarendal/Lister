@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "ImagePreview.h"
+#include "BitmapMailbox.h"
 #include "VirtualFile.h"
 #include <Bitmap.h>
 #include <DataIO.h>
@@ -22,6 +23,11 @@ class BoundedBitmap : public BMallocIO {
 
 public:
   explicit BoundedBitmap(const Lister::TransferControl &c) : control(c) {}
+  status_t SetSize(off_t size) override {
+    if (size < 0 || size > 64 * 1024 * 1024)
+      return B_NO_MEMORY;
+    return BMallocIO::SetSize(size);
+  }
   ssize_t WriteAt(off_t position, const void *data, size_t size) override {
     try {
       control.Check();
@@ -37,11 +43,13 @@ public:
 };
 class Loader : public BLooper {
   BMessenger target;
+  std::shared_ptr<BitmapMailbox> replies;
   std::shared_ptr<std::atomic<int64>> generation;
 
 public:
-  Loader(BMessenger t, std::shared_ptr<std::atomic<int64>> g)
-      : BLooper("image preview reader"), target(t), generation(g) {}
+  Loader(BMessenger t, std::shared_ptr<std::atomic<int64>> g,
+         std::shared_ptr<BitmapMailbox> r)
+      : BLooper("image preview reader"), target(t), replies(r), generation(g) {}
   void MessageReceived(BMessage *m) override {
     if (m->what != kLoad) {
       BLooper::MessageReceived(m);
@@ -70,9 +78,10 @@ public:
     }
     if (!temporary.empty())
       unlink(temporary.c_str());
-    result.AddPointer("bitmap", image);
+    auto reply = replies->Put(image);
+    result.AddInt64("bitmap", reply);
     if (target.SendMessage(&result, (BHandler *)nullptr, 500000) != B_OK)
-      delete image;
+      replies->Take(reply);
   }
 };
 } // namespace
@@ -173,11 +182,12 @@ BBitmap *LoadPreviewBitmap(const std::string &source,
 ImagePreview::ImagePreview()
     : BView("image preview", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE |
                                  B_FRAME_EVENTS | B_SUPPORTS_LAYOUT),
+      replies(std::make_shared<BitmapMailbox>(1)),
       generation(std::make_shared<std::atomic<int64>>(0)) {
   SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
   SetLowUIColor(B_DOCUMENT_BACKGROUND_COLOR);
   SetHighUIColor(B_DOCUMENT_TEXT_COLOR);
-  SetExplicitMinSize(BSize(200, 180));
+  SetExplicitMinSize(BSize(160, 96));
   SetExplicitPreferredSize(BSize(280, 400));
 }
 ImagePreview::~ImagePreview() {
@@ -187,7 +197,7 @@ ImagePreview::~ImagePreview() {
   delete bitmap;
 }
 void ImagePreview::AttachedToWindow() {
-  loader = new Loader(BMessenger(this), generation);
+  loader = new Loader(BMessenger(this), generation, replies);
   loader->Run();
 }
 void ImagePreview::ShowFile(const std::string &p) {
@@ -195,6 +205,7 @@ void ImagePreview::ShowFile(const std::string &p) {
     return;
   path = p;
   int64 serial = ++*generation;
+  replies->Clear();
   delete bitmap;
   bitmap = nullptr;
   caption = p.empty() ? "Select an image to preview" : "Loading image...";
@@ -208,10 +219,8 @@ void ImagePreview::ShowFile(const std::string &p) {
 }
 void ImagePreview::MessageReceived(BMessage *m) {
   if (m->what == kReady) {
-    BBitmap *image = nullptr;
-    void *ptr = nullptr;
-    if (m->FindPointer("bitmap", &ptr) == B_OK)
-      image = static_cast<BBitmap *>(ptr);
+    auto owned = replies->Take(m->GetInt64("bitmap", -1));
+    BBitmap *image = owned.release();
     if (m->GetInt64("serial", -1) != generation->load()) {
       delete image;
       return;

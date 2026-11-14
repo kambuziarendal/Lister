@@ -1,8 +1,45 @@
 # Internal development checkpoint, 14 November 2026
 
-Not a release or installed-package qualification. Development work remains local
-on `work/smb-first`; publication is prohibited by the current roadmap. The UI says
-0.4.0, but package metadata has not yet been advanced from 0.3.0.
+Private 0.4.0 candidate. Development remains local on `work/smb-first`;
+no public branch push, release or Depot publication is authorized. Package and
+UI versions agree. Installed-package acceptance is recorded separately from the
+development checks below, with the exact artifact in the private test receipt.
+
+## UI/package continuation
+
+Final development executable SHA256:
+`4b0f72581d6e333987532b3b91529248bd212825540b8654747e243a69f13a4f`.
+The previous control build passed 55 local, 96 archive/network, 9 fault and
+6 native preview checks. The only executable change since that control build
+refreshes uncached folder-tree routes; package acceptance reruns the native suites.
+
+- Open questions replace the redundant action-button bank temporarily. Compact
+  panel minima, bounded operation history height and a two-row advanced form keep
+  conflict controls and connection fields available at 1024x650 with the default
+  font. Both trees and preview are supported at that size. Larger fonts can need
+  a larger window. Closing the prompt restores the user's button preference.
+- Both trees navigate independently; keyboard navigation and Tab are checked.
+  Folder overrides survive restart; Use default removes the override. Newly
+  created uncached directories rebuild the route instead of retaining a stale
+  tree selection. Toggle a tree off/on to refresh its loaded branches.
+- Preview/thumbnail replies use bounded shared ownership, not owning pointers in
+  messages that may be dropped during shutdown. Native cancellation during decode
+  and 12 rapid UI navigation cycles were exercised with a synthetic PNG.
+- Bounds: 256 cached thumbnails per pane, 64 outstanding thumbnail requests/replies,
+  one preview reply, 64 MiB decoded bitmap stream, 32 MiB remote preview download,
+  20,000 cached tree nodes, 10,000 folders per branch, 4,096 folder overrides and
+  64 KiB operation history. Bounds are not a whole-process memory guarantee.
+- Single-file gzip/bzip2/xz tests found libarchive's mtree guessing ordinary text.
+  Explicit standalone compression now uses raw format; `.tar.*` containers retain
+  archive detection. Nine single-file checks and three explicit-directory/mode/
+  timestamp checks pass, including stripping setuid and retaining existing
+  destination-directory permissions. Other libarchive formats remain unqualified.
+- Package requirements include libarchive, libcurl and libsmbclient. The build
+  script rejects mismatched package filename and PackageInfo versions.
+
+Private continuation evidence: `reports/listi-ui-package-20261114/` under the
+Kambuzi workspace. Test fixture credentials are synthetic. No physical hardware,
+external NAS, FTPS, long-duration soak or Dolphin performance comparison is claimed.
 
 ## Verified checkpoint
 
@@ -105,23 +142,18 @@ Private evidence: `reports/listi-network-20261114/safety-local-test.log`,
 `safety-virtual-test.log`, `inline-connect-checkpoint.png` under Kambuzi's local
 workspace. Synthetic fixture credentials only. No real NAS account was used.
 
-## Next review gates, not completed work
+## Qualification and remaining product work
 
-1. The module split and bounded cancellation/conflict/metadata increment above is
-   verified. Retain the platform limits: remote stat is not a snapshot, remote
-   rename is not universally atomic no-replace, and local path-based replacement
-   checks do not lock out changes to parent directories or the final stat/rename
-   interval. Qualify supported server/filesystem behavior before broader claims.
-2. Complete tree navigation on both sides, folder-view preference round trips,
-   preview cancellation and broader focus checks. Recheck simultaneous expanded
-   details/conflicts/advanced connection options at laptop size in both palettes.
-   Native window minimum-size growth can extend beyond the VM screen after
-   combined prompts/details; ordinary resized compact views pass, but this
-   expanded-state layout remains an open gate. Review idle CPU and bounded caches.
-3. Test single-file compression and additional metadata/format cases; the four
-   tested container formats do not qualify every libarchive format.
-4. Installed-package and upgrade verification only after the above, then a private
-   ZIP candidate. Do not push this work to a public branch or publish a release.
+The safety/module increment and UI/format continuation are internal beta work.
+Installation and rollback must use the retained private 0.3.0 package, preserve
+`~/config/settings/Lister_settings`, compare installed/build executable hashes,
+and rerun the native checks. Do not restore a filesystem snapshot to roll back an
+application. Exact results and private ZIP identity belong in the acceptance
+receipt; a successful development run alone is not installed-package acceptance.
+
+Public launch still needs the named-version Dolphin feature matrix, representative
+performance datasets and broader protocol/filesystem qualification in ROADMAP.md.
+The limitations below remain intentional and visible.
 
 ## Current capability limits
 

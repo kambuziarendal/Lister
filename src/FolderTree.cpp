@@ -100,7 +100,7 @@ FolderTree::FolderTree()
   list = new TreeList(this);
   auto scroll = new BScrollView("folder tree scroll", list, 0, true, true);
   BLayoutBuilder::Group<>(this, B_VERTICAL, 0).Add(scroll);
-  SetExplicitMinSize(BSize(130, 180));
+  SetExplicitMinSize(BSize(110, 96));
   SetExplicitPreferredSize(BSize(170, 300));
 }
 FolderTree::~FolderTree() {
@@ -136,7 +136,10 @@ void FolderTree::ShowPath(const std::string &path) {
     location.path = "/";
     std::string newRoot = location.URL();
     desired = path;
-    if (root != newRoot) {
+    // A directory created since this tree was loaded may be absent even when
+    // its ancestor is cached. Rebuild that route instead of keeping an unrelated
+    // selection; clicks on already loaded nodes keep the expanded tree intact.
+    if (root != newRoot || !items.count(path)) {
       ++*generation;
       Clear();
       root = newRoot;
@@ -155,6 +158,12 @@ void FolderTree::ShowPath(const std::string &path) {
     Follow();
   } catch (const std::exception &) {
   }
+}
+void FolderTree::Reset() {
+  ++*generation;
+  Clear();
+  root.clear();
+  desired.clear();
 }
 void FolderTree::ExpandPath(const std::string &path) {
   auto found = items.find(path);
@@ -200,6 +209,15 @@ void FolderTree::MessageReceived(BMessage *m) {
   }
   if (m->HasString("error")) {
     auto error = new BStringItem(m->GetString("error", "Cannot read folder"));
+    error->SetEnabled(false);
+    list->AddUnder(error, parent);
+    return;
+  }
+  int32 count = 0;
+  type_code type;
+  m->GetInfo("child", &type, &count);
+  if (items.size() + count > 20000) {
+    auto error = new BStringItem("Tree limit reached. Reopen the tree to reset.");
     error->SetEnabled(false);
     list->AddUnder(error, parent);
     return;

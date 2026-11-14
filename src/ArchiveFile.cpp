@@ -41,7 +41,21 @@ struct Reader {
     }
     try {
       LIBCALL(lib, archive_read_support_filter_all)(handle);
-      LIBCALL(lib, archive_read_support_format_all)(handle);
+      // Compressed single files must not be guessed as mtree (ordinary text
+      // can look like an mtree manifest). Explicit tar containers still use
+      // format detection; standalone compression exposes one decoded file.
+      std::string lower = path;
+      std::transform(lower.begin(), lower.end(), lower.begin(),
+                     [](unsigned char ch) { return std::tolower(ch); });
+      auto dot = lower.find_last_of('.');
+      auto extension = dot == std::string::npos ? "" : lower.substr(dot);
+      auto stem = dot == std::string::npos ? lower : lower.substr(0, dot);
+      bool compressed = extension == ".gz" || extension == ".bz2" ||
+                        extension == ".xz" || extension == ".zst" ||
+                        extension == ".lz";
+      bool tar = stem.size() >= 4 && stem.substr(stem.size() - 4) == ".tar";
+      if (!compressed || tar)
+        LIBCALL(lib, archive_read_support_format_all)(handle);
       LIBCALL(lib, archive_read_support_format_raw)(handle);
       int result = LIBCALL(lib, archive_read_open)(handle, this, nullptr, &Read,
                                                    nullptr);

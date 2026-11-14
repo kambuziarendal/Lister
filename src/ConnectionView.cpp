@@ -37,8 +37,10 @@ public:
                              nullptr);
     advanced = new BGroupView(B_VERTICAL, 4);
     BLayoutBuilder::Group<>(advanced, B_VERTICAL, 4)
+        .AddGroup(B_HORIZONTAL, 12)
         .Add(domain)
         .Add(key)
+        .End()
         .Add(hosts);
     advanced->Hide();
     error = new BStringView("network hint",

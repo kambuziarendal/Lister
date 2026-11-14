@@ -88,7 +88,7 @@ Pane::Pane(int32 number, const Preferences &p)
       new BButton("clear filter", "Clear", new BMessage(kClearFilter));
   clearFilter->SetEnabled(false);
   list = CreateFileDetails(this, &entries, p);
-  list->SetExplicitMinSize(BSize(260, 180));
+  list->SetExplicitMinSize(BSize(220, 96));
   grid = CreateFileGrid(this, &entries);
   auto gridScroll = new BScrollView("icons scroll", grid, 0, false, true);
   cards = new BCardView("panel views");
@@ -360,6 +360,7 @@ void Pane::MessageReceived(BMessage *m) {
     Reload();
     break;
   case kToggleTree:
+    tree->Reset();
     prefs.paneTree[id] = !prefs.paneTree[id];
     treeVisible = prefs.paneTree[id];
     if (treeVisible)

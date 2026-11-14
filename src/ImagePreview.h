@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 class BBitmap;
+class BitmapMailbox;
 class BLooper;
 class ImagePreview : public BView {
 public:
@@ -18,6 +19,7 @@ public:
 
 private:
   BBitmap *bitmap = nullptr;
+  std::shared_ptr<BitmapMailbox> replies;
   BLooper *loader = nullptr;
   std::shared_ptr<std::atomic<int64>> generation;
   std::string path, caption = "Select an image to preview";

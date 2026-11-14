@@ -1,3 +1,25 @@
+# Internal 0.4.0 continuation
+
+See [INTERNAL-CANDIDATE.md](INTERNAL-CANDIDATE.md) for the current source-built
+candidate and [ROADMAP.md](ROADMAP.md) for the publication boundary. Generate the
+additional native archive fixtures with:
+
+```
+python3 tests/extra-archive-fixtures.py /boot/home/listi-fixtures/archives
+```
+
+`tests/native-preview.cpp` links the candidate's ImagePreview, VirtualFile,
+ArchiveFile and NetworkFile objects with `-lbe -ltranslation`. Pass a synthetic
+320x240 PNG; it checks decode, scaling, reply ownership and cancellation. These
+are native tests, not Linux stand-ins. Operation fault checks below retain their
+separate deterministic adapter.
+
+A 50-query, ten-second idle native window probe after UI navigation measured
+0.155% of one CPU core, p95 579 microseconds and maximum 733 microseconds, no
+failed replies and 11 threads in the two-vCPU QEMU guest. Allocated area size was
+160,288,768 bytes, not resident memory or heap use. This is a short local sample,
+not a hardware/Dolphin comparison, memory-leak proof or sustained benchmark.
+
 # Internal safety/module continuation, 14 November 2026
 
 The latest internal build and open gates are recorded in

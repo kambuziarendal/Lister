@@ -318,10 +318,13 @@ class MainWindow : public BWindow {
   InlineAction *actionArea;
   void CloseAction() {
     actionArea->Close();
+    ShowBank(prefs.buttons);
     panes[source]->FocusList();
   }
   void AskInline(const char *text, const char *button, const BMessage &result,
                  const char *initial = nullptr) {
+    if (!actionArea->Pending())
+      ShowBank(false);
     if (!actionArea->Ask(text, button, result, initial))
       queue->ErrorInfo("Finish or cancel the open question first.");
   }
@@ -331,6 +334,15 @@ class MainWindow : public BWindow {
   BTextControl *command;
   BMessenger service;
   bool bankVisible = true, commandVisible = true;
+  void ShowBank(bool visible) {
+    if (bankVisible == visible)
+      return;
+    bankVisible = visible;
+    if (visible)
+      bank->Show();
+    else
+      bank->Hide();
+  }
   void Apply() {
     if (prefs.preview != previewVisible) {
       previewVisible = prefs.preview;
@@ -345,13 +357,7 @@ class MainWindow : public BWindow {
       p->Apply(prefs);
       p->Reload();
     }
-    if (prefs.buttons != bankVisible) {
-      bankVisible = prefs.buttons;
-      if (prefs.buttons)
-        bank->Show();
-      else
-        bank->Hide();
-    }
+    ShowBank(prefs.buttons && !actionArea->Pending());
     if (prefs.command != commandVisible) {
       commandVisible = prefs.command;
       if (prefs.command)
@@ -672,6 +678,7 @@ public:
                 BMessage(kInlineCancel));
       break;
     case kInlineClosed:
+      ShowBank(prefs.buttons && !actionArea->Pending());
       if (!actionArea->Pending())
         panes[source]->FocusList();
       break;
@@ -843,6 +850,8 @@ public:
       break;
     }
     case kNetwork:
+      if (!actionArea->Pending())
+        ShowBank(false);
       if (!actionArea->Connect(BMessenger(panes[source])))
         queue->ErrorInfo("Finish or cancel the open question first.");
       break;

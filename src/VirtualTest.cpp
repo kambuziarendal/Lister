@@ -96,6 +96,44 @@ int VirtualTest(const std::string &fixtures, const std::string &hosts) {
     } catch (const std::exception &e) {
       check(false, std::string(name) + ": " + e.what());
     }
+  for (auto name : {"single.txt.gz", "single.txt.bz2", "single.txt.xz"}) {
+    try {
+      auto archive = OpenArchive(ChildLocation(fixtures, name));
+      auto entries = ListFiles(archive);
+      check(entries.size() == 1 && entries[0].name == "single.txt",
+            std::string(name) + " single-file name");
+      auto entry = ChildLocation(archive, "single.txt");
+      check(contents(entry) == "single content\n",
+            std::string(name) + " single-file read");
+      auto copied = Run({Action::Copy, {entry}, root}, hooks);
+      check(copied.errors.empty() && copied.completed == 1 &&
+                contents(ChildLocation(root, "single.txt")) == "single content\n",
+            std::string(name) + " single-file extraction");
+    } catch (const std::exception &e) {
+      check(false, std::string(name) + ": " + e.what());
+    }
+  }
+  try {
+    auto archive = OpenArchive(ChildLocation(fixtures, "metadata.tar"));
+    auto directory = ChildLocation(archive, "explicit");
+    auto copied = Run({Action::Copy, {directory}, root}, hooks);
+    FileEntry folder, file;
+    check(copied.errors.empty() && copied.completed == 1 &&
+              StatFile(ChildLocation(root, "explicit"), folder) &&
+              folder.permissions == 0750 && folder.modified == 1600000000,
+          "explicit archive directory mode and time preserved");
+    check(StatFile(ChildLocation(ChildLocation(root, "explicit"), "run.sh"), file) &&
+              file.permissions == 0751 && file.modified == 1600000020,
+          "archive executable mode preserved without setuid");
+    chmod(ChildLocation(root, "explicit").c_str(), 0700);
+    copied = Run({Action::Copy, {directory}, root}, hooks);
+    check(copied.errors.empty() &&
+              StatFile(ChildLocation(root, "explicit"), folder) &&
+              folder.permissions == 0700,
+          "existing extraction directory permissions retained");
+  } catch (const std::exception &e) {
+    check(false, std::string("metadata archive: ") + e.what());
+  }
   check(OpenArchive(local).empty(), "ordinary text is not an archive");
   check(rejects([&] {
           ListFiles(OpenArchive(ChildLocation(fixtures, "unsafe.zip")));

@@ -1,20 +1,23 @@
 name lister
-version 0.3.0-1
+version 0.4.0-1
 architecture x86_64
 summary "Listi: a native source/destination file commander"
-description "Two resizable file panels, background copy/move/delete queue, conflict handling, keyboard commands and system-theme-aware preferences. Native daily-file-manager candidate. Inspired by Directory Opus 5 workflows; independently implemented with Haiku BeAPI."
+description "Two resizable panels with folder trees, icons and previews, local archive browsing, SMB/SFTP/FTP connections, background file operations and inline conflict handling. Private native file-manager candidate. Inspired by Directory Opus 5 workflows; independently implemented with Haiku BeAPI."
 packager "Kambuzi EDB"
 vendor "Kambuzi EDB"
 copyrights { "2026 Kambuzi EDB" }
 licenses { "MIT" }
 provides {
- lister = 0.3.0
- app:listi = 0.3.0
- app:lister = 0.3.0
+ lister = 0.4.0
+ app:listi = 0.4.0
+ app:lister = 0.4.0
 }
 requires {
  haiku >= r1~beta6
  lib:libstdc++
  lib:libgcc_s
+ lib:libarchive
+ lib:libcurl
+ lib:libsmbclient
 }
 urls { "https://github.com/kambuziarendal/Lister" }

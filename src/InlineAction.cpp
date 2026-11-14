@@ -43,7 +43,7 @@ bool InlineAction::Ask(const char *text, const char *button,
   explanation->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
   explanation->SetLowUIColor(B_PANEL_BACKGROUND_COLOR);
   explanation->SetHighUIColor(B_PANEL_TEXT_COLOR);
-  explanation->SetExplicitMinSize(BSize(300, 55));
+  explanation->SetExplicitMinSize(BSize(300, 35));
   explanation->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 75));
   AddChild(explanation);
   if (initial) {

@@ -3,6 +3,7 @@
 #include "Pane.h"
 #include "PaneModel.h"
 #include "ImagePreview.h"
+#include "BitmapMailbox.h"
 #include "VirtualFile.h"
 #include <Bitmap.h>
 #include <Entry.h>
@@ -14,11 +15,13 @@ namespace {
 constexpr uint32 kThumbnail = 'thum', kThumbnailReady = 'thrd';
 class ThumbnailLoader : public BLooper {
   BMessenger target;
+  std::shared_ptr<BitmapMailbox> replies;
   std::shared_ptr<std::atomic<int64>> generation;
 
 public:
-  ThumbnailLoader(BMessenger t, std::shared_ptr<std::atomic<int64>> g)
-      : BLooper("thumbnail reader"), target(t), generation(g) {}
+  ThumbnailLoader(BMessenger t, std::shared_ptr<std::atomic<int64>> g,
+                  std::shared_ptr<BitmapMailbox> r)
+      : BLooper("thumbnail reader"), target(t), replies(r), generation(g) {}
   void MessageReceived(BMessage *m) override {
     if (m->what != kThumbnail) {
       BLooper::MessageReceived(m);
@@ -38,9 +41,10 @@ public:
     BMessage done(kThumbnailReady);
     done.AddString("path", m->GetString("path", ""));
     done.AddInt64("serial", serial);
-    done.AddPointer("bitmap", bitmap);
+    auto reply = replies->Put(bitmap);
+    done.AddInt64("bitmap", reply);
     if (target.SendMessage(&done, (BHandler *)nullptr, 500000) != B_OK)
-      delete bitmap;
+      replies->Take(reply);
   }
 };
 } // namespace
@@ -50,6 +54,7 @@ class GridView : public FileGrid {
   int mode = 1;
   float cellWidth = 112, cellHeight = 100;
   BLooper *loader = nullptr;
+  std::shared_ptr<BitmapMailbox> replies = std::make_shared<BitmapMailbox>(64);
   std::shared_ptr<std::atomic<int64>> generation;
   std::map<std::string, std::unique_ptr<BBitmap>> thumbnails;
   std::set<std::string> pending;
@@ -94,7 +99,7 @@ public:
       loader->PostMessage(B_QUIT_REQUESTED);
   }
   void AttachedToWindow() override {
-    loader = new ThumbnailLoader(BMessenger(this), generation);
+    loader = new ThumbnailLoader(BMessenger(this), generation, replies);
     loader->Run();
     Update();
   }
@@ -102,6 +107,7 @@ public:
     pressedIndex = -1;
     dragging = deferredPick = false;
     ++*generation;
+    replies->Clear();
     pending.clear();
     thumbnails.clear();
     ScrollTo(0, 0);
@@ -241,9 +247,8 @@ public:
   }
   void MessageReceived(BMessage *m) override {
     if (m->what == kThumbnailReady) {
-      void *p = nullptr;
-      m->FindPointer("bitmap", &p);
-      auto bitmap = static_cast<BBitmap *>(p);
+      auto owned = replies->Take(m->GetInt64("bitmap", -1));
+      auto bitmap = owned.release();
       if (m->GetInt64("serial", -1) != generation->load()) {
         delete bitmap;
         return;
