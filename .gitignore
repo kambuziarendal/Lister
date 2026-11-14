@@ -1,0 +1,4 @@
+src/objects.*
+dist/
+build/
+*.log
