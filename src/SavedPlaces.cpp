@@ -1,19 +1,11 @@
 // SPDX-License-Identifier: MIT
 #include "SavedPlaces.h"
+#include "MessageStore.h"
 #include "VirtualFile.h"
-#include <DataIO.h>
 #include <algorithm>
-#include <cerrno>
-#include <cstring>
-#include <cstdio>
-#include <cstdlib>
-#include <fcntl.h>
 #include <stdexcept>
-#include <sys/stat.h>
-#include <unistd.h>
 namespace Lister {
 namespace {
-constexpr size_t MaxFile = 1024 * 1024;
 std::string Address(const std::string &path) {
   if (path.empty() || path.size() > 8192 || path.find('\0') != std::string::npos)
     throw std::runtime_error("Invalid saved address.");
@@ -23,7 +15,6 @@ std::string Address(const std::string &path) {
     throw std::runtime_error("Saved places require an absolute address.");
   return path;
 }
-void Fail() { throw std::runtime_error(strerror(errno)); }
 }
 const SavedPlace *SavedPlaces::Find(const std::string &path) const {
   for (auto &item : items)
@@ -88,54 +79,13 @@ SavedPlaces SavedPlaces::FromMessage(const BMessage &m) {
   return result;
 }
 SavedPlaces SavedPlaces::Load(const std::string &file) {
-  int fd = open(file.c_str(), O_RDONLY);
-  if (fd < 0) { if (errno == ENOENT) return {}; Fail(); }
-  struct stat st;
-  if (fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_size <= 0 || st.st_size > off_t(MaxFile)) {
-    close(fd); throw std::runtime_error("Invalid saved-places file.");
-  }
-  std::vector<char> bytes(st.st_size);
-  size_t at = 0;
-  while (at < bytes.size()) {
-    ssize_t n = read(fd, bytes.data() + at, bytes.size() - at);
-    if (n < 0 && errno == EINTR) continue;
-    if (n <= 0) { close(fd); throw std::runtime_error("Could not read saved places."); }
-    at += n;
-  }
-  close(fd);
-  BMemoryIO input(bytes.data(), bytes.size()); BMessage message;
-  if (message.Unflatten(&input) != B_OK)
-    throw std::runtime_error("Could not decode saved places.");
+  auto message = LoadMessageStore(file);
+  if (message.what == 'none') return {};
   return FromMessage(message);
 }
 void SavedPlaces::Save(const std::string &file) const {
   auto message = Message();
   FromMessage(message);
-  ssize_t size = message.FlattenedSize();
-  if (size <= 0 || size > ssize_t(MaxFile)) throw std::runtime_error("Saved places are too large.");
-  std::vector<char> bytes(size);
-  if (message.Flatten(bytes.data(), size) != B_OK) throw std::runtime_error("Could not encode saved places.");
-  std::string pattern = file + ".tmp.XXXXXX";
-  std::vector<char> temp(pattern.begin(), pattern.end()); temp.push_back(0);
-  int fd = mkstemp(temp.data());
-  if (fd < 0) Fail();
-  try {
-    size_t at = 0;
-    while (at < bytes.size()) {
-      ssize_t n = write(fd, bytes.data() + at, bytes.size() - at);
-      if (n < 0 && errno == EINTR) continue;
-      if (n < 0) Fail();
-      if (!n) throw std::runtime_error("Could not write saved places.");
-      at += n;
-    }
-    if (fsync(fd)) Fail();
-    if (close(fd)) { fd = -1; Fail(); }
-    fd = -1;
-    if (rename(temp.data(), file.c_str())) Fail();
-  } catch (...) {
-    if (fd >= 0) close(fd);
-    unlink(temp.data());
-    throw;
-  }
+  SaveMessageStore(file, message);
 }
 } // namespace Lister

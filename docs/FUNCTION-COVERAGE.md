@@ -5,12 +5,25 @@ dekkes i Listi, på vår egen måte. Se [Tracker-kartet](TRACKER-COVERAGE.md)
 for dokumentert tilbud, udekkede behov og akseptkrav. Dette erstatter ikke
 Dolphin-kravet og er ikke en påstand om ferdig funksjonslikhet.
 
-**Delta etter basiskartet:** N03 er implementert i privat 0.5.0 med uavhengig,
-begrenset panelhistorikk. Se [kandidatens verifikasjon](NAVIGATION-0.5.0.md).
-Lagrede arbeidssteder er videre implementert i privat 0.6.0, se
-[atferd og verifikasjon](PLACES-0.6.0.md).
-Tabellene og statusantallene nedenfor er fortsatt det daterte 0.4.0-basiskartet,
-ikke en påstand om at alle behov er kontrollert på nytt.
+## Samlet status etter privat 0.7.0
+
+Kartet inneholder 81 brukerbehov fra Dolphin 26.08.3 og relevante tillegg.
+[Tracker-kartet](TRACKER-COVERAGE.md) supplerer med 40 behovsområder. Referansene
+er dokument- og kildegransket, ikke kjørt som full praktisk sammenligning.
+
+| Område | Levert og avgrenset verifikasjon | Viktigste restbehov |
+|---|---|---|
+| Historikk, N03 | 0.5.0: uavhengig Tilbake/Frem per panel, også virtuelle steder. [Bevis](NAVIGATION-0.5.0.md) | Faner/mappekort, flere vinduer og øktgjenoppretting er egne udekkede behov |
+| Lagrede steder, N05/R08 | 0.6.0: navngitte adresser uten innloggingsdata. [Bevis](PLACES-0.6.0.md) | Oppdagelse, kontohåndtering og bredere nettverkskvalifisering |
+| Søk, V08-V10/T15-T18 | 0.7.0: avbrytbart lokalt navnesøk og native BFS-snapshots med originalsti og identitetskontroll. [Bevis](SEARCH-0.7.0.md) | Levende og lagrede søk er pågående arbeid, ikke levert. Attributtbygger, innhold og flervolumvalg gjenstår |
+| Filhandlinger og Haiku-samspill | Eksisterende operasjoner har kandidatspesifikke bevis, ikke generell full dekning | Tracker-utklippstavle, egenskaper/attributter, MIME/Åpne med, lenker, maler, masseomdøping, sammenligning og konfliktbevisst angre |
+| Visninger og arbeidsflater | To paneler, detalj-/ikonvisning og mappetrær finnes | Mappekort/arbeidssett, visningsvalg, gruppering, skjulte filer og bredere tilgjengelighetsprøver |
+| Arkiver, filkilder og integrasjoner | Arkivlesing/uttrekk og SMB/SFTP/FTP har avgrensede syntetiske prøver | Arkivoppretting/redigering/passord, flere formater, ekte servervariasjon, nye protokoller, enheter, sky og VCS |
+
+Tabellene nedenfor beholder det daterte 0.4.0-basiskartet, med eksplisitt merkede
+senere radoppdateringer. De er ikke alle kontrollert på nytt på 0.7.0. Vi beregner
+ikke en dekningsprosent fra ulikt store behov. Oppdater denne samlede statusen ved
+hver kvalifisert leveranse, og behold utestede deler som åpne krav.
 
 
 14. november 2026. Arbeidsgrunnlag, ikke en påstand om funksjonslikhet.

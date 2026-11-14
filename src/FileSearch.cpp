@@ -34,7 +34,7 @@ bool SameSearchEntry(const SearchHit &hit) {
 }
 SearchSummary SearchFiles(const SearchRequest &request,
     const std::function<bool()> &proceed,
-    const std::function<bool(const SearchHit &)> &deliver) {
+    const std::function<bool(const SearchHit &)> &deliver, BQuery *liveQuery) {
   SearchSummary out;
   auto alive = [&] { if (!proceed()) out.cancelled = true; return !out.cancelled; };
   if (!alive()) return out;
@@ -72,7 +72,8 @@ SearchSummary SearchFiles(const SearchRequest &request,
   };
   if (request.predicate) {
     if (!volume.KnowsQuery()) { out.error = "This volume does not support BFS queries."; return out; }
-    BQuery query;
+    BQuery snapshot;
+    BQuery &query = liveQuery ? *liveQuery : snapshot;
     status_t status = query.SetVolume(&volume);
     if (status == B_OK) status = query.SetPredicate(request.expression.c_str());
     if (status == B_OK && alive()) status = query.Fetch();

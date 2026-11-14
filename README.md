@@ -2,12 +2,14 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.7.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.8.0**. Published preview: **0.2.0**.
 
 Find files: **Command+Shift+F** opens cancellable recursive local name search
-and native BFS-formula snapshots. Results show original folders; reveal an
-original in its owning panel before using file actions. See [search behavior
-and limits](docs/SEARCH-0.7.0.md). Live and saved queries remain planned.
+and native BFS formulas, with optional live updates. Save named criteria and
+reopen them for fresh results. Results show original folders; reveal an original
+in its owning panel before using file actions. See [live and saved search behavior
+and limits](docs/SEARCH-0.8.0.md). Friendly attribute builders, multiple volumes,
+content search and Tracker query-file interoperability remain open requirements.
 
 Saved work locations: each panel's Go > Places menu can save the current
 location, rename it or forget it. Names are shared across the two panels and

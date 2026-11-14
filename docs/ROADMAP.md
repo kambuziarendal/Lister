@@ -57,10 +57,55 @@ som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
    [atferd og verifikasjon](PLACES-0.6.0.md).
 5. Avbrytbart lokalt navnesøk og native BFS-formler er implementert som
    snapshot-arbeidsflate i privat 0.7.0. Se [søk og begrensninger](SEARCH-0.7.0.md).
-6. Neste søketrinn: levende BFS-treff, lagrede søk og enklere attributtvalg.
-   Deretter dypere kvalifisering av eksisterende filkilder, Tracker-samspill,
-   trygg massebehandling og flere providers. Restbehovene
-   beholdes i matrisen. Ingen funksjon avskrives fordi en lignende funksjon finnes.
+6. **Pågår etter 0.7.0:** levende BFS-treff og lagrede søkevilkår. Nye og fjernede
+   treff, endret identitet, avbrudd, robust lagring og tidligere pakkers lagring
+   av innstillinger inngår i ferdigkravene. Attributtbygger, innholdssøk og flere
+   volumer beholdes som egne søketrinn.
+7. **Neste dagligflyt:** Tracker-utklippstavle, egenskaper/BFS-attributter,
+   MIME/Åpne med og tydelig drop-semantikk. Dypere kvalifisering av eksisterende
+   protokoller/arkivformater følger relevante endringer, inkludert egen FTPS-prøve.
+8. **Trygg massebehandling:** maler, lenker, duplisering, masseomdøping med
+   forhåndsvisning, sammenligning og konfliktbevisst angre-journal.
+9. **Arbeidsflater:** utforsk native mappekort og arbeidssett som beskrevet under.
+   Flere vinduer og øktgjenoppretting skal bevare filjobbenes opprinnelige mål.
+10. **Flere filkilder:** egne adaptere og ende-til-ende-prøver for protokoller,
+    enheter, sky og versjonskontroll. Fysisk utstyr må prøves før kvalifisering.
+
+### Mappekort, designretning fra samtalen 14. november
+
+Arne ønsker en pen BeOS-aktig løsning for tabs, ikke vanlige nettleserfaner.
+Utforsk kompakte, navn-tilpassede skillekort over hvert panel. Aktivt kort skal
+henge visuelt sammen med filflaten, med native ikon, fine kanter og varsomt
+relieff. En varm aktivmarkering må fungere med begge systemtemaer og ikke være
+eneste signal. Unngå permanente lukkekryss på alle kort og uleselig krymping.
+Ved mange kort skal en liste over åpne steder bevare lesbare navn.
+
+Hvert kort skal ha egen mappe, historikk, visning og utvalg. Dra for å ordne eller
+flytte mellom panelene må ikke endre pågående filjobber. Arbeidssett er et eget
+begrep som lagrer begge panelene samlet, ikke bare et annet navn på en fane.
+Lag og prøv et par visuelle forslag i faktisk Haiku-størrelse før implementasjon:
+mange mapper, lange navn, kompakt vindu, mus/tastatur og lys/mørk visning.
+Dette er en designretning, ikke en ferdig løsning eller en endring av pågående søketrinn.
+
+### Arkivoppretting og korte kontekstmenyer, krav fra 14. november
+
+- Opprett arkiv av ett eller flere markerte elementer via både tastatursnarvei
+  og musehandling. Samme kommando, frosset kildeutvalg og samme innstillinger.
+- Velg favorittformater for komprimering, standardformat og formatspesifikke
+  standardvalg. Bare faktisk tilgjengelige skriveformater kan tilbys som støttet.
+- Egen innstilling «spør om format hver gang». Vis favoritter først og resten
+  under «Flere formater». Lagret standard skal ikke omgå et aktivt spør-valg.
+- Tastaturflyt og museflyt skal begge dekke valg av format, navn/mål, innstillinger,
+  konflikt, fremdrift og avbrudd. Sikker staging/commit skal bevare originalfiler
+  og eksisterende målarkiv ved feil. Pakken må kunne pakkes ut og verifiseres.
+- Hold høyreklikkmenyen kort og relevant for fil, mappe, utvalg og provider.
+  Grupper eksempelvis Pakk, Åpne med og Flere filhandlinger i grunne undermenyer.
+  Ikke legg alle fremtidige funksjoner i en lang toppnivåliste.
+- Begynn med én forutsigbar klikkemåte. Eventuelle alternative klikkemoduser må
+  være et eksplisitt, synlig valg med full tastaturtilgang, ikke skjult modusbytte.
+  Test menyoversikt med stor funksjonsbredde og mange installerte apper.
+
+Dette er akseptkrav for kommende arkiv-/menytrinn, ikke funksjoner i 0.7.0.
 
 Arnes presisering: Vi skal ikke kopiere Dolphin på noen måte. Det de tilbyr av
 funksjoner skal vi også dekke, gjennom vår egen kode, utforming og arbeidsflyt.

@@ -3,6 +3,13 @@
 #include "Common.h"
 #include "ExplicitSubmit.h"
 #include "FileSearch.h"
+#include "SearchWorker.h"
+#include "SavedSearches.h"
+#include <MenuField.h>
+#include <MenuItem.h>
+#include <PopUpMenu.h>
+#include <map>
+#include <tuple>
 #include <Button.h>
 #include <CheckBox.h>
 #include <ColumnListView.h>
@@ -15,8 +22,9 @@
 #include <Window.h>
 #include <memory>
 namespace {
+using namespace Lister;
 constexpr uint32 kStart = 'ssrt', kStop = 'sstp', kHit = 'shit',
-                 kFinished = 'sfin', kPicked = 'spik', kShow = 'sshw', kMode = 'smod';
+                 kFinished = 'sfin', kSave = 'sqsv', kForget = 'sqfg', kLoad = 'sqld', kName = 'sqnm', kPicked = 'spik', kShow = 'sshw', kMode = 'smod';
 struct HitRow : BRow {
   Lister::SearchHit hit;
   explicit HitRow(const Lister::SearchHit &value) : BRow(24), hit(value) {
@@ -39,55 +47,19 @@ public:
     if (Window()) Window()->PostMessage(kPicked);
   }
 };
-class SearchWorker : public BLooper {
-  BMessenger target;
-  std::shared_ptr<std::atomic<int64>> generation;
-public:
-  SearchWorker(BMessenger receiver, std::shared_ptr<std::atomic<int64>> g)
-      : BLooper("file search"), target(receiver), generation(g) {}
-  void MessageReceived(BMessage *message) override {
-    if (message->what != kStart) { BLooper::MessageReceived(message); return; }
-    int64 serial = message->GetInt64("serial", -1);
-    auto alive = [&] { return generation->load() == serial; };
-    if (!alive()) return;
-    Lister::SearchRequest request;
-    request.root = message->GetString("root", "");
-    request.expression = message->GetString("expression", "");
-    request.predicate = message->GetBool("predicate", false);
-    request.includeTrash = message->GetBool("trash", false);
-    BMessage batch(kHit);
-    batch.AddInt64("serial", serial);
-    int count = 0;
-    auto flush = [&] {
-      if (!count) return true;
-      bool ok = alive() && target.SendMessage(&batch, (BHandler *)nullptr, 500000) == B_OK;
-      batch.MakeEmpty(); batch.what = kHit; batch.AddInt64("serial", serial); count = 0;
-      return ok;
-    };
-    auto summary = Lister::SearchFiles(request, alive, [&](const Lister::SearchHit &hit) {
-      BMessage item;
-      item.AddString("path", hit.path.c_str());
-      item.AddInt64("device", hit.device); item.AddInt64("node", hit.node);
-      batch.AddMessage("hit", &item);
-      return ++count < 40 || flush();
-    });
-    if (!alive()) return;
-    if (!flush()) summary.cancelled = true;
-    BMessage done(kFinished);
-    done.AddInt64("serial", serial);
-    done.AddInt64("visited", summary.visited);
-    done.AddInt64("skipped", summary.skipped);
-    done.AddBool("limited", summary.limited);
-    done.AddBool("cancelled", summary.cancelled);
-    done.AddString("error", summary.error.c_str());
-    target.SendMessage(&done, (BHandler *)nullptr, 500000);
-  }
-};
 class SearchWindow : public BWindow {
   BMessenger owner;
   int32 pane;
-  BTextControl *root, *expression;
-  BCheckBox *predicate, *trash;
+  BTextControl *root, *expression, *name;
+  BPopUpMenu *savedMenu;
+  BMenuField *savedField;
+  BButton *save, *forget;
+  SavedSearches saved;
+  std::string chosen;
+  int64 storeRevision = 0, resultRevision = 0;
+  bool writable = true, saving = false, initial = true;
+  std::vector<SearchHit> pending;
+  BCheckBox *predicate, *trash, *live;
   BStringView *status, *selected, *scope, *hint;
   BButton *start, *stop, *show;
   Results *results;
@@ -109,6 +81,56 @@ class SearchWindow : public BWindow {
     start->SetEnabled(!busy); stop->SetEnabled(busy);
     root->SetEnabled(!busy); expression->SetEnabled(!busy);
     predicate->SetEnabled(!busy); trash->SetEnabled(!busy);
+    live->SetEnabled(!busy && predicate->Value() == B_CONTROL_ON);
+  }
+  void StoreControls() {
+    save->SetEnabled(writable && !saving);
+    forget->SetEnabled(writable && !saving && !chosen.empty() && chosen == name->Text());
+    name->SetEnabled(!saving); savedField->SetEnabled(!saving);
+  }
+  void Store(const BMessage &m) {
+    saved = SavedSearches::FromMessage(m);
+    if (m.HasString("chosen")) {
+      chosen = m.GetString("chosen", "");
+      auto first = chosen.find_first_not_of(" \t\r\n");
+      chosen = first == std::string::npos ? "" : chosen.substr(first, chosen.find_last_not_of(" \t\r\n") - first + 1);
+      name->SetText(chosen.c_str());
+    }
+    storeRevision = m.GetInt64("revision", 0);
+    writable = m.GetBool("writable", false); saving = m.GetBool("saving", false);
+    while (auto item = savedMenu->RemoveItem(int32(0))) delete item;
+    auto fresh = new BMessage(kLoad); fresh->AddString("name", "");
+    savedMenu->AddItem(new BMenuItem("New search", fresh));
+    for (const auto &item : saved.Items()) {
+      auto pick = new BMessage(kLoad); pick->AddString("name", item.name.c_str());
+      auto entry = new BMenuItem(item.name.c_str(), pick);
+      savedMenu->AddItem(entry); entry->SetMarked(item.name == chosen);
+    }
+    savedMenu->SetTargetForItems(this);
+    if (!saved.Find(chosen)) { chosen.clear(); savedMenu->ItemAt(0)->SetMarked(true); }
+    StoreControls();
+    if (m.HasString("error")) Status(m.GetString("error", "Save failed."));
+    else if (m.GetBool("committed", false)) Status("Search criteria saved. Results are never stored.");
+  }
+  void Cancel() {
+    if (!busy) return;
+    BMessage request(kStop); request.AddInt64("serial", serial);
+    ++serial; generation->store(serial); worker->PostMessage(&request);
+    pending.clear(); Busy(false);
+    Status("Stopped: " + std::to_string(results->CountRows()) + " results. No longer updating.");
+  }
+  void Reconcile() {
+    using Key = std::tuple<std::string, int64, int64>;
+    std::map<Key, SearchHit> next;
+    for (const auto &hit : pending) next.emplace(Key(hit.path, hit.device, hit.node), hit);
+    for (int32 i = results->CountRows() - 1; i >= 0; --i) {
+      auto row = static_cast<HitRow *>(results->RowAt(i));
+      auto found = next.find(Key(row->hit.path, row->hit.device, row->hit.node));
+      if (found == next.end()) { results->RemoveRow(row); delete row; }
+      else next.erase(found); // Preserve selection only for identical path AND identity.
+    }
+    for (const auto &item : next) results->AddRow(new HitRow(item.second));
+    pending.clear(); PostMessage(kPicked);
   }
   void Colors() {
     results->SetColor(B_COLOR_BACKGROUND, ui_color(B_DOCUMENT_BACKGROUND_COLOR));
@@ -119,7 +141,7 @@ class SearchWindow : public BWindow {
     results->Invalidate();
   }
 public:
-  SearchWindow(BMessenger target, int32 which, const char *path)
+  SearchWindow(BMessenger target, int32 which, const char *path, const BMessage &store)
       : BWindow(BRect(90, 90, 950, 640), "Listi: Find files", B_TITLED_WINDOW,
                 B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS), owner(target), pane(which),
         generation(std::make_shared<std::atomic<int64>>(0)) {
@@ -128,6 +150,7 @@ public:
     root->TextView()->SetMaxBytes(B_PATH_NAME_LENGTH - 1);
     expression->TextView()->SetMaxBytes(4096);
     predicate = new BCheckBox("bfs formula", "BFS formula", new BMessage(kMode));
+    live = new BCheckBox("live results", "Live", nullptr);
     trash = new BCheckBox("include trash", "Include Trash", nullptr);
     hint = Line("search hint", "Names: literal, case-insensitive. Subfolders on this volume; no link traversal.");
     scope = Line("result scope", which == 0 ? "Show original uses the left panel." : "Show original uses the right panel.");
@@ -137,9 +160,18 @@ public:
     stop = new BButton("stop search", "Stop", new BMessage(kStop));
     show = new BButton("show original", "Show original in panel", new BMessage(kShow));
     results = new Results;
+    savedMenu = new BPopUpMenu("saved searches");
+    savedField = new BMenuField("saved searches", "Saved:", savedMenu);
+    savedField->SetExplicitMinSize(BSize(130, B_SIZE_UNSET));
+    savedField->SetExplicitMaxSize(BSize(220, B_SIZE_UNSET));
+    name = new BTextControl("search name", "Name:", "", nullptr);
+    name->TextView()->SetMaxBytes(80); name->SetModificationMessage(new BMessage(kName));
+    save = new BButton("save search", "Save", new BMessage(kSave));
+    forget = new BButton("forget search", "Forget", new BMessage(kForget));
     BLayoutBuilder::Group<>(this, B_VERTICAL, 8).SetInsets(10)
+      .AddGroup(B_HORIZONTAL, 8).Add(savedField).Add(name).Add(save).Add(forget).End()
       .Add(root).Add(expression)
-      .AddGroup(B_HORIZONTAL, 8).Add(predicate).Add(trash).AddGlue().Add(start).Add(stop).End()
+      .AddGroup(B_HORIZONTAL, 8).Add(predicate).Add(trash).Add(live).AddGlue().Add(start).Add(stop).End()
       .Add(hint).Add(scope).Add(results).Add(selected)
       .AddGroup(B_HORIZONTAL, 8).Add(status).Add(show).End();
     results->SetTarget(this);
@@ -147,8 +179,8 @@ public:
       field->TextView()->AddFilter(new Lister::ExplicitSubmit(BMessenger(this), BMessage(kStart)));
     AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(kStop));
     AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
-    worker = new SearchWorker(BMessenger(this), generation); worker->Run();
-    Busy(false); show->SetEnabled(false); Colors(); expression->MakeFocus();
+    worker = NewSearchWorker(BMessenger(this), generation); worker->Run();
+    Store(store); Busy(false); show->SetEnabled(false); Colors(); expression->MakeFocus();
   }
   ~SearchWindow() {
     generation->fetch_add(1);
@@ -158,12 +190,48 @@ public:
   }
   void MessageReceived(BMessage *m) override {
     switch (m->what) {
+    case kSearchStore:
+      Store(*m); break;
+    case kName:
+      StoreControls(); break;
+    case kLoad: {
+      if (saving) break;
+      Cancel(); chosen = m->GetString("name", "");
+      name->SetText(chosen.c_str());
+      if (const auto *item = saved.Find(chosen)) {
+        root->SetText(item->request.root.c_str()); expression->SetText(item->request.expression.c_str());
+        predicate->SetValue(item->request.predicate); trash->SetValue(item->request.includeTrash);
+        live->SetValue(item->live);
+      } else { expression->SetText(""); predicate->SetValue(0); trash->SetValue(0); live->SetValue(0); }
+      results->Clear(); show->SetEnabled(false); selected->SetText(""); selected->SetToolTip("");
+      scope->SetText(pane == 0 ? "Show original uses the left panel." : "Show original uses the right panel.");
+      scope->SetToolTip(scope->Text());
+      PostMessage(kMode); StoreControls();
+      Status("Criteria loaded. Press Search to obtain current results."); break;
+    }
+    case kSave: case kForget: {
+      if (!writable || saving) break;
+      if (m->what == kForget && (chosen.empty() || chosen != name->Text())) break;
+      BMessage edit(kSearchEdit);
+      edit.AddInt64("revision", storeRevision); edit.AddString("name", name->Text());
+      edit.AddBool("remove", m->what == kForget);
+      edit.AddBool("replace", !chosen.empty() && chosen == name->Text());
+      edit.AddString("root", root->Text()); edit.AddString("expression", expression->Text());
+      edit.AddBool("predicate", predicate->Value() == B_CONTROL_ON);
+      edit.AddBool("trash", trash->Value() == B_CONTROL_ON);
+      edit.AddBool("live", live->Value() == B_CONTROL_ON);
+      if (owner.SendMessage(&edit) == B_OK) { saving = true; StoreControls(); }
+      else Status("Could not queue saved search. Previous criteria are unchanged.");
+      break;
+    }
     case kSearch:
       Activate(); break;
     case kMode: {
       bool formula = predicate->Value() == B_CONTROL_ON;
+      if (!formula) live->SetValue(0);
+      live->SetEnabled(formula && !busy);
       expression->SetLabel(formula ? "BFS formula:" : "Name contains:");
-      const char *text = formula ? "Example: name==\"*.txt\". Native indexed BFS syntax; snapshot restricted to this folder."
+      const char *text = formula ? "Example: name==\"*.txt\". Native indexed BFS syntax; Live keeps this folder updated."
           : "Names: literal, case-insensitive. Subfolders on this volume; no link traversal.";
       hint->SetText(text); hint->SetToolTip(text);
       break;
@@ -171,13 +239,14 @@ public:
     case kStart: {
       if (busy) break;
       if (!expression->Text()[0]) { Status("Enter a name fragment or BFS formula."); expression->MakeFocus(); break; }
-      ++serial; generation->store(serial);
+      ++serial; generation->store(serial); resultRevision = 0; pending.clear();
       results->Clear(); show->SetEnabled(false); selected->SetText(""); selected->SetToolTip("");
       BMessage request(kStart);
       request.AddInt64("serial", serial); request.AddString("root", root->Text());
       request.AddString("expression", expression->Text());
       request.AddBool("predicate", predicate->Value() == B_CONTROL_ON);
       request.AddBool("trash", trash->Value() == B_CONTROL_ON);
+      request.AddBool("live", live->Value() == B_CONTROL_ON);
       BString description(pane == 0 ? "Left panel | " : "Right panel | ");
       description << root->Text() << " | " << expression->Text();
       scope->SetText(description); scope->SetToolTip(description);
@@ -185,27 +254,34 @@ public:
       worker->PostMessage(&request); break;
     }
     case kStop:
-      if (busy) {
-        ++serial; generation->store(serial); Busy(false);
-        Status("Stopped: " + std::to_string(results->CountRows()) + " results received. Incomplete snapshot.");
-      }
-      break;
+      Cancel(); break;
+    case kSearchBegin:
+      if (!busy || m->GetInt64("serial", -1) != serial) break;
+      resultRevision = m->GetInt64("revision", -1); initial = m->GetBool("initial", false);
+      pending.clear(); break;
     case kHit: {
       if (!busy || m->GetInt64("serial", -1) != serial) break;
+      if (m->GetInt64("revision", -1) != resultRevision) break;
       BMessage item;
       for (int32 i = 0; m->FindMessage("hit", i, &item) == B_OK; ++i)
-        results->AddRow(new HitRow({item.GetString("path", ""), item.GetInt64("device", -1), item.GetInt64("node", -1)}));
-      Status("Searching: " + std::to_string(results->CountRows()) + " results. Snapshot in progress.");
+      {
+        SearchHit hit{item.GetString("path", ""), item.GetInt64("device", -1), item.GetInt64("node", -1)};
+        if (initial) results->AddRow(new HitRow(hit)); else pending.push_back(hit);
+      }
+      if (initial) Status("Searching: " + std::to_string(results->CountRows()) + " results. Snapshot in progress.");
       break;
     }
     case kFinished: {
       if (!busy || m->GetInt64("serial", -1) != serial) break;
-      Busy(false);
+      if (m->GetInt64("revision", -1) < resultRevision) break;
+      bool updating = m->GetBool("live", false);
+      if (!initial) Reconcile();
+      Busy(updating);
       std::string error = m->GetString("error", "");
       std::string state = !error.empty() ? "Failed / incomplete" :
           m->GetBool("cancelled", false) ? "Interrupted / incomplete" :
           m->GetBool("limited", false) ? "Limit reached / incomplete" :
-          m->GetInt64("skipped", 0) ? "Finished with skipped areas" : "Complete snapshot";
+          m->GetInt64("skipped", 0) ? "Finished with skipped areas" : updating ? "Live" : "Complete snapshot";
       Status(state + ": " + std::to_string(results->CountRows()) + " results; " +
           std::to_string(m->GetInt64("visited", 0)) + " examined; " +
           std::to_string(m->GetInt64("skipped", 0)) + " skipped." + (error.empty() ? "" : " " + error));
@@ -234,8 +310,8 @@ public:
   }
 };
 }
-BMessenger OpenFileSearch(BMessenger owner, int32 pane, const char *root) {
-  auto window = new SearchWindow(owner, pane, root);
+BMessenger OpenFileSearch(BMessenger owner, int32 pane, const char *root, const BMessage &store) {
+  auto window = new SearchWindow(owner, pane, root, store);
   BMessenger result(window);
   window->Show();
   return result;

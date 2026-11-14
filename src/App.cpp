@@ -2,6 +2,7 @@
 #include "Common.h"
 #include "ExplicitSubmit.h"
 #include "SavedPlaces.h"
+#include "SavedSearches.h"
 #include "SearchWindow.h"
 #include "ImagePreview.h"
 #include "InlineAction.h"
@@ -64,6 +65,16 @@ class Services : public BLooper {
 public:
   Services(BMessenger a) : BLooper("file viewer and launcher"), app(a) {}
   void MessageReceived(BMessage *m) override {
+    if (m->what == kSaveSearches) {
+      BMessage reply(kSearchesSaved);
+      reply.AddInt64("revision", m->GetInt64("revision", -1));
+      try { Lister::SavedSearches::FromMessage(*m).Save(SettingsPath("Lister_searches").String()); }
+      catch (const std::exception &e) {
+        std::string error = "Could not save search criteria. The previous list is unchanged. ";
+        error += e.what(); reply.AddString("error", error.c_str());
+      }
+      app.SendMessage(&reply); return;
+    }
     if (m->what == kSavePlaces) {
       BMessage reply(kPlacesSaved);
       reply.AddInt64("serial", m->GetInt64("serial", -1));
@@ -335,6 +346,16 @@ public:
 class MainWindow : public BWindow {
   Preferences prefs;
   BMessenger searchWindow;
+  Lister::SavedSearches searches, pendingSearches;
+  bool searchesWritable = true, searchesSaving = false;
+  int64 searchesRevision = 0;
+  std::string pendingSearchName;
+  BMessage SearchStore() const {
+    auto message = searches.Message(); message.what = kSearchStore;
+    message.AddInt64("revision", searchesRevision);
+    message.AddBool("writable", searchesWritable); message.AddBool("saving", searchesSaving);
+    return message;
+  }
   Lister::SavedPlaces places, pendingPlaces;
   bool placesWritable = true, placesSaving = false;
   int64 placesSerial = 0;
@@ -509,10 +530,11 @@ class MainWindow : public BWindow {
 
 public:
   MainWindow(const Preferences &p, BMessenger svc,
-             const Lister::SavedPlaces &saved, bool writable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.7.0", B_TITLED_WINDOW,
+             const Lister::SavedPlaces &saved, bool writable,
+             const Lister::SavedSearches &queries, bool queriesWritable)
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.8.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
-        prefs(p), places(saved), placesWritable(writable), service(svc) {
+        prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     auto menu = new BMenuBar("menu");
     auto files = new BMenu("Files");
     struct Item {
@@ -667,8 +689,8 @@ public:
   }
   ~MainWindow() { delete queue; }
   bool QuitRequested() override {
-    if (placesSaving) {
-      Notice("Saved places are still being written. Please try quitting again shortly.");
+    if (placesSaving || searchesSaving) {
+      Notice("Saved places or searches are still being written. Please try quitting again shortly.");
       return false;
     }
     if (queue->Busy()) {
@@ -767,6 +789,45 @@ public:
       } catch (const std::exception &e) { Notice(e.what()); }
       break;
     }
+    case kSearchEdit: {
+      try {
+        if (!searchesWritable) throw std::runtime_error("Saved searches could not be loaded. Their file is preserved; changes are disabled.");
+        if (searchesSaving || m->GetInt64("revision", -1) != searchesRevision)
+          throw std::runtime_error("The saved-search list changed or is being written. Please try again.");
+        auto next = searches;
+        Lister::SavedSearch item;
+        item.name = m->GetString("name", ""); item.request.root = m->GetString("root", "");
+        item.request.expression = m->GetString("expression", "");
+        item.request.predicate = m->GetBool("predicate", false);
+        item.request.includeTrash = m->GetBool("trash", false); item.live = m->GetBool("live", false);
+        if (m->GetBool("remove", false)) next.Remove(item.name);
+        else next.Put(item, m->GetBool("replace", false));
+        auto request = next.Message(); request.what = kSaveSearches;
+        request.AddInt64("revision", searchesRevision);
+        pendingSearches = next;
+        pendingSearchName = m->GetBool("remove", false) ? "" : item.name;
+        searchesSaving = true;
+        if (service.SendMessage(&request) != B_OK) {
+          searchesSaving = false; throw std::runtime_error("Could not queue saved search.");
+        }
+      } catch (const std::exception &e) {
+        auto reply = SearchStore(); reply.AddString("error", e.what()); searchWindow.SendMessage(&reply);
+      }
+      break;
+    }
+    case kSearchesSaved:
+      if (searchesSaving && m->GetInt64("revision", -1) == searchesRevision) {
+        searchesSaving = false;
+        if (!m->HasString("error")) { searches = pendingSearches; ++searchesRevision; }
+        pendingSearches = {};
+        auto reply = SearchStore();
+        if (m->HasString("error")) reply.AddString("error", m->GetString("error", "Save failed."));
+        else {
+          reply.AddBool("committed", true); reply.AddString("chosen", pendingSearchName.c_str());
+        }
+        searchWindow.SendMessage(&reply);
+      }
+      break;
     case kPlacesSaved:
       if (placesSaving && m->GetInt64("serial", -1) == placesSerial) {
         placesSaving = false;
@@ -853,7 +914,7 @@ public:
       break;
     case kSearch:
       if (searchWindow.IsValid()) searchWindow.SendMessage(kSearch);
-      else searchWindow = OpenFileSearch(BMessenger(this), source, panes[source]->Path());
+      else searchWindow = OpenFileSearch(BMessenger(this), source, panes[source]->Path(), SearchStore());
       break;
     case kRevealSearch: {
       int32 which = m->GetInt32("pane", -1);
@@ -1026,16 +1087,24 @@ public:
     std::string placesError;
     try { places = Lister::SavedPlaces::Load(SettingsPath("Lister_places").String()); }
     catch (const std::exception &e) { placesError = e.what(); }
-    auto window = new MainWindow(prefs, BMessenger(services), places, placesError.empty());
+    Lister::SavedSearches searches;
+    std::string searchesError;
+    try { searches = Lister::SavedSearches::Load(SettingsPath("Lister_searches").String()); }
+    catch (const std::exception &e) { searchesError = e.what(); }
+    auto window = new MainWindow(prefs, BMessenger(services), places, placesError.empty(), searches, searchesError.empty());
     mainWindow = BMessenger(window);
     window->Show();
+    if (!searchesError.empty()) {
+      searchesError = "Saved searches could not be loaded. The file has been preserved; changes are disabled. " + searchesError;
+      Notice(searchesError.c_str());
+    }
     if (!placesError.empty()) {
       placesError = "Saved places could not be loaded. The file has been preserved; changes are disabled. " + placesError;
       Notice(placesError.c_str());
     }
   }
   void MessageReceived(BMessage *m) override {
-    if (m->what == kPlacesSaved) {
+    if (m->what == kPlacesSaved || m->what == kSearchesSaved) {
       mainWindow.SendMessage(m);
       return;
     }
