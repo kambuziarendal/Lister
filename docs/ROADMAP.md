@@ -35,21 +35,37 @@ Ferdigkrav per leveranse: native bygg, relevante automatiske tester og faktisk
 brukerflyt i Haiku. Prøv normal/kompakt størrelse og lys/mørk systemvisning.
 Bevar innstillinger og sikre filoperasjoner. Skill testet kandidat fra publisering.
 
-## Neste små leveranser, prioritert etter faktisk bruk
+## Neste små leveranser: faktisk daglig filarbeid
 
-- Bokmerker og rask navigasjon, bedre forhåndsvisning og filtypehandlinger.
-- Batch-navneendring med forhåndsvisning, når grunnflyten er solid.
-- Felles handlinger for menyer, knapper og snarveier. Deretter redigerbare
-  knappebanker og en kommandopalett som viser mulighetene, ikke skjuler basisbruk.
-- Flere lister, låste roller og lagrede oppsett når konkrete arbeidsoppgaver
-  viser hvordan de skal fungere. Både tastatur og mus skal ha en naturlig flyt.
+Prioritet endret etter Arnes bruk av 0.3.0, 14. november:
+
+1. **SMB/Samba først.** Åpne en nettverksdeling i et panel, naviger og kopier
+   filer begge veier mot det lokale panelet. Tydelig tilkoblingsstatus,
+   forståelige innloggingsfeil, fremdrift og avbrudd. Ikke lagre passord i
+   URL-er, logger eller vanlig konfigurasjon. Test mot en isolert SMB-server
+   før Arnes egen deling. Dette skal gjøre reell betatesting mulig.
+2. **Arkiver som mapper.** Enter/dobbeltklikk navigerer inne i ZIP og andre
+   tilgjengelige formater, ikke automatisk over til Expander. Oppdag faktisk
+   installert backend-/formatstøtte, ikke bare MIME-tilknytning. Naviger,
+   velg og trekk ut til det andre panelet; Expander er et eksplisitt alternativ.
+   Første steg er lesing/uttrekk, ikke redigering inne i arkivet. Begrens
+   uttrekk til valgt mål, også ved absolutte stier, `..` og lenker i arkivet.
+3. **SFTP og FTP.** Samme panel- og jobbopplevelse som SMB. Bruk systemets
+   tilgjengelige protokollstøtte, valider SSH-vertsnøkler og TLS der relevant.
+4. **Tastatur uten overraskelser.** Skill lukk aktivt hjelpevindu fra avslutt
+   Listi; kommandotast+W, Escape for dialoger, kommandotast+Q for appen.
+   Avklar hovedvinduets livssyklus, bevar jobber og vis alltid aktivt fokus.
+
+Forhåndsvisning, kommandopalett, batch-navneendring og større arbeidsoppsett
+kommer etter disse konkrete bruksfunksjonene. Ingen kosmetisk milepæl skal
+fortrenge filarbeidet Arne trenger i hverdagen.
 
 ## Senere visjoner som første etappe skal tåle
 
 - BFS-attributter og levende søk som arbeidsflater. Vis originalens plassering;
   sletting av treff er sletting av originalen. Lås filutvalget ved jobbstart.
-- Arkiver, sammenligning/synkronisering med forhåndsvisning og nettverkskilder i
-  separate steg. SMB/SFTP/FTP krever egne avbrudds- og credentialvurderinger.
+- Sammenligning/synkronisering med forhåndsvisning følger etter brukbare
+  arkiv- og nettverkspaneler.
 - Portable deler trekkes ut når en konkret funksjon har nytte av det. Ikke bygg
   et stort plattformrammeverk på forskudd. Ny grammatikk, konfigurasjonsmigrasjon
   og varige plattformkontrakter skal avklares før de låses.
