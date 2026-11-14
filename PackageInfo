@@ -7,6 +7,13 @@ packager "Kambuzi EDB"
 vendor "Kambuzi EDB"
 copyrights { "2026 Kambuzi EDB" }
 licenses { "MIT" }
-provides { lister = 0.1.0 app:lister = 0.1.0 }
-requires { haiku >= r1~beta6 lib:libstdc++ lib:libgcc_s }
+provides {
+ lister = 0.1.0
+ app:lister = 0.1.0
+}
+requires {
+ haiku >= r1~beta6
+ lib:libstdc++
+ lib:libgcc_s
+}
 urls { "https://github.com/kambuziarendal/Lister" }
