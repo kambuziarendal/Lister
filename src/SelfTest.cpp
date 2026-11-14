@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "FileOperation.h"
 #include "Trash.h"
+#include "NameFilter.h"
 #include <File.h>
 #include <Node.h>
 #include <String.h>
@@ -28,6 +29,18 @@ int SelfTest() {
       failures++;
     std::cout << (ok ? "PASS " : "FAIL ") << name << std::endl;
   };
+  check(MatchesNameFilter("notes.txt", ""), "empty filter shows all names");
+  check(MatchesNameFilter("Holiday Notes.txt", "NOTES"),
+        "name filter matches literal substring without ASCII case sensitivity");
+  check(!MatchesNameFilter("notes.txt", "*.txt"),
+        "filter does not interpret shell wildcards");
+  check(!MatchesNameFilter("notes.txt", "picture"), "nonmatching name is hidden");
+  check(MatchesNameFilter("..", "picture", true),
+        "parent remains navigable with an active filter");
+  check(MatchesNameFilter("\xc3\x85rsrapport.txt", "\xc3\x85r"),
+        "UTF-8 literal filename is preserved and matched");
+  check(MatchesNameFilter("report [final].txt", "[final]"),
+        "filter treats punctuation literally");
   auto exists = [](const std::string &p) {
     struct stat s;
     return lstat(p.c_str(), &s) == 0;

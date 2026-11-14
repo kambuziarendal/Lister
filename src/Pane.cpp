@@ -3,6 +3,7 @@
 #include "Pane.h"
 #include "FileOperation.h"
 #include "Trash.h"
+#include "NameFilter.h"
 #include <Bitmap.h>
 #include <ColumnListView.h>
 #include <ColumnTypes.h>
@@ -12,6 +13,8 @@
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <MessageRunner.h>
+#include <MessageFilter.h>
+#include <TextView.h>
 #include <NodeInfo.h>
 #include <NodeMonitor.h>
 #include <Path.h>
@@ -26,6 +29,25 @@
 #include <unistd.h>
 
 namespace {
+class FilterInput : public BMessageFilter {
+  Pane *pane;
+public:
+  explicit FilterInput(Pane *p)
+      : BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE), pane(p) {}
+  filter_result Filter(BMessage *message, BHandler **) override {
+    if (message->what == B_MOUSE_DOWN || message->what == B_KEY_DOWN)
+      pane->Activate();
+    if (message->what == B_KEY_DOWN) {
+      const char *bytes = message->GetString("bytes", "");
+      if (bytes[0] == B_ESCAPE) {
+        BMessage clear(kClearFilter);
+        pane->MessageReceived(&clear);
+        return B_SKIP_MESSAGE;
+      }
+    }
+    return B_DISPATCH_MESSAGE;
+  }
+};
 struct NameField : BStringField {
   int kind;
   BBitmap *icon = nullptr;
@@ -297,6 +319,12 @@ Pane::Pane(int32 number, const Preferences &p)
   menu->SetLabelFromMarked(false);
   edit = new BTextControl("path", "", path, new BMessage(kNavigate));
   edit->SetExplicitMinSize(BSize(120, B_SIZE_UNSET));
+  filter = new BTextControl("filter", "Filter:", "", new BMessage(kFilterDone));
+  filter->SetModificationMessage(new BMessage(kFilterChanged));
+  filter->SetExplicitMinSize(BSize(120, B_SIZE_UNSET));
+  filter->SetToolTip("Show names containing this text. Enter returns to the list; Escape clears.");
+  clearFilter = new BButton("clear filter", "Clear", new BMessage(kClearFilter));
+  clearFilter->SetEnabled(false);
   list = new FileList(this, p);
   list->SetExplicitMinSize(BSize(260, 180));
   status = new BStringView("status", "Ready");
@@ -308,6 +336,10 @@ Pane::Pane(int32 number, const Preferences &p)
       .Add(field)
       .End()
       .Add(edit)
+      .AddGroup(B_HORIZONTAL, 5)
+      .Add(filter)
+      .Add(clearFilter)
+      .End()
       .Add(list)
       .Add(status);
 }
@@ -316,10 +348,15 @@ Pane::~Pane() {
   stop_watching(this);
   if (scanner)
     scanner->PostMessage(B_QUIT_REQUESTED);
+  for (auto row : hiddenRows)
+    delete row;
 }
 void Pane::AttachedToWindow() {
   role->SetTarget(this);
   edit->SetTarget(this);
+  filter->SetTarget(this);
+  clearFilter->SetTarget(this);
+  filter->TextView()->AddFilter(new FilterInput(this));
   list->SetTarget(this);
   auto field = dynamic_cast<BMenuField *>(FindView("go"));
   field->Menu()->SetTargetForItems(this);
@@ -341,6 +378,44 @@ void Pane::SetSource(bool source) {
   role->SetFont(source ? be_bold_font : be_plain_font);
 }
 void Pane::FocusList() { list->MakeFocus(true); }
+void Pane::FocusFilter() {
+  Activate();
+  filter->MakeFocus(true);
+  filter->TextView()->SelectAll();
+}
+void Pane::ClearRows() {
+  list->Clear();
+  for (auto row : hiddenRows)
+    delete row;
+  hiddenRows.clear();
+}
+void Pane::ApplyFilter() {
+  // Suppress selection callbacks changing pane roles while rows are detached.
+  bool wasScanning = scanning;
+  scanning = true;
+  for (int32 i = list->CountRows() - 1; i >= 0; --i) {
+    auto row = static_cast<FileRow *>(list->RowAt(i));
+    auto name = static_cast<NameField *>(row->GetField(0));
+    if (!Lister::MatchesNameFilter(name->String(), filter->Text(), row->parent)) {
+      list->Deselect(row);
+      list->RemoveRow(row);
+      hiddenRows.push_back(row);
+    }
+  }
+  for (auto i = hiddenRows.begin(); i != hiddenRows.end();) {
+    auto row = static_cast<FileRow *>(*i);
+    auto name = static_cast<NameField *>(row->GetField(0));
+    if (Lister::MatchesNameFilter(name->String(), filter->Text(), row->parent)) {
+      list->AddRow(row);
+      i = hiddenRows.erase(i);
+    } else
+      ++i;
+  }
+  scanning = wasScanning;
+  clearFilter->SetEnabled(filter->Text()[0] != 0);
+  if (!scanning)
+    SendSelection();
+}
 void Pane::Apply(const Preferences &p) {
   prefs = p;
   list->name->prefs = p;
@@ -367,13 +442,17 @@ void Pane::Navigate(const char *p) {
   stop_watching(this);
   savedSelection =
       (path == request.c_str()) ? Selected() : std::vector<std::string>{};
+  if (path != request.c_str()) {
+    filter->SetText("");
+    clearFilter->SetEnabled(false);
+  }
   path = request.c_str();
   edit->SetText(path);
   scanning = true;
   refreshPending = false;
   serial++;
   generation->store(serial);
-  list->Clear();
+  ClearRows();
   status->SetText("Reading directory...");
   BMessage m(kScan);
   m.AddString("path", path);
@@ -417,12 +496,30 @@ void Pane::Select(int mode) {
 }
 void Pane::SendSelection() {
   BString s;
-  s << int32(Selected().size()) << " selected / " << list->CountRows()
-    << " entries";
+  int32 visible = 0;
+  for (int32 i = 0; i < list->CountRows(); ++i)
+    if (!static_cast<FileRow *>(list->RowAt(i))->parent)
+      ++visible;
+  s << int32(Selected().size()) << " selected / " << visible;
+  if (filter->Text()[0])
+    s << " of " << (visible + int32(hiddenRows.size())) << " entries (filtered)";
+  else
+    s << " entries";
   status->SetText(s);
 }
 void Pane::MessageReceived(BMessage *m) {
   switch (m->what) {
+  case kFilterChanged:
+    ApplyFilter();
+    break;
+  case kClearFilter:
+    filter->SetText("");
+    ApplyFilter();
+    FocusList();
+    break;
+  case kFilterDone:
+    FocusList();
+    break;
   case kActivate:
     Activate();
     FocusList();
@@ -460,7 +557,10 @@ void Pane::MessageReceived(BMessage *m) {
     generation->store(serial);
     scanning = true;
     refreshPending = false;
-    list->Clear();
+    ClearRows();
+    savedSelection.clear();
+    filter->SetText("");
+    clearFilter->SetEnabled(false);
     status->SetText("Opening Trash...");
     BMessage scan(kScan);
     scan.AddInt64("serial", serial);
@@ -516,10 +616,13 @@ void Pane::MessageReceived(BMessage *m) {
                     1);
       time_t date = e.GetInt64("date", 0);
       row->SetField(new BDateField(&date), 2);
-      list->AddRow(row);
-      if (std::find(savedSelection.begin(), savedSelection.end(), row->path) !=
-          savedSelection.end())
-        list->AddToSelection(row);
+      if (Lister::MatchesNameFilter(name->String(), filter->Text(), row->parent)) {
+        list->AddRow(row);
+        if (std::find(savedSelection.begin(), savedSelection.end(), row->path) !=
+            savedSelection.end())
+          list->AddToSelection(row);
+      } else
+        hiddenRows.push_back(row);
     }
     break;
   }

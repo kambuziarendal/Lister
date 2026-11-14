@@ -358,7 +358,7 @@ class MainWindow : public BWindow {
 
 public:
   MainWindow(const Preferences &p, BMessenger svc)
-      : BWindow(BRect(70, 70, 1170, 710), "Lister 0.2.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Lister 0.2.1", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), service(svc) {
     auto menu = new BMenuBar("menu");
@@ -394,6 +394,7 @@ public:
     view->AddItem(new BMenuItem("Same folder in destination",
                                 new BMessage(kSame), 'S', B_SHIFT_KEY));
     view->AddItem(new BMenuItem("Refresh", new BMessage(kRefresh), 'L'));
+    view->AddItem(new BMenuItem("Filter names", new BMessage(kFilter), 'F'));
     view->AddItem(new BMenuItem("Terminal here", new BMessage(kTerminal), 'T'));
     view->AddItem(new BMenuItem("Operations", new BMessage(kShowJobs), 'O'));
     view->AddSeparatorItem();
@@ -542,6 +543,9 @@ public:
     case kRefresh:
       for (auto p : panes)
         p->Reload();
+      break;
+    case kFilter:
+      panes[source]->FocusFilter();
       break;
     case kCopy:
       Operation(Lister::Action::Copy);

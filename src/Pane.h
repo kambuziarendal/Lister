@@ -7,6 +7,7 @@
 #include <TextControl.h>
 #include <View.h>
 class FileList;
+class BRow;
 class Pane : public BView {
 public:
   Pane(int32 id, const Preferences &);
@@ -21,6 +22,7 @@ public:
   std::vector<std::string> Selected() const;
   const char *Path() const { return path.String(); }
   void FocusList();
+  void FocusFilter();
   void Activate();
   bool IsScanning() const { return scanning; }
   void SendSelection();
@@ -31,6 +33,8 @@ private:
   BString path = "/boot/home";
   FileList *list;
   BTextControl *edit;
+  BTextControl *filter;
+  BButton *clearFilter;
   BStringView *status;
   BButton *role;
   BLooper *scanner = nullptr;
@@ -38,4 +42,8 @@ private:
   int64 serial = 0;
   bool scanning = false, refreshPending = false;
   std::vector<std::string> savedSelection;
+  // ColumnListView owns visible rows; we own detached, filtered-out rows.
+  std::vector<BRow *> hiddenRows;
+  void ApplyFilter();
+  void ClearRows();
 };
