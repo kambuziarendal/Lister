@@ -1,5 +1,8 @@
 # Design and boundaries
 
+Lister is a working title. The owner will choose the final name; keep application
+signature, package identity and settings paths unchanged until that decision.
+
 ## Product direction, 14 November 2026
 
 Lister is a native Haiku working environment for files. DOpus inspires freedom
