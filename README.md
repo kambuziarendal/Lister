@@ -25,7 +25,7 @@ F3/F4/F5/F6/F7/F8/F9 remain secondary aliases outside text fields.
 Operations run on a worker queue. A separate window shows progress, Pause/Resume,
 Cancel all and Replace/Replace all/Skip/Skip all/Abort conflicts. Closing that
 window only hides it; use Operations to reopen. The main window will not quit
-while an operation is active. F8 / Trash moves entries to Haiku's per-volume Trash, with Tracker-compatible
+while an operation is active. Command+D / Trash moves entries to Haiku's per-volume Trash, with Tracker-compatible
 restore metadata. Open it using a panel's Go menu, then select **Files > Restore
 from Trash**. Restore never overwrites an existing file; the original parent
 folder must still exist. Unsupported/read-only volumes return an error without

@@ -11,6 +11,14 @@ Snarveiene skal ligge nær fingrene: kommandotast pluss bokstav som hovedspor,
 ikke F-raden. Følg Haikus tastaturoppsett og bevar tekstfeltets vanlige snarveier.
 F-tastene kan beholdes som sekundære valg. Gjør bindingene konfigurerbare senere.
 
+## Privat kandidat 0.3.0, 14. november
+
+Listi-navn, kompatibel oppgradering fra Lister, synlige bokstavsnarveier og trygge
+tekstfeltsnarveier er implementert. Native filter/kopier/flytt/navn/ny mappe/Trash/
+gjenopprett er prøvd, inkludert avbrudd, konflikter og navigasjon mens jobb venter.
+Innstillingene beholdes. Verifikasjon og begrensninger står i VERIFICATION.md.
+Dette er en privat kandidat, ikke en offentlig utgivelse eller fysisk maskintest.
+
 ## Første milepæl: finn, velg og handle med oversikt
 
 1. Rask innsnevring i hvert panel. Synlig navnefilter, tastatursnarvei, tydelig

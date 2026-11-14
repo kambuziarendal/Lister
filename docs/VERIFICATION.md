@@ -1,3 +1,59 @@
+# Version 0.3.0 Listi candidate verification
+
+14 November 2026. Private x86_64 candidate, built and exercised in native Haiku
+beta6 hrev59866+79 / GCC 13.3.0 in an owned restricted-network QEMU/KVM overlay.
+No public release, paid CI, Depot change or physical-hardware qualification.
+
+Passed on the installed candidate:
+- Native build, 36 filesystem/Trash/filter checks, package install and executable
+  identity: `6b3fbf13779cb13869045ec9f97e0f198b55239584924530ef4785e47d04a11f`.
+- Retained original 0.2.0 -> Listi 0.3.0 upgrade and package rollback/re-upgrade.
+  Preferences SHA256 stayed `5eb533065816341d1ef2e03d3a10701b6e5011ba44bca3c8f9c867d9b21c9aca`.
+  One Listi app/Deskbar launcher, no stale Lister executable/launcher. Package
+  name, signature, settings and scripting identity remain compatible; the package
+  provides both app:listi and the previous app:lister capability.
+- Reproduced 0.2.0's path-field Command+A/C invoking file selection/copy. Fixed:
+  actual Command+A/C/X/V clipboard roundtrips in both paths, both filters,
+  command, new-folder and rename fields. E/M/R/N/D and F5/F8 in main-window
+  text fields do not start file operations. Enter returns path/filter focus to
+  the list. Both source roles and Tab transitions verified.
+- Command+V native viewer and Command+E StyledEdit launch; Command+F filtering,
+  filtered Command+C copy with hidden entries excluded, right-source Command+M,
+  Command+R rename, Command+N folder creation, Command+D native Trash.
+- Actual dialogs and filesystem readback: confirmation cancel, conflict Skip,
+  Replace, Pause/Resume and Cancel all. Main navigation stays responsive while
+  paused. Accepted copy/rename/new-folder jobs retain their original paths when
+  roles and folders change. Completed file contents compared.
+- Trash and restore roundtrip; restore conflict keeps both the trashed original
+  and newer destination intact. No overwrite or permanent-delete fallback.
+- Normal 1140x650 and compact 800x600 frames read back; real light/dark palettes,
+  readable controls and native file icons inspected. Compact dark name dialog
+  opens and cancels. Existing preferences, including visible command field, kept.
+
+A late Escape defect in the name dialog was corrected using B_NO_COMMAND_KEY.
+The corrected installed binary passed explicit window-count cancellation checks,
+new-dialog text checks, snapshot rename/mkdir, clipboard and operation regressions.
+Initial shell assertions could hide intermediate failures; their affected results
+were discarded and replaced by fail-fast assertions and visual checks. Failed
+and corrected evidence remain in the private overnight task directory.
+
+Recovery: reinstall the retained Lister 0.2.0 HPKG. Do not restore an old filesystem
+snapshot or settings file; package rollback must not undo the user's file work.
+The retained settings identity needs no migration in either direction. Verify the
+version in the title and exactly one launcher after changing packages.
+
+Not qualified: physical Haiku hardware, alternate modifier mappings, full disk,
+power loss, every filesystem, very large directories or external concurrent-edit
+races. Shortcuts use native B_COMMAND_KEY rather than a hardcoded physical Alt.
+General undo, tabs, network/archive providers and Tracker replacement remain out
+of scope. This is a usable private candidate, not a durability/backup guarantee.
+
+Regression: operate only in unique owned folders, use fail-fast filesystem checks,
+assert dialogs actually close, and compare installed/build hashes after any late
+fix. Retain both the final HPKG checksum and predecessor separately from the source.
+
+---
+
 # Version 0.2.1 candidate verification
 
 14 November 2026. Native Haiku beta6 x86_64 in an owned QEMU overlay based on the
