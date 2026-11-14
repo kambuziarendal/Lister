@@ -1,4 +1,9 @@
-# Current private candidate: 0.6.0
+# Current private search candidate: 0.7.0
+
+See [search behavior, verification and limits](SEARCH-0.7.0.md). Earlier
+results below remain historical, not new test runs.
+
+# Private candidate: 0.6.0
 
 See [saved places and targeted bughunt](PLACES-0.6.0.md). Earlier candidate
 results below remain historical, not new test runs.

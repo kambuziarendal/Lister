@@ -42,7 +42,7 @@ Neste produkttrinn er funksjonsmatrisen og et konkret betabehov, ikke automatisk
 publisering eller en ny stor omskriving. De opprinnelige deltrinnene følger under
 som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
 
-### Nåværende trinn og kø, oppdatert for 0.6.0
+### Nåværende trinn og kø, oppdatert for 0.7.0
 
 1. Sikkerhet/modulgrenser, arkiv/nettverksgrunnlag, panelvisninger og intern
    operasjonsvisning er samlet og kvalifisert innenfor den private 0.4.0-kandidatens
@@ -55,8 +55,11 @@ som historikk og retning; dette er ikke en påstand om full Dolphin-dekning.
    Opprinnelige ferdigkrav beholdes i NEXT-NAVIGATION.md.
 4. Lagrede arbeidssteder og målrettet bughunt inngår i privat 0.6.0. Se
    [atferd og verifikasjon](PLACES-0.6.0.md).
-5. Deretter: avbrytbart søk, inkludert BFS-behovene fra Tracker, dypere kvalifisering av eksisterende
-   filkilder, Tracker-samspill, trygg massebehandling og flere providers. Restbehovene
+5. Avbrytbart lokalt navnesøk og native BFS-formler er implementert som
+   snapshot-arbeidsflate i privat 0.7.0. Se [søk og begrensninger](SEARCH-0.7.0.md).
+6. Neste søketrinn: levende BFS-treff, lagrede søk og enklere attributtvalg.
+   Deretter dypere kvalifisering av eksisterende filkilder, Tracker-samspill,
+   trygg massebehandling og flere providers. Restbehovene
    beholdes i matrisen. Ingen funksjon avskrives fordi en lignende funksjon finnes.
 
 Arnes presisering: Vi skal ikke kopiere Dolphin på noen måte. Det de tilbyr av

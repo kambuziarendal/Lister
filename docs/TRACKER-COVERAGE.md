@@ -37,9 +37,9 @@ når den kan startes fra Listi og hele oppgaven er prøvd.
 | T12 | Vise og redigere typed BFS-attributter | M | People/mail/audio, validering og avbrutt redigering | Attributes |
 | T13 | Velge etter mønster eller regulært uttrykk | M | Fryst utvalg, ugyldig uttrykk, tomt resultat | Tracker |
 | T14 | Vanlige flerutvalg, tastatur og drag | D | Egen liste/grid testet. Alle modifierkombinasjoner | Shortcuts |
-| T15 | BFS-søk på navn, typer, attributter og formler | M | Søk er neste funksjonsetappe etter bughunt | Queries |
-| T16 | Velge søkevolumer, mapper og inkludering av Trash | M | Bare støttede indekser, forståelig avgrensning | Queries |
-| T17 | Levende treff med originale filhandlinger | M | Inn/ut av treff, flyttet fil, fryst operasjonsmål | Queries |
+| T15 | BFS-søk på navn, typer, attributter og formler | D (0.7) | Lokalt navnesøk og native BFS-formler som snapshot; attributtbygger gjenstår | Queries |
+| T16 | Velge søkevolumer, mapper og inkludering av Trash | D (0.7) | Én mappe/volumrot og eksplisitt Trash-valg; flervolumvalg gjenstår | Queries |
+| T17 | Levende treff med originale filhandlinger | D (0.7) | Snapshot viser/velger original i eierpanelet med identitetskontroll; levende treff gjenstår | Queries |
 | T18 | Lagrede søk, søkemaler og gjenåpning/redigering | M | Bevar semantikk, ikke lagre en foreldet treffliste | Queries |
 | T19 | Tidsuttrykk og logiske AND/OR-vilkår | M | Dato-/tidssonegrenser og typesikker formel | Queries |
 | T20 | Opprette mapper og filer fra maler | D | Ny mappe finnes. Filmaler, metadata og malmapper mangler | Tracker |

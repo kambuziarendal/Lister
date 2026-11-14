@@ -135,7 +135,7 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
 | V05 | Vis/skjul punktfiler, uten å forveksle dette med navnefilter | D3 Show Hidden Files | D: punktfiler vises; egen vis/skjul-bryter mangler | Eksplisitt panelvalg med presise utvalgsregler |
 | V06 | Velg et intervall, krymp det, inverter eller velg alle synlige filer | D1 selection; D2 | V: modelltester og grid-intervall/drag-bevis, T/UI | Behold ett sannhetsgrunnlag for valg og fokus |
 | V07 | Snevre inn navn mens du skriver; nullstill uten skjult filvalg | D1 filter-files | D: bokstavelig filter er prøvd; ikke samme mønster-/regexmuligheter | Raskt lokalt filter først; eventuelle mønstre må være eksplisitte |
-| V08 | Finn et filnavn i undermapper, avbryt og se treffets opprinnelse | D1 finding-searching-in-file; K1 filenamesearch | M: filter er ikke søk | Avgrenset bakgrunnssøk med synlig rot og originalsti |
+| V08 | Finn et filnavn i undermapper, avbryt og se treffets opprinnelse | D1 finding-searching-in-file; K1 filenamesearch | D (0.7): lokalt avbrytbart navnesøk og BFS-snapshot | Se SEARCH-0.7.0.md; virtuelle filkilder gjenstår |
 | V09 | Finn innhold, type, dato og metadata i et større filområde | D1 søk; Dolphin Baloo-avhengighet | M | Bruk BFS-indekser/queries der de passer, tydelig fallback ellers |
 | V10 | Lagre et søk og åpne oppdaterte treff senere | D1 søk, Save | M | Lagrede søk som peker til originaler, aldri skjulte filkopier |
 | V11 | Se type, eierskap, rettigheter, mediemetadata og valgte kolonner | D1 dolphin-view-information; D3 visible roles | D: navn/størrelse/endret og interne metadata; ingen full egenskapsflate | Native MIME/BFS-egenskaper og formatspesifikke tillegg |

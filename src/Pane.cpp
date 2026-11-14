@@ -311,6 +311,7 @@ void Pane::UpdateNavigation() {
 }
 void Pane::StartNavigation(const std::string &request, int target, bool trash) {
   stop_watching(this);
+  reveal = {};
   savedSelection =
       (target < 0 && !trash && path == request.c_str())
           ? Selected() : std::vector<std::string>{};
@@ -503,6 +504,22 @@ void Pane::MessageReceived(BMessage *m) {
     Activate();
     break;
   }
+  case kRevealSearch: {
+    Lister::SearchHit hit{m->GetString("path", ""), m->GetInt64("device", -1), m->GetInt64("node", -1)};
+    if (!Lister::SameSearchEntry(hit)) {
+      savedSelection.clear(); reveal = {};
+      entries.Select(0); SendSelection();
+      SetStatus("Search result moved, disappeared or was replaced. Search again; nothing selected.");
+      break;
+    }
+    size_t slash = hit.path.find_last_of('/');
+    if (slash == std::string::npos) break;
+    filter->SetText(""); clearFilter->SetEnabled(false);
+    StartNavigation(hit.path.substr(0, slash ? slash : 1));
+    // Do not select the path until the scan is complete and identity rechecked.
+    savedSelection.clear(); reveal = hit;
+    break;
+  }
   case kNavigate:
     if (m->HasInt64("serial") && m->GetInt64("serial", -1) != serial)
       break;
@@ -631,7 +648,16 @@ void Pane::MessageReceived(BMessage *m) {
       s << error;
       SetStatus(s);
     } else {
+      bool stale = false;
+      if (!reveal.path.empty()) {
+        stale = !Lister::SameSearchEntry(reveal);
+        entries.SetSelection(stale ? std::vector<std::string>{} : std::vector<std::string>{reveal.path},
+                             stale ? "" : reveal.path);
+        if (!stale && entries.Selected().empty()) stale = true;
+        reveal = {};
+      }
       SendSelection();
+      if (stale) SetStatus("Search result changed during navigation. Search again; nothing selected.");
       const void *p;
       ssize_t n;
       if (m->FindData("node", B_RAW_TYPE, &p, &n) == B_OK &&

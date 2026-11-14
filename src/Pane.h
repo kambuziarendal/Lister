@@ -4,6 +4,7 @@
 #include "PaneModel.h"
 #include "NavigationHistory.h"
 #include "SavedPlaces.h"
+#include "FileSearch.h"
 #include <Button.h>
 #include <Looper.h>
 #include <StringView.h>
@@ -83,6 +84,7 @@ private:
   int64 serial = 0;
   bool scanning = false, refreshPending = false;
   std::vector<std::string> savedSelection;
+  Lister::SearchHit reveal;
   void ApplyFilter();
   void ClearRows();
 };

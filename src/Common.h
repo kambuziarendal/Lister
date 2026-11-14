@@ -49,6 +49,8 @@ enum : uint32 {
   kSwap = 'swap',
   kSame = 'same',
   kRefresh = 'rfsh',
+  kSearch = 'srch',
+  kRevealSearch = 'srev',
   kFilter = 'fltr',
   kFilterChanged = 'flch',
   kClearFilter = 'flcl',

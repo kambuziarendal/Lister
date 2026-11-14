@@ -2,6 +2,7 @@
 #include "Common.h"
 #include "ExplicitSubmit.h"
 #include "SavedPlaces.h"
+#include "SearchWindow.h"
 #include "ImagePreview.h"
 #include "InlineAction.h"
 #include "OperationQueue.h"
@@ -333,6 +334,7 @@ public:
 };
 class MainWindow : public BWindow {
   Preferences prefs;
+  BMessenger searchWindow;
   Lister::SavedPlaces places, pendingPlaces;
   bool placesWritable = true, placesSaving = false;
   int64 placesSerial = 0;
@@ -508,7 +510,7 @@ class MainWindow : public BWindow {
 public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.6.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.7.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), places(saved), placesWritable(writable), service(svc) {
     auto menu = new BMenuBar("menu");
@@ -551,6 +553,7 @@ public:
         new BMenuItem("Connect to server...", new BMessage(kNetwork), 'K'));
     view->AddItem(new BMenuItem("Refresh", new BMessage(kRefresh), 'L'));
     view->AddItem(new BMenuItem("Filter names", new BMessage(kFilter), 'F'));
+    view->AddItem(new BMenuItem("Find files...", new BMessage(kSearch), 'F', B_SHIFT_KEY));
     view->AddItem(new BMenuItem("Terminal here", new BMessage(kTerminal), 'T'));
     view->AddItem(new BMenuItem("Operations", new BMessage(kShowJobs), 'O'));
     view->AddSeparatorItem();
@@ -848,6 +851,19 @@ public:
       for (auto p : panes)
         p->Reload();
       break;
+    case kSearch:
+      if (searchWindow.IsValid()) searchWindow.SendMessage(kSearch);
+      else searchWindow = OpenFileSearch(BMessenger(this), source, panes[source]->Path());
+      break;
+    case kRevealSearch: {
+      int32 which = m->GetInt32("pane", -1);
+      if (which < 0 || which > 1) break;
+      source = which;
+      for (int i = 0; i < 2; ++i) panes[i]->SetSource(i == source);
+      panes[source]->MessageReceived(m);
+      Activate(); panes[source]->FocusList();
+      break;
+    }
     case kFilter:
       panes[source]->FocusFilter();
       break;
