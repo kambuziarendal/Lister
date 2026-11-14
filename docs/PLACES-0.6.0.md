@@ -46,6 +46,10 @@ files are not rolled back by changing the app package.
    beyond the screen. Status text now truncates to the available width and the
    complete message remains available in its tooltip.
 
+6. Existing text runs in inline questions retained dark-theme colours after
+   a live switch to light mode. A small shared native text view now updates
+   glyph colours on theme changes, including operation history and the viewer.
+
 Tracker is an additional requirements baseline, not copied implementation.
 See TRACKER-COVERAGE.md. Full Tracker parity, full Dolphin parity, arbitrary
 third-party add-ons, physical hardware and every possible filesystem/backend
@@ -73,3 +77,14 @@ The offline test found and reproduced the long-error width bug before its fix;
 the corrected SSH error stayed within 1024 by 650. The SMB fixture permits guest
 listing, so it was not used as proof of missing credentials after restart. The
 pinned SFTP connection configuration was absent after restart as expected.
+
+Live light/dark changes were visually checked with an open name question,
+completed operation history and a text viewer. Readable glyph colours now follow
+the theme without closing/reopening the view. A discarded early theme run had
+both old and new apps open; it is not acceptance evidence. The corrected run
+asserted no prior Listi process and verified the sole candidate's title first.
+
+Rollback testing must compare preference values after explicitly saving in an
+older app, not only flattened-file bytes: BMessage routing header fields can
+change during a Save while every persisted setting remains identical. The
+separate places file must still remain byte-identical when the old app saves.

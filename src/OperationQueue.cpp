@@ -8,6 +8,7 @@
 #include <StatusBar.h>
 #include <StringView.h>
 #include <TextView.h>
+#include "ThemeTextView.h"
 #include <Window.h>
 #include <cstdio>
 #include <cstring>
@@ -131,7 +132,7 @@ public:
       choices->AddChild(new BButton(labels[i], m));
     }
     choices->Hide();
-    history = new BTextView("history");
+    history = new ThemeTextView("history", B_DOCUMENT_BACKGROUND_COLOR, B_DOCUMENT_TEXT_COLOR);
     history->MakeEditable(false);
     history->SetWordWrap(true);
     history->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);

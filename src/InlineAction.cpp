@@ -6,6 +6,7 @@
 #include <LayoutBuilder.h>
 #include <TextControl.h>
 #include <TextView.h>
+#include "ThemeTextView.h"
 #include <string>
 namespace {
 constexpr uint32 kAccept = 'iacc', kCancel = 'iccl', kClosed = 'ican';
@@ -37,7 +38,7 @@ bool InlineAction::Ask(const char *text, const char *button,
     return false;
   ++serial;
   result = accepted;
-  auto explanation = new BTextView("question");
+  auto explanation = new ThemeTextView("question", B_PANEL_BACKGROUND_COLOR, B_PANEL_TEXT_COLOR);
   explanation->SetText(text);
   explanation->MakeEditable(false);
   explanation->MakeSelectable(false);

@@ -27,6 +27,7 @@
 #include <SplitView.h>
 #include <TextControl.h>
 #include <TextView.h>
+#include "ThemeTextView.h"
 #include <Window.h>
 #include <chrono>
 #include <cstdio>
@@ -1034,7 +1035,7 @@ public:
         title << " (first 1 MiB)";
       auto window = new BWindow(BRect(120, 100, 900, 650), title,
                                 B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS);
-      auto text = new BTextView("document");
+      auto text = new ThemeTextView("document", B_DOCUMENT_BACKGROUND_COLOR, B_DOCUMENT_TEXT_COLOR);
       text->SetText(m->GetString("text", ""));
       text->MakeEditable(false);
       text->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
