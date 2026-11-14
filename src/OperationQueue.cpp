@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "OperationQueue.h"
+#include "VirtualFile.h"
 #include <Button.h>
 #include <GroupView.h>
 #include <LayoutBuilder.h>
@@ -16,6 +17,23 @@ namespace {
 uint64_t Size(const std::string &p, const std::function<bool()> &proceed) {
   if (!proceed())
     return 0;
+  if (Lister::IsVirtual(p)) {
+    try {
+      Lister::TransferControl control;
+      control.proceed = proceed;
+      Lister::FileEntry e;
+      if (!Lister::StatFile(p, e, control) || e.link)
+        return 0;
+      if (!e.directory)
+        return std::max<int64_t>(0, e.size);
+      uint64_t total = 0;
+      for (auto &child : Lister::ListFiles(p, control))
+        total += Size(child.path, proceed);
+      return total;
+    } catch (...) {
+      return 0;
+    }
+  }
   struct stat st;
   if (lstat(p.c_str(), &st))
     return 0;
@@ -56,13 +74,18 @@ const char *Verb(Lister::Action a) {
   }
 }
 } // namespace
-class ProgressWindow : public BWindow {
+class ProgressView : public BView {
   OperationQueue *owner;
   BStringView *title, *file, *summary;
   BStatusBar *bar;
-  BButton *pause;
+  BButton *pause, *cancelButton;
+  BString lastError;
   BGroupView *choices;
+  BView *details;
+  BButton *detailsButton;
+  bool expanded = false;
   bool choicesVisible = false;
+  int64 conflictRequest = 0;
   void ShowChoices(bool show) {
     if (show == choicesVisible)
       return;
@@ -75,20 +98,30 @@ class ProgressWindow : public BWindow {
   BTextView *history;
 
 public:
-  ProgressWindow(OperationQueue *o)
-      : BWindow(BRect(0, 0, 640, 340), "File operations", B_TITLED_WINDOW,
-                B_AUTO_UPDATE_SIZE_LIMITS),
-        owner(o) {
+  ProgressView(OperationQueue *o)
+      : BView("operations", B_WILL_DRAW | B_SUPPORTS_LAYOUT), owner(o) {
+    SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+    SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     title = new BStringView("operation", "No queued operations");
     title->SetFont(be_bold_font);
     file = new BStringView("current-file", "");
     file->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     file->SetExplicitMinSize(BSize(200, B_SIZE_UNSET));
     file->SetTruncation(B_TRUNCATE_MIDDLE);
-    summary = new BStringView("summary", "");
+    summary = new BStringView("summary", "Ready");
+    summary->SetExplicitMinSize(BSize(180, B_SIZE_UNSET));
+    summary->SetTruncation(B_TRUNCATE_END);
+    title->SetExplicitMinSize(BSize(140, B_SIZE_UNSET));
+    title->SetTruncation(B_TRUNCATE_END);
     bar = new BStatusBar("progress");
-    bar->SetBarColor(ui_color(B_STATUS_BAR_COLOR));
+    bar->SetBarColor(tint_color(ui_color(B_STATUS_BAR_COLOR), 1.2));
+    bar->SetBarHeight(4);
     pause = new BButton("pause", "Pause", new BMessage(kPause));
+    cancelButton = new BButton("Cancel", new BMessage(kAbort));
+    pause->SetEnabled(false);
+    cancelButton->SetEnabled(false);
+    file->Hide();
+    bar->Hide();
     choices = new BGroupView(B_HORIZONTAL, 4);
     const char *labels[] = {"Replace", "Replace all", "Skip", "Skip all",
                             "Abort"};
@@ -105,28 +138,66 @@ public:
     history->SetLowUIColor(B_DOCUMENT_BACKGROUND_COLOR);
     history->SetHighUIColor(B_DOCUMENT_TEXT_COLOR);
     auto scroll = new BScrollView("history-scroll", history, 0, false, true);
-    scroll->SetExplicitMinSize(BSize(440, 110));
-    BLayoutBuilder::Group<>(this, B_VERTICAL, 10)
-        .SetInsets(12)
+    scroll->SetExplicitMinSize(BSize(440, 65));
+    details = new BGroupView(B_VERTICAL, 5);
+    BLayoutBuilder::Group<>(details, B_VERTICAL, 5).Add(choices).Add(scroll);
+    details->Hide();
+    detailsButton = new BButton("Details", new BMessage(kShowJobs));
+    BLayoutBuilder::Group<>(this, B_VERTICAL, 4)
+        .SetInsets(8, 4, 8, 6)
+        .AddGroup(B_HORIZONTAL, 8)
         .Add(title)
+        .AddGlue()
+        .Add(summary)
+        .Add(pause)
+        .Add(cancelButton)
+        .Add(detailsButton)
+        .End()
         .Add(file)
         .Add(bar)
-        .Add(summary)
-        .Add(choices)
-        .Add(scroll)
-        .AddGroup(B_HORIZONTAL, 8)
-        .AddGlue()
-        .Add(pause)
-        .Add(new BButton("cancel", "Cancel all", new BMessage(kAbort)))
-        .End();
-    CenterOnScreen();
+        .Add(details);
   }
-  bool QuitRequested() override {
-    Hide();
-    return false;
+  void AttachedToWindow() override {
+    pause->SetTarget(this);
+    detailsButton->SetTarget(this);
+    cancelButton->SetTarget(this);
+    for (int32 i = 0; i < choices->CountChildren(); ++i)
+      if (auto button = dynamic_cast<BButton *>(choices->ChildAt(i)))
+        button->SetTarget(this);
+  }
+  void Expand(bool show) {
+    if (expanded == show)
+      return;
+    expanded = show;
+    if (show)
+      details->Show();
+    else
+      details->Hide();
+    detailsButton->SetLabel(show ? "Less" : "Details");
+  }
+  void Toggle() { Expand(!expanded); }
+  void Dismiss() {
+    if (choicesVisible) {
+      owner->Answer(Lister::Decision::Abort, conflictRequest);
+      ShowChoices(false);
+    }
+    Expand(false);
   }
   void MessageReceived(BMessage *m) override {
     switch (m->what) {
+    case kShowJobs:
+      Toggle();
+      break;
+    case kFileErrorSelected:
+      if (lastError == m->GetString("error", ""))
+        break;
+      lastError = m->GetString("error", "");
+      Expand(true);
+      history->Insert(m->GetString("error", ""));
+      history->Insert("\n");
+      history->Select(history->TextLength(), history->TextLength());
+      history->ScrollToSelection();
+      break;
     case kPause:
       owner->Pause();
       pause->SetLabel(!strcmp(pause->Label(), "Pause") ? "Resume" : "Pause");
@@ -138,19 +209,33 @@ public:
       summary->SetText("Cancelling. Finishing the current safe step...");
       break;
     case kAnswer:
-      owner->Answer(static_cast<Lister::Decision>(m->GetInt32("decision", 4)));
-      ShowChoices(false);
+      if (owner->Answer(static_cast<Lister::Decision>(m->GetInt32("decision", 4)),
+                        m->GetInt64("request", -1)))
+        ShowChoices(false);
       break;
     case kConflict:
-      if (IsHidden())
-        Show();
-      Activate();
+      conflictRequest = m->GetInt64("request", -1);
+      for (int32 i = 0; i < choices->CountChildren(); ++i) {
+        if (auto button = dynamic_cast<BButton *>(choices->ChildAt(i))) {
+          auto answer = new BMessage(kAnswer);
+          answer->AddInt32("decision", i);
+          answer->AddInt64("request", conflictRequest);
+          button->SetMessage(answer);
+        }
+      }
+      Expand(true);
       summary->SetText("Destination exists. Choose how to continue:");
       file->SetText(m->GetString("path", ""));
       ShowChoices(true);
       break;
     case kJobUpdate: {
       if (m->GetBool("start", false)) {
+        if (file->IsHidden())
+          file->Show();
+        if (bar->IsHidden())
+          bar->Show();
+        pause->SetEnabled(true);
+        cancelButton->SetEnabled(true);
         bar->Reset();
         bar->SetMaxValue(float(std::max<int64>(1, m->GetInt64("total", 1))));
         pause->SetLabel("Pause");
@@ -162,11 +247,12 @@ public:
       bar->Update(bytes - bar->CurrentValue());
       BString s;
       s << m->GetInt64("bytes", 0) << " bytes processed";
-      bar->SetTrailingText(s);
+      bar->SetToolTip(s);
       break;
     }
     case kJobDone: {
-      bar->Update(bar->MaxValue() - bar->CurrentValue());
+      if (m->GetBool("complete", false))
+        bar->Update(bar->MaxValue() - bar->CurrentValue());
       BString s = m->GetString("result", "");
       summary->SetText(s);
       s << "\n";
@@ -178,28 +264,36 @@ public:
       }
       history->Select(history->TextLength(), history->TextLength());
       history->ScrollToSelection();
-      if (m->GetBool("idle", false))
+      if (m->GetBool("idle", false)) {
         title->SetText("Queue finished");
+        pause->SetEnabled(false);
+        cancelButton->SetEnabled(false);
+        if (!file->IsHidden())
+          file->Hide();
+        if (!bar->IsHidden())
+          bar->Hide();
+      }
+      if (m->HasString("error"))
+        Expand(true);
       ShowChoices(false);
       break;
     }
     case B_COLORS_UPDATED:
       bar->SetBarColor(ui_color(B_STATUS_BAR_COLOR));
-      BWindow::MessageReceived(m);
+      BView::MessageReceived(m);
       break;
     default:
-      BWindow::MessageReceived(m);
+      BView::MessageReceived(m);
       break;
     }
   }
 };
 OperationQueue::OperationQueue(BMessenger m) : main(m) {
-  window = new ProgressWindow(this);
-  window->Show();
-  window->Lock();
-  window->Hide();
-  window->Unlock();
-  display = BMessenger(window);
+  view = new ProgressView(this);
+}
+BView *OperationQueue::View() { return view; }
+void OperationQueue::Start() {
+  display = BMessenger(view);
   thread = std::thread([this] { Loop(); });
 }
 OperationQueue::~OperationQueue() {
@@ -211,17 +305,16 @@ OperationQueue::~OperationQueue() {
     answer = int(Lister::Decision::Abort);
   }
   changed.notify_all();
-  thread.join();
-  if (window->Lock())
-    window->Quit();
+  if (thread.joinable())
+    thread.join();
 }
-void OperationQueue::Show() {
-  if (window->Lock()) {
-    if (window->IsHidden())
-      window->Show();
-    window->Activate();
-    window->Unlock();
-  }
+void OperationQueue::Show() { view->Expand(true); }
+void OperationQueue::Toggle() { view->Toggle(); }
+void OperationQueue::Collapse() { view->Dismiss(); }
+void OperationQueue::ErrorInfo(const char *text) {
+  BMessage error(kFileErrorSelected);
+  error.AddString("error", text);
+  display.SendMessage(&error);
 }
 void OperationQueue::Enqueue(const Lister::Job &j) {
   {
@@ -230,7 +323,6 @@ void OperationQueue::Enqueue(const Lister::Job &j) {
     count++;
   }
   changed.notify_all();
-  Show();
 }
 void OperationQueue::Pause() {
   {
@@ -250,12 +342,17 @@ void OperationQueue::Cancel() {
   }
   changed.notify_all();
 }
-void OperationQueue::Answer(Lister::Decision d) {
+bool OperationQueue::Answer(Lister::Decision d, int64 request) {
   {
     std::lock_guard<std::mutex> l(mutex);
+    if (!awaitingAnswer || request != conflictSerial || answer >= 0 ||
+        int(d) < int(Lister::Decision::Replace) ||
+        int(d) > int(Lister::Decision::Abort))
+      return false;
     answer = int(d);
   }
   changed.notify_all();
+  return true;
 }
 bool OperationQueue::Proceed() {
   std::unique_lock<std::mutex> l(mutex);
@@ -263,17 +360,25 @@ bool OperationQueue::Proceed() {
   return !cancel && !stopping;
 }
 Lister::Decision OperationQueue::Ask(const std::string &path) {
+  int64 request;
   {
     std::lock_guard<std::mutex> l(mutex);
+    if (cancel || stopping)
+      return Lister::Decision::Abort;
     answer = -1;
+    request = ++conflictSerial;
+    awaitingAnswer = true;
   }
   BMessage m(kConflict);
+  m.AddInt64("request", request);
   m.AddString("path", path.c_str());
-  display.SendMessage(&m, (BHandler *)nullptr, 500000);
+  status_t sent = display.SendMessage(&m, (BHandler *)nullptr, 500000);
   std::unique_lock<std::mutex> l(mutex);
-  changed.wait(l, [this] { return answer >= 0 || cancel || stopping; });
-  return cancel || stopping ? Lister::Decision::Abort
-                            : static_cast<Lister::Decision>(answer);
+  if (sent == B_OK)
+    changed.wait(l, [this] { return answer >= 0 || cancel || stopping; });
+  awaitingAnswer = false;
+  return sent != B_OK || cancel || stopping ? Lister::Decision::Abort
+                                           : static_cast<Lister::Decision>(answer);
 }
 void OperationQueue::Loop() {
   for (;;) {
@@ -304,6 +409,7 @@ void OperationQueue::Loop() {
         total += Size(s, [this] { return Proceed(); });
     start.AddInt64("total", std::max<uint64_t>(1, total));
     display.SendMessage(&start);
+    std::map<std::string, uint64_t> fileBytes, fileSizes;
     uint64_t bytes = 0;
     bigtime_t last = 0;
     Lister::Hooks hooks;
@@ -311,6 +417,18 @@ void OperationQueue::Loop() {
     hooks.conflict = [this](auto &p) { return Ask(p); };
     hooks.progress = [&](auto &p, uint64_t n) {
       bytes += n;
+      fileBytes[p] += n;
+      if (!fileSizes.count(p)) {
+        try {
+          Lister::FileEntry entry;
+          Lister::TransferControl control;
+          control.proceed = hooks.proceed;
+          if (Lister::StatFile(p, entry, control))
+            fileSizes[p] = std::max<int64_t>(0, entry.size);
+        } catch (...) {
+          fileSizes[p] = 0;
+        }
+      }
       if (system_time() - last < 80000)
         return;
       last = system_time();
@@ -318,6 +436,30 @@ void OperationQueue::Loop() {
       m.AddString("path", p.c_str());
       m.AddInt64("bytes", bytes);
       display.SendMessage(&m, (BHandler *)nullptr, 500000);
+      BMessage file(kFileProgress);
+      file.AddString("path", p.c_str());
+      file.AddInt32("state", 1);
+      file.AddFloat("fraction",
+                    fileSizes[p]
+                        ? std::min(0.99f, float(fileBytes[p]) / fileSizes[p])
+                        : 0.f);
+      main.SendMessage(&file, (BHandler *)nullptr, 500000);
+    };
+    hooks.fileDone = [&](const std::string &path,
+                         const std::string &destination) {
+      BMessage file(kFileProgress);
+      file.AddString("path", path.c_str());
+      file.AddString("destination", destination.c_str());
+      file.AddInt32("state", 2);
+      file.AddFloat("fraction", 1.f);
+      main.SendMessage(&file, (BHandler *)nullptr, 500000);
+    };
+    hooks.fileFailed = [&](const std::string &path, const std::string &error) {
+      BMessage file(kFileProgress);
+      file.AddString("path", path.c_str());
+      file.AddString("error", error.c_str());
+      file.AddInt32("state", 3);
+      main.SendMessage(&file, (BHandler *)nullptr, 500000);
     };
     auto result = Lister::Run(job, hooks);
     count--;
@@ -329,6 +471,8 @@ void OperationQueue::Loop() {
     if (result.cancelled)
       summary << ". Cancelled; completed entries kept.";
     done.AddString("result", summary);
+    done.AddBool("complete", !result.cancelled && result.errors.empty() &&
+                                 result.skipped == 0);
     for (auto &e : result.errors)
       done.AddString("error", e.c_str());
     done.AddBool("idle", count.load() == 0);

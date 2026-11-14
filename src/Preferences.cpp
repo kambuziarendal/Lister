@@ -7,6 +7,7 @@
 #include <StringView.h>
 #include <TextControl.h>
 #include <Window.h>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 rgb_color Preferences::Color(const BString &text) const {
@@ -17,6 +18,20 @@ rgb_color Preferences::Color(const BString &text) const {
   return ui_color(B_PANEL_TEXT_COLOR);
 }
 void Preferences::Load(const BMessage &m) {
+  paneMode[0] = std::max(0, std::min(3, m.GetInt32("leftMode", 0)));
+  paneMode[1] = std::max(0, std::min(3, m.GetInt32("rightMode", 0)));
+  paneTree[0] = m.GetBool("leftTree", false);
+  paneTree[1] = m.GetBool("rightTree", false);
+  preview = m.GetBool("preview", false);
+  folderModes.clear();
+  BMessage folder;
+  for (int32 i = 0; i < 4096 && m.FindMessage("folderView", i, &folder) == B_OK;
+       ++i) {
+    const char *path = folder.GetString("path", "");
+    int32 mode = folder.GetInt32("mode", -1);
+    if (*path && mode >= 0 && mode <= 3)
+      folderModes[path] = mode;
+  }
   icons = m.GetBool("icons", true);
   size = m.GetBool("size", true);
   date = m.GetBool("date", true);
@@ -34,6 +49,17 @@ void Preferences::Load(const BMessage &m) {
 }
 BMessage Preferences::Save() const {
   BMessage m;
+  m.AddInt32("leftMode", paneMode[0]);
+  m.AddInt32("rightMode", paneMode[1]);
+  m.AddBool("leftTree", paneTree[0]);
+  m.AddBool("rightTree", paneTree[1]);
+  m.AddBool("preview", preview);
+  for (auto &entry : folderModes) {
+    BMessage folder;
+    folder.AddString("path", entry.first.c_str());
+    folder.AddInt32("mode", entry.second);
+    m.AddMessage("folderView", &folder);
+  }
   m.AddBool("icons", icons);
   m.AddBool("size", size);
   m.AddBool("date", date);
@@ -118,6 +144,8 @@ public:
         .Add(new BButton("Cancel", new BMessage(B_QUIT_REQUESTED)))
         .Add(new BButton("Save", new BMessage(kApplyPreferences)))
         .End();
+    AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
+    AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
     CenterOnScreen();
   }
   void MessageReceived(BMessage *m) override {

@@ -1,3 +1,23 @@
+# Internal safety/module continuation, 14 November 2026
+
+The latest internal build and open gates are recorded in
+[INTERNAL-CANDIDATE.md](INTERNAL-CANDIDATE.md). Historical installed-package
+results below do not qualify the current uninstalled development executable.
+
+For the deterministic network fault lane, compile without a live server:
+
+```
+c++ -std=c++17 -Isrc tests/virtual-operation-faults.cpp \
+  src/VirtualOperation.cpp src/VirtualFile.cpp -o /tmp/listi-faults
+/tmp/listi-faults
+```
+
+On Haiku, link those two `.o` files from the candidate's native build instead of
+recompiling the implementations. Run `Listi --self-test` and `Listi --virtual-test`
+with owned fixtures as documented in INTERNAL-CANDIDATE. Record executable hash,
+compare source/build input hashes with the guest, and identify installed versus
+development runs separately. Never count an earlier hash's results as a rerun.
+
 # Version 0.3.0 Listi candidate verification
 
 14 November 2026. Private x86_64 candidate, built and exercised in native Haiku

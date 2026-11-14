@@ -19,6 +19,9 @@
 #include <unistd.h>
 
 namespace Lister {
+bool IsVirtual(const std::string &);
+Result RunVirtual(const Job &, const Hooks &);
+
 std::string Join(const std::string &a, const std::string &b) {
   return a + (a.empty() || a.back() == '/' ? "" : "/") + b;
 }
@@ -46,6 +49,13 @@ std::string Canonical(const std::string &p) {
 void Fail(const std::string &p) {
   throw std::runtime_error(p + ": " + strerror(errno));
 }
+dirent *NextEntry(DIR *directory, const std::string &path) {
+  errno = 0;
+  auto entry = readdir(directory);
+  if (!entry && errno)
+    Fail(path);
+  return entry;
+}
 bool Exists(const std::string &p, struct stat *st = nullptr) {
   struct stat local;
   if (lstat(p.c_str(), st ? st : &local) == 0)
@@ -59,6 +69,14 @@ struct Runner {
   const Hooks &h;
   bool replaceAll = false, skipAll = false;
   Result result;
+  bool deferCompletion = false;
+  std::vector<std::pair<std::string, std::string>> copied;
+  void Done(const std::string &src, const std::string &dst) {
+    if (deferCompletion)
+      copied.emplace_back(src, dst);
+    else if (h.fileDone)
+      h.fileDone(src, dst);
+  }
   void Check() {
     if (h.proceed && !h.proceed())
       throw Cancelled();
@@ -121,7 +139,7 @@ struct Runner {
       Dir dir(opendir(p.c_str()), closedir);
       if (!dir)
         Fail(p);
-      while (auto e = readdir(dir.get())) {
+      while (auto e = NextEntry(dir.get(), p)) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
           continue;
         Remove(Join(p, e->d_name));
@@ -148,7 +166,7 @@ struct Runner {
     Dir dir(opendir(path.c_str()), closedir);
     if (!dir)
       Fail(path);
-    while (auto e = readdir(dir.get())) {
+    while (auto e = NextEntry(dir.get(), path)) {
       if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
         continue;
       SnapshotTree(Join(path, e->d_name), entries, volume);
@@ -196,10 +214,7 @@ struct Runner {
               const struct stat &original) {
     struct stat now;
     bool exists = Exists(dst, &now);
-    if (exists &&
-        (!replace || now.st_dev != original.st_dev ||
-         now.st_ino != original.st_ino || now.st_mtime != original.st_mtime ||
-         now.st_size != original.st_size))
+    if (exists != replace || (exists && !SameEntry(now, original)))
       throw std::runtime_error(
           dst + ": destination changed during operation; left untouched");
     BEntry e(tmp.c_str());
@@ -216,7 +231,7 @@ struct Runner {
     struct stat st;
     if (lstat(src.c_str(), &st) != 0)
       Fail(src);
-    struct stat before {};
+    struct stat before{};
     bool existed = Exists(dst, &before);
     if (existed && st.st_dev == before.st_dev && st.st_ino == before.st_ino)
       throw std::runtime_error(src +
@@ -232,7 +247,7 @@ struct Runner {
       Dir dir(opendir(src.c_str()), closedir);
       if (!dir)
         Fail(src);
-      while (auto e = readdir(dir.get())) {
+      while (auto e = NextEntry(dir.get(), src)) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
           continue;
         if (!Copy(Join(src, e->d_name), Join(dst, e->d_name)))
@@ -247,6 +262,8 @@ struct Runner {
           Fail(dst);
       }
       Tick(src);
+      if (complete)
+        Done(src, dst);
       return complete;
     }
     if (!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode))
@@ -273,12 +290,12 @@ struct Runner {
         if (unlink(tmp.c_str()) || symlink(link, tmp.c_str()))
           Fail(tmp);
       } else {
-        FD in(open(src.c_str(), O_RDONLY | O_NOFOLLOW));
+        FD in(open(src.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK));
         if (in.n < 0)
           Fail(src);
         struct stat opened;
-        if (fstat(in.n, &opened) || opened.st_ino != st.st_ino ||
-            opened.st_dev != st.st_dev)
+        if (fstat(in.n, &opened) || !S_ISREG(opened.st_mode) ||
+            !SameEntry(opened, st))
           throw std::runtime_error(src + ": source changed before copying");
         std::vector<char> buf(131072);
         for (;;) {
@@ -303,8 +320,7 @@ struct Runner {
           Tick(src, n);
         }
         struct stat after;
-        if (fstat(in.n, &after) || after.st_size != st.st_size ||
-            after.st_mtime != st.st_mtime)
+        if (fstat(in.n, &after) || !SameEntry(after, st))
           throw std::runtime_error(src + ": source changed while copying");
         Attributes(src, tmp);
         if (fchmod(out.n, st.st_mode & 07777))
@@ -314,7 +330,11 @@ struct Runner {
           Fail(tmp);
       }
       Check();
+      struct stat current;
+      if (lstat(src.c_str(), &current) || !SameEntry(current, st))
+        throw std::runtime_error(src + ": source changed before commit");
       Commit(tmp, dst, existed, before);
+      Done(src, dst);
     } catch (...) {
       unlink(tmp.c_str());
       throw;
@@ -331,6 +351,8 @@ struct Runner {
     }
     for (auto &source : job.sources) {
       Check();
+      copied.clear();
+      deferCompletion = job.action == Action::Move;
       try {
         // Do not allow volume roots, parent pseudoentries or empty paths to be
         // removed.
@@ -354,12 +376,12 @@ struct Runner {
                 ": mounted volumes cannot be deleted, moved or renamed");
         }
         if (job.action == Action::Trash || job.action == Action::Restore) {
-          if (job.action == Action::Trash)
-            MoveToTrash(source);
-          else
-            RestoreFromTrash(source);
+          const std::string destination = job.action == Action::Trash
+                                              ? MoveToTrash(source)
+                                              : RestoreFromTrash(source);
           result.completed++;
-          Tick(source);
+          if (h.fileDone)
+            h.fileDone(source, destination);
           continue;
         }
         if (job.action == Action::Delete) {
@@ -385,8 +407,10 @@ struct Runner {
           if (Exists(destination))
             throw std::runtime_error(
                 destination + ": already exists; rename does not overwrite");
-          struct stat empty {};
+          struct stat empty{};
           Commit(source, destination, false, empty);
+          if (h.fileDone)
+            h.fileDone(source, destination);
           result.completed++;
           continue;
         }
@@ -395,6 +419,8 @@ struct Runner {
           BDirectory dir(job.destination.c_str());
           status_t s = e.MoveTo(&dir, leaf.c_str(), false);
           if (s == B_OK) {
+            if (h.fileDone)
+              h.fileDone(source, destination);
             Tick(source);
             result.completed++;
             continue;
@@ -409,15 +435,30 @@ struct Runner {
           if (job.action == Action::Move)
             RemoveCopied(source, beforeMove);
           result.completed++;
+          if (h.fileDone)
+            for (auto &entry : copied)
+              h.fileDone(entry.first, entry.second);
         }
       } catch (const std::runtime_error &e) {
         result.errors.push_back(e.what());
+        if (h.fileFailed)
+          h.fileFailed(source, e.what());
       }
     }
   }
 };
 } // namespace
 Result Run(const Job &j, const Hooks &h) {
+  // Source-only actions must not depend on the location in the other pane.
+  const bool usesDestination =
+      j.action == Action::Copy || j.action == Action::Move ||
+      j.action == Action::Rename || j.action == Action::MakeDirectory;
+  bool virtualJob = usesDestination && IsVirtual(j.destination);
+  for (auto &path : j.sources)
+    virtualJob = virtualJob || IsVirtual(path);
+  if (virtualJob)
+    return RunVirtual(j, h);
+
   Runner r{h};
   try {
     r.Execute(j);

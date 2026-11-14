@@ -17,6 +17,8 @@ struct Hooks {
   std::function<bool()> proceed;
   std::function<void(const std::string &, uint64_t)> progress;
   std::function<Decision(const std::string &)> conflict;
+  std::function<void(const std::string &, const std::string &)> fileDone;
+  std::function<void(const std::string &, const std::string &)> fileFailed;
 };
 struct Result {
   int completed = 0, skipped = 0;

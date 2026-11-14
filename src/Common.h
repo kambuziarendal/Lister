@@ -6,6 +6,7 @@
 #include <Messenger.h>
 #include <String.h>
 #include <atomic>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -18,6 +19,9 @@ enum : uint32 {
   kScanDone = 'done',
   kInvoke = 'invo',
   kSelection = 'sels',
+  kPreviewSelection = 'pvsl',
+  kPreviewToggle = 'pvtg',
+  kPaneDisplay = 'pnds',
   kParent = 'prnt',
   kRoot = 'root',
   kHome = 'home',
@@ -50,6 +54,8 @@ enum : uint32 {
   kDrop = 'drop',
   kSwitch = 'swch',
   kJobUpdate = 'jupd',
+  kFileProgress = 'fprg',
+  kFileErrorSelected = 'ferr',
   kJobDone = 'jdon',
   kPause = 'paus',
   kAbort = 'abor',
@@ -62,6 +68,10 @@ enum : uint32 {
 struct Preferences {
   BFont font = *be_plain_font;
   bool icons = true, size = true, date = true, buttons = true, command = false;
+  int32 paneMode[2] = {0, 0};
+  bool paneTree[2] = {false, false};
+  bool preview = false;
+  std::map<std::string, int32> folderModes;
   BString editor = "/boot/system/apps/StyledEdit",
           terminal = "/boot/system/apps/Terminal";
   BString folders = "system", files = "system", links = "system";

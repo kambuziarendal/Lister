@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 #include "Common.h"
+#include "ImagePreview.h"
+#include "InlineAction.h"
 #include "OperationQueue.h"
 #include "Pane.h"
+#include "VirtualFile.h"
 #include <Alert.h>
 #include <Application.h>
 #include <Button.h>
@@ -23,17 +26,21 @@
 #include <TextControl.h>
 #include <TextView.h>
 #include <Window.h>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <fcntl.h>
 #include <fstream>
 #include <sys/stat.h>
 #include <unistd.h>
 constexpr uint32 kConfirm = 'cfir', kViewLoaded = 'vloa',
-                 kServiceError = 'serr', kSavePreferences = 'save';
+                 kServiceError = 'serr', kSavePreferences = 'save',
+                 kNetwork = 'netw', kOpenSystem = 'osys',
+                 kInlineNotice = 'inot', kInlineCancel = 'ican';
 static void Notice(const char *text) {
-  (new BAlert("Listi", text, "OK", nullptr, nullptr, B_WIDTH_AS_USUAL,
-              B_WARNING_ALERT))
-      ->Go(nullptr);
+  BMessage error(kServiceError);
+  error.AddString("error", text);
+  be_app->PostMessage(&error);
 }
 static std::string Quote(const std::string &s) {
   std::string out = "'";
@@ -75,111 +82,120 @@ public:
       BLooper::MessageReceived(m);
       return;
     }
-    BString path = m->GetString("path", ""),
-            mode = m->GetString("mode", "open");
-    if (mode == "view") {
-      std::ifstream in(path.String(), std::ios::binary);
-      if (!in) {
-        BMessage error(kServiceError);
-        error.AddString("error", "Could not read the selected file.");
-        app.SendMessage(&error);
+    try {
+      BString path = m->GetString("path", ""),
+              mode = m->GetString("mode", "open");
+      BMessenger pane;
+      m->FindMessenger("pane", &pane);
+      if (mode == "open") {
+        auto archive = Lister::OpenArchive(path.String());
+        if (!archive.empty() && pane.IsValid()) {
+          BMessage navigate(kNavigate);
+          navigate.AddString("path", archive.c_str());
+          navigate.AddInt64("serial", m->GetInt64("serial", -1));
+          pane.SendMessage(&navigate);
+          return;
+        }
+      }
+      if (Lister::IsVirtual(path.String())) {
+        if (mode == "terminal" || mode == "command" || mode == "edit")
+          throw std::runtime_error(
+              "Copy this entry to a local folder before editing or opening a "
+              "terminal. Remote edits are not uploaded automatically.");
+        if (mode == "view") {
+          std::string text;
+          struct PreviewFull {};
+          bool truncated = false;
+          try {
+            Lister::ReadFile(path.String(), [&](const char *p, size_t n) {
+              size_t available = 1024 * 1024 - text.size();
+              text.append(p, std::min(n, available));
+              if (n > available)
+                throw PreviewFull();
+            });
+          } catch (const PreviewFull &) {
+            truncated = true;
+          }
+          if (text.find('\0') != std::string::npos)
+            throw std::runtime_error("Binary file. Copy it to a local folder "
+                                     "to open it with another application.");
+          BMessage done(kViewLoaded);
+          done.AddString("path", path);
+          done.AddString("text", text.c_str());
+          done.AddBool("truncated", truncated);
+          app.SendMessage(&done);
+          return;
+        }
+        throw std::runtime_error(
+            "Use View for a text preview, or Copy to a local folder to open "
+            "this file with its application.");
+      }
+      if (mode == "view") {
+        std::ifstream in(path.String(), std::ios::binary);
+        if (!in) {
+          BMessage error(kServiceError);
+          error.AddString("error", "Could not read the selected file.");
+          app.SendMessage(&error);
+          return;
+        }
+        std::string data(1024 * 1024, '\0');
+        in.read(data.data(), data.size());
+        data.resize(in.gcount());
+        if (data.find('\0') != std::string::npos) {
+          BMessage error(kServiceError);
+          error.AddString("error", "This is a binary file. Open it with its "
+                                   "associated application.");
+          app.SendMessage(&error);
+          return;
+        }
+        BMessage done(kViewLoaded);
+        done.AddString("path", path);
+        done.AddString("text", data.c_str());
+        done.AddBool("truncated", !in.eof());
+        app.SendMessage(&done);
         return;
       }
-      std::string data(1024 * 1024, '\0');
-      in.read(data.data(), data.size());
-      data.resize(in.gcount());
-      if (data.find('\0') != std::string::npos) {
+      status_t s = B_OK;
+      if (mode == "terminal" || mode == "command") {
+        BString application =
+            m->GetString("application", "/boot/system/apps/Terminal");
+        entry_ref ref;
+        get_ref_for_path(application, &ref);
+        std::string script = "cd -- " + Quote(path.String()) + " && ";
+        script += mode == "command" ? std::string(m->GetString("command", "")) +
+                                          "; exec /bin/bash"
+                                    : "exec /bin/bash";
+        const char *args[] = {"-t", "Listi", "/bin/bash", "-c", script.c_str()};
+        s = be_roster->Launch(&ref, 5, args);
+      } else {
+        entry_ref ref;
+        s = get_ref_for_path(path, &ref);
+        if (s == B_OK) {
+          BMessage refs(B_REFS_RECEIVED);
+          refs.AddRef("refs", &ref);
+          if (mode == "edit") {
+            entry_ref editor;
+            s = get_ref_for_path(
+                m->GetString("application", "/boot/system/apps/StyledEdit"),
+                &editor);
+            if (s == B_OK)
+              s = be_roster->Launch(&editor, &refs);
+          } else
+            s = be_roster->Launch(&ref);
+        }
+      }
+      if (s != B_OK && s != B_ALREADY_RUNNING) {
         BMessage error(kServiceError);
-        error.AddString(
-            "error",
-            "This is a binary file. Open it with its associated application.");
+        BString text("Could not open application: ");
+        text << strerror(s);
+        error.AddString("error", text);
         app.SendMessage(&error);
-        return;
       }
-      BMessage done(kViewLoaded);
-      done.AddString("path", path);
-      done.AddString("text", data.c_str());
-      done.AddBool("truncated", !in.eof());
-      app.SendMessage(&done);
-      return;
-    }
-    status_t s = B_OK;
-    if (mode == "terminal" || mode == "command") {
-      BString application =
-          m->GetString("application", "/boot/system/apps/Terminal");
-      entry_ref ref;
-      get_ref_for_path(application, &ref);
-      std::string script = "cd -- " + Quote(path.String()) + " && ";
-      script += mode == "command" ? std::string(m->GetString("command", "")) +
-                                        "; exec /bin/bash"
-                                  : "exec /bin/bash";
-      const char *args[] = {"-t", "Listi", "/bin/bash", "-c", script.c_str()};
-      s = be_roster->Launch(&ref, 5, args);
-    } else {
-      entry_ref ref;
-      s = get_ref_for_path(path, &ref);
-      if (s == B_OK) {
-        BMessage refs(B_REFS_RECEIVED);
-        refs.AddRef("refs", &ref);
-        if (mode == "edit") {
-          entry_ref editor;
-          s = get_ref_for_path(
-              m->GetString("application", "/boot/system/apps/StyledEdit"),
-              &editor);
-          if (s == B_OK)
-            s = be_roster->Launch(&editor, &refs);
-        } else
-          s = be_roster->Launch(&ref);
-      }
-    }
-    if (s != B_OK && s != B_ALREADY_RUNNING) {
+    } catch (const std::exception &e) {
       BMessage error(kServiceError);
-      BString text("Could not open application: ");
-      text << strerror(s);
-      error.AddString("error", text);
+      error.AddString("error", e.what());
       app.SendMessage(&error);
     }
-  }
-};
-class NameWindow : public BWindow {
-  BTextControl *name;
-  BMessenger target;
-  BMessage result;
-
-public:
-  NameWindow(const char *title, const char *initial, BMessenger t,
-             const BMessage &m)
-      : BWindow(BRect(0, 0, 440, 130), title, B_TITLED_WINDOW,
-                B_AUTO_UPDATE_SIZE_LIMITS),
-        target(t), result(m) {
-    name = new BTextControl("Name:", initial, new BMessage(kNameAccepted));
-    auto ok = new BButton("Continue", new BMessage(kNameAccepted));
-    BLayoutBuilder::Group<>(this, B_VERTICAL, 10)
-        .SetInsets(12)
-        .Add(name)
-        .AddGroup(B_HORIZONTAL)
-        .AddGlue()
-        .Add(new BButton("Cancel", new BMessage(B_QUIT_REQUESTED)))
-        .Add(ok)
-        .End();
-    SetDefaultButton(ok);
-    AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
-    CenterOnScreen();
-    name->MakeFocus(true);
-    name->TextView()->SelectAll();
-  }
-  void MessageReceived(BMessage *m) override {
-    if (m->what == kNameAccepted) {
-      BString s = name->Text();
-      if (s.IsEmpty() || s == "." || s == ".." || s.FindFirst('/') >= 0) {
-        Notice("Enter a single file or folder name, without a slash.");
-        return;
-      }
-      result.AddString("name", s);
-      target.SendMessage(&result);
-      Quit();
-    } else
-      BWindow::MessageReceived(m);
   }
 };
 class Keys : public BMessageFilter {
@@ -188,19 +204,47 @@ public:
   filter_result Filter(BMessage *m, BHandler **target) override {
     const char *bytes = m->GetString("bytes", "");
     auto window = dynamic_cast<BWindow *>(Looper());
-    auto text = window ? dynamic_cast<BTextView *>(window->CurrentFocus()) : nullptr;
+    auto text =
+        window ? dynamic_cast<BTextView *>(window->CurrentFocus()) : nullptr;
     // Window menu accelerators otherwise claim Command+A/C/V before the text
-    // control can select/copy/paste. Route editing commands to the focused view,
-    // not to the file panel. Explicit menu and button clicks still act on files.
+    // control can select/copy/paste. Route editing commands to the focused
+    // view, not to the file panel. Explicit menu and button clicks still act on
+    // files.
+    if (bytes[0] == B_ESCAPE) {
+      const char *name = text && text->Parent() ? text->Parent()->Name() : nullptr;
+      if (name && !strcmp(name, "filter")) {
+        auto parent = text->Parent();
+        while (parent && !dynamic_cast<Pane *>(parent))
+          parent = parent->Parent();
+        if (parent) {
+          Looper()->PostMessage(kClearFilter, parent);
+          return B_SKIP_MESSAGE;
+        }
+      }
+      Looper()->PostMessage(kInlineCancel);
+      return B_SKIP_MESSAGE;
+    }
     if (text) {
       if (m->GetInt32("modifiers", 0) & B_COMMAND_KEY) {
         int32 key = m->GetInt32("raw_char", bytes[0]);
         uint32 edit = 0;
         switch (key) {
-        case 'a': case 'A': edit = B_SELECT_ALL; break;
-        case 'c': case 'C': edit = B_COPY; break;
-        case 'v': case 'V': edit = B_PASTE; break;
-        case 'x': case 'X': edit = B_CUT; break;
+        case 'a':
+        case 'A':
+          edit = B_SELECT_ALL;
+          break;
+        case 'c':
+        case 'C':
+          edit = B_COPY;
+          break;
+        case 'v':
+        case 'V':
+          edit = B_PASTE;
+          break;
+        case 'x':
+        case 'X':
+          edit = B_CUT;
+          break;
         }
         if (edit) {
           Looper()->PostMessage(edit, text);
@@ -217,7 +261,7 @@ public:
     if (bytes[0] == B_TAB) {
       auto view = dynamic_cast<BView *>(*target);
       while (view) {
-        if (!strcmp(view->Name(), "files")) {
+        if (view->Name() && !strcmp(view->Name(), "files")) {
           Looper()->PostMessage(kSwitch);
           return B_SKIP_MESSAGE;
         }
@@ -259,6 +303,28 @@ public:
 class MainWindow : public BWindow {
   Preferences prefs;
   Pane *panes[2];
+  ImagePreview *preview;
+  BMenuItem *previewMenu;
+  bool previewVisible = true;
+  void Save() {
+    auto saved = prefs.Save();
+    saved.what = kSavePreferences;
+    service.SendMessage(&saved);
+  }
+  void UpdatePreview() {
+    auto selected = panes[source]->Selected();
+    preview->ShowFile(prefs.preview && selected.size() == 1 ? selected[0] : "");
+  }
+  InlineAction *actionArea;
+  void CloseAction() {
+    actionArea->Close();
+    panes[source]->FocusList();
+  }
+  void AskInline(const char *text, const char *button, const BMessage &result,
+                 const char *initial = nullptr) {
+    if (!actionArea->Ask(text, button, result, initial))
+      queue->ErrorInfo("Finish or cancel the open question first.");
+  }
   int source = 0;
   OperationQueue *queue;
   BGroupView *bank;
@@ -266,6 +332,15 @@ class MainWindow : public BWindow {
   BMessenger service;
   bool bankVisible = true, commandVisible = true;
   void Apply() {
+    if (prefs.preview != previewVisible) {
+      previewVisible = prefs.preview;
+      if (previewVisible)
+        preview->Show();
+      else
+        preview->Hide();
+    }
+    previewMenu->SetMarked(prefs.preview);
+    UpdatePreview();
     for (auto p : panes) {
       p->Apply(prefs);
       p->Reload();
@@ -310,9 +385,13 @@ class MainWindow : public BWindow {
     return j;
   }
   void Operation(Lister::Action a) {
+    if (actionArea->Pending()) {
+      queue->ErrorInfo("Finish or cancel the open question first.");
+      return;
+    }
     auto job = Snapshot(a);
     if (a != Lister::Action::MakeDirectory && job.sources.empty()) {
-      Notice("Select one or more files in the SOURCE panel first.");
+      Notice("Select one or more files in the active panel first.");
       return;
     }
     if ((a == Lister::Action::Copy || a == Lister::Action::Move) &&
@@ -331,12 +410,17 @@ class MainWindow : public BWindow {
         return;
       }
       auto message = Encode(job, kNameAccepted);
-      (new NameWindow(a == Lister::Action::Rename ? "Rename" : "Create folder",
-                      a == Lister::Action::Rename
-                          ? Lister::Leaf(job.sources[0]).c_str()
-                          : "New folder",
-                      BMessenger(this), message))
-          ->Show();
+      AskInline(
+          a == Lister::Action::Rename ? "Rename selected entry"
+                                      : "Create a folder in the active panel",
+          a == Lister::Action::Rename ? "Rename" : "Create folder", message,
+          a == Lister::Action::Rename
+              ? Lister::LocationLeaf(job.sources[0]).c_str()
+              : "New folder");
+      return;
+    }
+    if (a == Lister::Action::Copy || a == Lister::Action::Move) {
+      queue->Enqueue(job);
       return;
     }
     auto m = Encode(job, kConfirm);
@@ -359,17 +443,11 @@ class MainWindow : public BWindow {
            << int32(job.sources.size()) << " selected entries from:\n"
            << panes[source]->Path() << "\n\nto:\n"
            << job.destination.c_str();
-    auto alert = new BAlert("Confirm file operation", text, "Cancel",
-                            a == Lister::Action::Trash     ? "Move to Trash"
-                            : a == Lister::Action::Restore ? "Restore"
-                            : a == Lister::Action::Delete  ? "Delete"
-                            : a == Lister::Action::Copy    ? "Copy"
-                                                           : "Move",
-                            nullptr, B_WIDTH_AS_USUAL,
-                            a == Lister::Action::Delete ? B_WARNING_ALERT
-                                                        : B_INFO_ALERT);
-    alert->SetShortcut(0, B_ESCAPE);
-    alert->Go(new BInvoker(new BMessage(m), BMessenger(this)));
+    AskInline(text,
+              a == Lister::Action::Trash     ? "Move to Trash"
+              : a == Lister::Action::Restore ? "Restore"
+                                             : "Delete permanently",
+              m);
   }
   void Open(uint32 action) {
     auto selected = panes[source]->Selected();
@@ -386,7 +464,7 @@ class MainWindow : public BWindow {
 
 public:
   MainWindow(const Preferences &p, BMessenger svc)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.3.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.4.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), service(svc) {
     auto menu = new BMenuBar("menu");
@@ -407,6 +485,8 @@ public:
                        {"Delete permanently...", kPermanentDelete, 0}};
     for (auto c : commands)
       files->AddItem(new BMenuItem(c.label, new BMessage(c.action), c.key));
+    files->AddItem(new BMenuItem("Open with system application",
+                                 new BMessage(kOpenSystem)));
     files->AddSeparatorItem();
     files->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
     menu->AddItem(files);
@@ -417,10 +497,14 @@ public:
     select->AddItem(new BMenuItem("Invert", new BMessage(kInvert), 'I'));
     menu->AddItem(select);
     auto view = new BMenu("Listi");
-    view->AddItem(
-        new BMenuItem("Swap source / destination", new BMessage(kSwitch), 'S'));
-    view->AddItem(new BMenuItem("Same folder in destination",
+    view->AddItem(new BMenuItem("Switch panel", new BMessage(kSwitch), 'S'));
+    view->AddItem(new BMenuItem("Same folder in other panel",
                                 new BMessage(kSame), 'S', B_SHIFT_KEY));
+    previewMenu =
+        new BMenuItem("Image preview panel", new BMessage(kPreviewToggle), 'P');
+    view->AddItem(previewMenu);
+    view->AddItem(
+        new BMenuItem("Connect to server...", new BMessage(kNetwork), 'K'));
     view->AddItem(new BMenuItem("Refresh", new BMessage(kRefresh), 'L'));
     view->AddItem(new BMenuItem("Filter names", new BMessage(kFilter), 'F'));
     view->AddItem(new BMenuItem("Terminal here", new BMessage(kTerminal), 'T'));
@@ -434,16 +518,22 @@ public:
     auto split = new BSplitView(B_HORIZONTAL, 6);
     split->AddChild(panes[0]);
     split->AddChild(panes[1]);
+    preview = new ImagePreview();
+    split->AddChild(preview);
+    split->SetItemWeight(0, 0.39, false);
+    split->SetItemWeight(1, 0.39, false);
+    split->SetItemWeight(2, 0.22, true);
     split->SetCollapsible(0, false);
     split->SetCollapsible(1, false);
     bank = new BGroupView(B_VERTICAL, 5);
     auto grid = new BGridView(5, 5);
-    Item buttons[] = {{"View [V]", kView, 'V'}, {"Edit [E]", kEdit, 'E'},
-                      {"Copy [C]", kCopy, 'C'}, {"Move [M]", kMove, 'M'},
-                      {"Rename [R]", kRename, 'R'}, {"Trash [D]", kDelete, 'D'},
-                      {"All [A]", kAll, 'A'}, {"None", kNone, 0},
-                      {"Invert [I]", kInvert, 'I'}, {"New folder [N]", kMkdir, 'N'},
-                      {"Terminal [T]", kTerminal, 'T'}, {"Operations [O]", kShowJobs, 'O'}};
+    Item buttons[] = {
+        {"View [V]", kView, 'V'},         {"Edit [E]", kEdit, 'E'},
+        {"Copy [C]", kCopy, 'C'},         {"Move [M]", kMove, 'M'},
+        {"Rename [R]", kRename, 'R'},     {"Trash [D]", kDelete, 'D'},
+        {"All [A]", kAll, 'A'},           {"None", kNone, 0},
+        {"Invert [I]", kInvert, 'I'},     {"New folder [N]", kMkdir, 'N'},
+        {"Terminal [T]", kTerminal, 'T'}, {"Operations [O]", kShowJobs, 'O'}};
     for (int i = 0; i < 12; i++) {
       auto button =
           new BButton(buttons[i].label, new BMessage(buttons[i].action));
@@ -458,22 +548,32 @@ public:
       grid->GridLayout()->AddView(button, i % 6, i / 6);
     }
     bank->AddChild(grid);
-    bank->AddChild(new BStringView("shortcuts",
-        "Shortcuts: Command + letter (normally Alt). Tab switches panels; Command+F filters."));
+    bank->AddChild(new BStringView(
+        "shortcuts",
+        "Command + letter (normally Alt). Tab: other panel. Command+F: filter. "
+        "Command+K: connect. Escape: close dialog."));
     bank->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     command = new BTextControl("Command:", "", new BMessage(kCommand));
     command->SetToolTip(
-        "Runs a shell command in the SOURCE directory using Terminal.");
+        "Runs a shell command in the active directory using Terminal.");
+    queue = new OperationQueue(BMessenger(this));
+    actionArea = new InlineAction(BMessenger(this));
+    actionArea->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+    actionArea->GroupLayout()->SetInsets(8, 6, 8, 6);
+    actionArea->Hide();
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
         .Add(menu)
         .Add(split)
+        .Add(actionArea)
+        .Add(queue->View())
         .AddGroup(B_VERTICAL, 5)
         .SetInsets(8, 4, 8, 8)
         .Add(bank)
         .Add(command)
         .End();
-    queue = new OperationQueue(BMessenger(this));
+    queue->Start();
     AddCommonFilter(new Keys());
+
     Apply();
     panes[0]->SetSource(true);
     panes[1]->SetSource(false);
@@ -563,16 +663,72 @@ public:
       }
     }
     switch (m->what) {
+    case kInlineNotice:
+      if (actionArea->Pending()) {
+        queue->ErrorInfo(m->GetString("error", "Operation failed"));
+        break;
+      }
+      AskInline(m->GetString("error", "Operation failed"), "OK",
+                BMessage(kInlineCancel));
+      break;
+    case kInlineClosed:
+      if (!actionArea->Pending())
+        panes[source]->FocusList();
+      break;
+    case kInlineCancel:
+      if (actionArea->Pending())
+        CloseAction();
+      else
+        queue->Collapse();
+      break;
+    case kPreviewToggle:
+      prefs.preview = !prefs.preview;
+      if (prefs.preview != previewVisible) {
+        previewVisible = prefs.preview;
+        if (previewVisible)
+          preview->Show();
+        else
+          preview->Hide();
+      }
+      previewMenu->SetMarked(prefs.preview);
+      UpdatePreview();
+      Save();
+      break;
+    case kPreviewSelection:
+      if (m->GetInt32("pane", -1) == source) {
+        UpdatePreview();
+        if (m->HasString("operationError"))
+          queue->ErrorInfo(m->GetString("operationError", ""));
+      }
+      break;
+    case kPaneDisplay:
+      prefs.paneTree[0] = panes[0]->TreeVisible();
+      prefs.paneTree[1] = panes[1]->TreeVisible();
+      prefs.paneMode[0] = panes[0]->DisplayMode();
+      prefs.paneMode[1] = panes[1]->DisplayMode();
+      if (m->HasString("folder")) {
+        std::string folder = m->GetString("folder", "");
+        if (m->GetBool("forget", false))
+          prefs.folderModes.erase(folder);
+        else
+          prefs.folderModes[folder] = m->GetInt32("mode", 0);
+      }
+      panes[0]->FolderModes(prefs.folderModes);
+      panes[1]->FolderModes(prefs.folderModes);
+      Save();
+      break;
     case kActivate:
       source = m->GetInt32("pane", source);
       for (int i = 0; i < 2; i++)
         panes[i]->SetSource(i == source);
+      UpdatePreview();
       break;
     case kSwitch:
       source = 1 - source;
       for (int i = 0; i < 2; i++)
         panes[i]->SetSource(i == source);
       panes[source]->FocusList();
+      UpdatePreview();
       break;
     case kSame:
       panes[1 - source]->Navigate(panes[source]->Path());
@@ -611,7 +767,13 @@ public:
       break;
     case kNameAccepted: {
       auto j = Decode(*m);
-      j.destination = Lister::Join(j.destination, m->GetString("name", ""));
+      try {
+        j.destination =
+            Lister::ChildLocation(j.destination, m->GetString("name", ""));
+      } catch (const std::exception &e) {
+        Notice(e.what());
+        break;
+      }
       queue->Enqueue(j);
       break;
     }
@@ -627,21 +789,28 @@ public:
         if (e.GetPath(&p) == B_OK)
           j.sources.push_back(p.Path());
       }
+      const char *virtualPath;
+      for (int i = 0; m->FindString("listi:path", i, &virtualPath) == B_OK; ++i)
+        j.sources.push_back(virtualPath);
       if (j.sources.empty())
         break;
-      auto confirm = Encode(j, kConfirm);
-      BString text("Copy dropped entries to:\n");
-      text << j.destination.c_str();
-      (new BAlert("Copy", text, "Cancel", "Copy"))
-          ->Go(new BInvoker(new BMessage(confirm), BMessenger(this)));
+      queue->Enqueue(j);
       break;
     }
+    case kFileProgress:
+      for (auto p : panes) {
+        p->MessageReceived(m);
+        if (m->HasString("destination") && Lister::ParentLocation(m->GetString(
+                                               "destination", "")) == p->Path())
+          p->Reload();
+      }
+      break;
     case kJobDone:
       for (auto p : panes)
-        p->Reload();
+        p->MessageReceived(m);
       break;
     case kShowJobs:
-      queue->Show();
+      queue->Toggle();
       break;
     case kAll:
       panes[source]->Select(1);
@@ -673,6 +842,22 @@ public:
       service.SendMessage(&launch);
       break;
     }
+    case kNetwork:
+      if (!actionArea->Connect(BMessenger(panes[source])))
+        queue->ErrorInfo("Finish or cancel the open question first.");
+      break;
+    case kOpenSystem: {
+      auto selected = panes[source]->Selected();
+      if (selected.size() != 1) {
+        Notice("Select exactly one file.");
+        break;
+      }
+      BMessage open(kOpenPaths);
+      open.AddString("path", selected[0].c_str());
+      open.AddString("mode", "system");
+      service.SendMessage(&open);
+      break;
+    }
     case kPreferences:
       OpenPreferences(BMessenger(this), prefs);
       break;
@@ -692,6 +877,7 @@ public:
 };
 class App : public BApplication {
   Services *services = nullptr;
+  BMessenger mainWindow;
 
 public:
   App() : BApplication(kSignature) {}
@@ -707,11 +893,15 @@ public:
       prefs.Load(settings);
     services = new Services(BMessenger(this));
     services->Run();
-    (new MainWindow(prefs, BMessenger(services)))->Show();
+    auto window = new MainWindow(prefs, BMessenger(services));
+    mainWindow = BMessenger(window);
+    window->Show();
   }
   void MessageReceived(BMessage *m) override {
     if (m->what == kServiceError) {
-      Notice(m->GetString("error", "Operation failed"));
+      BMessage error(*m);
+      error.what = kInlineNotice;
+      mainWindow.SendMessage(&error);
       return;
     }
     if (m->what == kViewLoaded) {
@@ -730,13 +920,21 @@ public:
       auto scroll = new BScrollView("scroll", text, 0, false, true);
       scroll->SetExplicitMinSize(BSize(300, 200));
       BLayoutBuilder::Group<>(window, B_VERTICAL, 0).Add(scroll);
+      window->AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY,
+                          new BMessage(B_QUIT_REQUESTED));
+      window->AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
       window->Show();
       return;
     }
     BApplication::MessageReceived(m);
   }
 };
+namespace Lister {
+int VirtualTest(const std::string &, const std::string &);
+}
 int main(int argc, char **argv) {
+  if (argc == 4 && !strcmp(argv[1], "--virtual-test"))
+    return Lister::VirtualTest(argv[2], argv[3]);
   if (argc > 1 && !strcmp(argv[1], "--self-test"))
     return Lister::SelfTest();
   App app;

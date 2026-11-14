@@ -1,0 +1,218 @@
+// SPDX-License-Identifier: MIT
+#include "FolderTree.h"
+#include "Common.h"
+#include "VirtualFile.h"
+#include <LayoutBuilder.h>
+#include <Looper.h>
+#include <OutlineListView.h>
+#include <ScrollView.h>
+#include <StringItem.h>
+#include <Window.h>
+#include <algorithm>
+namespace {
+constexpr uint32 kTreeRead = 'trrd', kTreeLoaded = 'trld';
+class TreeReader : public BLooper {
+  BMessenger target;
+  std::shared_ptr<std::atomic<int64>> generation;
+
+public:
+  TreeReader(BMessenger t, std::shared_ptr<std::atomic<int64>> g)
+      : BLooper("folder tree reader"), target(t), generation(g) {}
+  void MessageReceived(BMessage *m) override {
+    if (m->what != kTreeRead) {
+      BLooper::MessageReceived(m);
+      return;
+    }
+    auto serial = m->GetInt64("serial", -1);
+    Lister::TransferControl c;
+    c.proceed = [&] { return generation->load() == serial; };
+    BMessage result(kTreeLoaded);
+    result.AddInt64("serial", serial);
+    result.AddString("path", m->GetString("path", ""));
+    try {
+      auto children = Lister::ListFiles(m->GetString("path", ""), c);
+      std::sort(children.begin(), children.end(),
+                [](const auto &a, const auto &b) { return a.name < b.name; });
+      size_t count = 0;
+      for (auto &entry : children)
+        if (entry.directory && !entry.link) {
+          if (++count > 10000)
+            throw std::runtime_error("Too many folders in this branch");
+          result.AddString("child", entry.path.c_str());
+        }
+    } catch (const Lister::Cancelled &) {
+      return;
+    } catch (const std::exception &e) {
+      result.AddString("error", e.what());
+    }
+    target.SendMessage(&result, (BHandler *)nullptr, 500000);
+  }
+};
+} // namespace
+class TreeItem : public BStringItem {
+public:
+  std::string path;
+  bool loaded = false, pending = false;
+  TreeItem(const std::string &p, const char *label, uint32 level = 0)
+      : BStringItem(label, level, false), path(p) {}
+};
+class TreeList : public BOutlineListView {
+  FolderTree *owner;
+
+public:
+  explicit TreeList(FolderTree *o)
+      : BOutlineListView("folder tree"), owner(o) {}
+  void ExpandOrCollapse(BListItem *item, bool expand) override {
+    BOutlineListView::ExpandOrCollapse(item, expand);
+    auto tree = dynamic_cast<TreeItem *>(item);
+    if (expand && tree)
+      owner->ExpandPath(tree->path);
+  }
+  void MouseDown(BPoint point) override {
+    auto before = CurrentSelection();
+    BOutlineListView::MouseDown(point);
+    auto after = CurrentSelection();
+    if (after >= 0 && after != before) {
+      auto item = dynamic_cast<TreeItem *>(ItemAt(after));
+      if (item && item->IsEnabled())
+        owner->NavigateSelection(item->path);
+    }
+  }
+  void KeyDown(const char *bytes, int32 length) override {
+    if (length == 1 && bytes[0] == B_TAB) {
+      Window()->PostMessage(kSwitch);
+      return;
+    }
+    auto before = CurrentSelection();
+    BOutlineListView::KeyDown(bytes, length);
+    auto after = CurrentSelection();
+    if (after >= 0 &&
+        (after != before || (length == 1 && bytes[0] == B_ENTER))) {
+      auto item = dynamic_cast<TreeItem *>(ItemAt(after));
+      if (item && item->IsEnabled())
+        owner->NavigateSelection(item->path);
+    }
+  }
+};
+FolderTree::FolderTree()
+    : BView("folder tree panel", B_WILL_DRAW | B_SUPPORTS_LAYOUT),
+      generation(std::make_shared<std::atomic<int64>>(0)) {
+  list = new TreeList(this);
+  auto scroll = new BScrollView("folder tree scroll", list, 0, true, true);
+  BLayoutBuilder::Group<>(this, B_VERTICAL, 0).Add(scroll);
+  SetExplicitMinSize(BSize(130, 180));
+  SetExplicitPreferredSize(BSize(170, 300));
+}
+FolderTree::~FolderTree() {
+  generation->store(-1);
+  if (reader)
+    reader->PostMessage(B_QUIT_REQUESTED);
+  Clear();
+}
+void FolderTree::Clear() {
+  std::vector<BListItem *> all;
+  for (int32 i = 0; i < list->FullListCountItems(); ++i)
+    all.push_back(list->FullListItemAt(i));
+  list->MakeEmpty();
+  for (auto item : all)
+    delete item;
+  items.clear();
+}
+void FolderTree::AttachedToWindow() {
+  reader = new TreeReader(BMessenger(this), generation);
+  reader->Run();
+}
+void FolderTree::NavigateSelection(const std::string &path) {
+  BMessage m(kNavigate);
+  m.AddString("path", path.c_str());
+  m.AddBool("tree", true);
+  BMessenger(Parent()->Parent()).SendMessage(&m);
+}
+void FolderTree::ShowPath(const std::string &path) {
+  if (!reader || IsHidden() || path == "@disks")
+    return;
+  try {
+    auto location = Lister::ParseLocation(path);
+    location.path = "/";
+    std::string newRoot = location.URL();
+    desired = path;
+    if (root != newRoot) {
+      ++*generation;
+      Clear();
+      root = newRoot;
+      auto item =
+          new TreeItem(root, location.Local()     ? "Filesystem"
+                             : location.Archive() ? "Archive"
+                                                  : location.host.c_str());
+      items[root] = item;
+      list->AddItem(item);
+      auto placeholder = new BStringItem("Loading...");
+      placeholder->SetEnabled(false);
+      list->AddUnder(placeholder, item);
+      list->Expand(item);
+      ExpandPath(root);
+    }
+    Follow();
+  } catch (const std::exception &) {
+  }
+}
+void FolderTree::ExpandPath(const std::string &path) {
+  auto found = items.find(path);
+  if (found == items.end() || found->second->loaded || found->second->pending ||
+      !reader)
+    return;
+  found->second->pending = true;
+  BMessage m(kTreeRead);
+  m.AddString("path", path.c_str());
+  m.AddInt64("serial", generation->load());
+  reader->PostMessage(&m);
+}
+void FolderTree::Follow() {
+  for (auto &pair : items) {
+    auto p = pair.first;
+    if (p == desired) {
+      list->Select(list->IndexOf(pair.second));
+      list->ScrollToSelection();
+      return;
+    }
+    if (p == root || desired.compare(0, p.size() + (p.back() == '/' ? 0 : 1),
+                                     p + (p.back() == '/' ? "" : "/")) == 0) {
+      list->Expand(pair.second);
+      ExpandPath(p);
+    }
+  }
+}
+void FolderTree::MessageReceived(BMessage *m) {
+  if (m->what != kTreeLoaded) {
+    BView::MessageReceived(m);
+    return;
+  }
+  if (m->GetInt64("serial", -1) != generation->load())
+    return;
+  auto found = items.find(m->GetString("path", ""));
+  if (found == items.end())
+    return;
+  auto parent = found->second;
+  parent->pending = false;
+  while (auto child = list->ItemUnderAt(parent, true, 0)) {
+    list->RemoveItem(child);
+    delete child;
+  }
+  if (m->HasString("error")) {
+    auto error = new BStringItem(m->GetString("error", "Cannot read folder"));
+    error->SetEnabled(false);
+    list->AddUnder(error, parent);
+    return;
+  }
+  parent->loaded = true;
+  const char *path;
+  for (int32 i = 0; m->FindString("child", i, &path) == B_OK; ++i) {
+    auto item = new TreeItem(path, Lister::LocationLeaf(path).c_str());
+    items[path] = item;
+    list->AddUnder(item, parent);
+    auto dummy = new BStringItem("Loading...");
+    dummy->SetEnabled(false);
+    list->AddUnder(dummy, item);
+  }
+  Follow();
+}

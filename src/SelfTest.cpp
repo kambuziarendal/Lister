@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "FileOperation.h"
-#include "Trash.h"
 #include "NameFilter.h"
+#include "PaneModel.h"
+#include "Trash.h"
 #include <File.h>
 #include <Node.h>
 #include <String.h>
@@ -9,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fs_attr.h>
+#include <fcntl.h>
 #include <fstream>
 #include <iostream>
 #include <limits.h>
@@ -34,7 +36,8 @@ int SelfTest() {
         "name filter matches literal substring without ASCII case sensitivity");
   check(!MatchesNameFilter("notes.txt", "*.txt"),
         "filter does not interpret shell wildcards");
-  check(!MatchesNameFilter("notes.txt", "picture"), "nonmatching name is hidden");
+  check(!MatchesNameFilter("notes.txt", "picture"),
+        "nonmatching name is hidden");
   check(MatchesNameFilter("..", "picture", true),
         "parent remains navigable with an active filter");
   check(MatchesNameFilter("\xc3\x85rsrapport.txt", "\xc3\x85r"),
@@ -53,6 +56,40 @@ int SelfTest() {
     std::ofstream f(p);
     f << s;
   };
+  PaneModel model;
+  for (auto name : {"..", "a.txt", "b.txt", "c.png", "d.txt"}) {
+    auto entry = std::make_unique<PaneEntry>();
+    entry->name = name;
+    entry->path = name;
+    entry->parent = entry->name == "..";
+    model.Add(std::move(entry));
+  }
+  model.Filter("");
+  model.Pick(1, false, false);
+  model.Pick(4, true, false);
+  check(model.Selected().size() == 4, "grid Shift selects the complete range");
+  model.Pick(2, true, false);
+  check(model.Selected().size() == 2, "grid Shift range shrinks from its anchor");
+  model.Pick(2, false, true);
+  check(model.Selected() == std::vector<std::string>{"a.txt"},
+        "grid toggle removes one selected entry");
+  model.Select(1);
+  model.Filter(".txt");
+  check(model.Selected().size() == 3 && model.Visible().size() == 4,
+        "filter excludes hidden selections and retains the parent");
+  model.Filter("");
+  check(model.Selected().size() == 3 && !model.IsSelected("c.png"),
+        "clearing a filter does not resurrect a hidden selection");
+  model.Select(2);
+  check(model.Selected() == std::vector<std::string>{"c.png"},
+        "invert selection never includes the parent entry");
+  model.SetSelection({"d.txt"}, "d.txt");
+  check(model.Focused() && model.Focused()->path == "d.txt" &&
+            model.Selected() == std::vector<std::string>{"d.txt"},
+        "details and grid share pane-owned selection and focus");
+  model.Clear();
+  check(model.Selected().empty() && !model.Focused(),
+        "navigation clears both selection and focus ownership");
   mkdir(Join(root, "src").c_str(), 0755);
   mkdir(Join(root, "dst").c_str(), 0755);
   mkdir(Join(root, "src/tree").c_str(), 0755);
@@ -149,6 +186,61 @@ int SelfTest() {
             exists(Join(root, "merge/tree/nested/file")),
         "changed source tree is retained during merged move");
   hooks.progress = {};
+  // Force the copy/cleanup move path by providing an existing destination.
+  write(Join(root, "src/move-progress"), "new data");
+  write(Join(root, "dst/move-progress"), "old data");
+  int completedEvents = 0;
+  bool reportedBeforeCleanup = false;
+  hooks.fileDone = [&](const std::string &source, const std::string &) {
+    ++completedEvents;
+    reportedBeforeCleanup |= exists(source);
+  };
+  r = Run({Action::Move, {Join(root, "src/move-progress")}, Join(root, "dst")}, hooks);
+  check(r.completed == 1 && completedEvents == 1 && !reportedBeforeCleanup,
+        "move completion is emitted only after source cleanup");
+  write(Join(root, "src/move-cancel"), "new data");
+  write(Join(root, "dst/move-cancel"), "old data");
+  completedEvents = 0;
+  hooks.proceed = [&] { return text(Join(root, "dst/move-cancel")) != "new data"; };
+  r = Run({Action::Move, {Join(root, "src/move-cancel")}, Join(root, "dst")}, hooks);
+  check(r.cancelled && r.completed == 0 && completedEvents == 0 &&
+            exists(Join(root, "src/move-cancel")) &&
+            text(Join(root, "dst/move-cancel")) == "new data",
+        "cancel before move cleanup retains source without a success event");
+  hooks.proceed = [] { return true; };
+  hooks.fileDone = {};
+  const std::string changing = Join(root, "src/changing");
+  write(changing, std::string(262144, 'a'));
+  struct stat original;
+  stat(changing.c_str(), &original);
+  bool changedSource = false;
+  hooks.progress = [&](const std::string &, uint64_t n) {
+    if (n && !changedSource) {
+      changedSource = true;
+      usleep(2000);
+      write(changing, std::string(262144, 'b'));
+      struct timespec times[2] = {original.st_atim, original.st_mtim};
+      utimensat(AT_FDCWD, changing.c_str(), times, 0);
+    }
+  };
+  r = Run({Action::Copy, {changing}, Join(root, "dst")}, hooks);
+  check(!r.errors.empty() && !exists(Join(root, "dst/changing")),
+        "same-size source edit with restored mtime is not committed");
+  hooks.progress = {};
+  write(Join(root, "src/disappearing"), "new data");
+  write(Join(root, "dst/disappearing"), "old data");
+  hooks.progress = [&](const std::string &, uint64_t n) {
+    if (n)
+      unlink(Join(root, "dst/disappearing").c_str());
+  };
+  r = Run({Action::Copy, {Join(root, "src/disappearing")}, Join(root, "dst")}, hooks);
+  check(!r.errors.empty() && !exists(Join(root, "dst/disappearing")),
+        "deleted conflict target is detected before commit");
+  hooks.progress = {};
+  mkfifo(Join(root, "src/pipe").c_str(), 0600);
+  r = Run({Action::Copy, {Join(root, "src/pipe")}, Join(root, "dst")}, hooks);
+  check(!r.errors.empty() && !exists(Join(root, "dst/pipe")),
+        "local special file is rejected without waiting for a writer");
   r = Run({Action::Delete, {"/boot"}, ""}, hooks);
   check(!r.errors.empty() && exists("/boot/home"),
         "mounted volume deletion refused");
@@ -158,6 +250,31 @@ int SelfTest() {
   write(Join(owned, "inside"), "recover me");
   std::string trashed, collision, linked;
   try {
+    // The opposite pane is irrelevant for source-only actions, even offline.
+    for (const std::string destination :
+         {"smb://offline.invalid/share", "archive:///missing.zip!/"}) {
+      std::string single = Join(root, "source-only");
+      write(single, "preserve local behavior");
+      std::string actualTrash;
+      hooks.fileDone = [&](const std::string &, const std::string &target) {
+        actualTrash = target;
+      };
+      r = Run({Action::Trash, {single}, destination}, hooks);
+      check(r.errors.empty() && r.completed == 1 && !exists(single) &&
+                !actualTrash.empty() && exists(actualTrash),
+            "local Trash ignores the virtual opposite pane");
+      hooks.fileDone = {};
+      if (!actualTrash.empty()) {
+        r = Run({Action::Restore, {actualTrash}, destination}, hooks);
+        check(r.errors.empty() && text(single) == "preserve local behavior",
+              "local Restore ignores the virtual opposite pane");
+        if (exists(actualTrash))
+          Run({Action::Delete, {actualTrash}, ""}, hooks);
+      }
+      r = Run({Action::Delete, {single}, destination}, hooks);
+      check(r.errors.empty() && !exists(single),
+            "local Delete ignores the virtual opposite pane");
+    }
     trashed = MoveToTrash(owned);
     BString original;
     BNode trashNode(trashed.c_str());

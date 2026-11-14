@@ -1,30 +1,36 @@
 // SPDX-License-Identifier: MIT
-// The private ColumnListView API is isolated to this translation unit.
 #include "Pane.h"
+#include "DirectoryScanner.h"
+#include "FileDetails.h"
+#include "FileGrid.h"
 #include "FileOperation.h"
-#include "Trash.h"
+#include "FolderTree.h"
+#include "ImagePreview.h"
 #include "NameFilter.h"
+#include "Trash.h"
+#include "VirtualFile.h"
 #include <Bitmap.h>
-#include <ColumnListView.h>
-#include <ColumnTypes.h>
+#include <CardLayout.h>
+#include <CardView.h>
 #include <Directory.h>
 #include <Entry.h>
 #include <LayoutBuilder.h>
 #include <MenuField.h>
 #include <MenuItem.h>
-#include <MessageRunner.h>
 #include <MessageFilter.h>
-#include <TextView.h>
-#include <NodeInfo.h>
+#include <MessageRunner.h>
 #include <NodeMonitor.h>
 #include <Path.h>
 #include <PopUpMenu.h>
-#include <Volume.h>
-#include <VolumeRoster.h>
+#include <ScrollView.h>
+#include <SplitView.h>
+#include <TextView.h>
 #include <Window.h>
 #include <algorithm>
 #include <cstring>
 #include <dirent.h>
+#include <map>
+#include <set>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -32,9 +38,11 @@ namespace {
 class PaneInput : public BMessageFilter {
   Pane *pane;
   bool isFilter;
+
 public:
   PaneInput(Pane *p, bool filter)
-      : BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE), pane(p), isFilter(filter) {}
+      : BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE), pane(p),
+        isFilter(filter) {}
   filter_result Filter(BMessage *message, BHandler **) override {
     if (message->what == B_MOUSE_DOWN || message->what == B_KEY_DOWN)
       pane->Activate();
@@ -49,266 +57,17 @@ public:
     return B_DISPATCH_MESSAGE;
   }
 };
-struct NameField : BStringField {
-  int kind;
-  BBitmap *icon = nullptr;
-  bool parent = false;
-  NameField(const char *s, int kind) : BStringField(s), kind(kind) {}
-  ~NameField() { delete icon; }
-};
-struct FileRow : BRow {
-  std::string path;
-  entry_ref ref;
-  bool directory, parent;
-  FileRow(float height) : BRow(height) {}
-};
-class NameColumn : public BStringColumn {
-public:
-  Preferences prefs;
-  NameColumn(const Preferences &p)
-      : BStringColumn("Name", 260, 80, 1200, B_TRUNCATE_MIDDLE), prefs(p) {}
-  void DrawField(BField *f, BRect r, BView *v) override {
-    auto n = static_cast<NameField *>(f);
-    rgb_color old = v->HighColor();
-    if (n->parent)
-      v->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
-    else
-      v->SetHighColor(prefs.Color(n->kind == 1   ? prefs.folders
-                                  : n->kind == 2 ? prefs.links
-                                                 : prefs.files));
-    if (prefs.icons) {
-      if (n->icon) {
-        v->SetDrawingMode(B_OP_ALPHA);
-        v->DrawBitmap(n->icon,
-                      BPoint(r.left + 3, r.top + (r.Height() - 16) / 2));
-        v->SetDrawingMode(B_OP_COPY);
-      }
-      r.left += 23;
-    }
-    BStringColumn::DrawField(f, r, v);
-    v->SetHighColor(old);
-  }
-  int CompareFields(BField *a, BField *b) override {
-    auto x = static_cast<NameField *>(a), y = static_cast<NameField *>(b);
-    if (x->parent != y->parent)
-      return x->parent ? -1 : 1;
-    if ((x->kind == 1) != (y->kind == 1))
-      return x->kind == 1 ? -1 : 1;
-    return strcasecmp(x->String(), y->String());
-  }
-};
-class SizeColumn : public BSizeColumn {
-public:
-  SizeColumn() : BSizeColumn("Size", 85, 50, 200) {}
-  void DrawField(BField *field, BRect rect, BView *view) override {
-    if (static_cast<BSizeField *>(field)->Size() >= 0)
-      BSizeColumn::DrawField(field, rect, view);
-  }
-};
-class Scanner : public BLooper {
-  BMessenger target;
-  std::shared_ptr<std::atomic<int64>> generation;
-
-public:
-  Scanner(BMessenger t, std::shared_ptr<std::atomic<int64>> g)
-      : BLooper("directory reader"), target(t), generation(g) {}
-  void MessageReceived(BMessage *m) override {
-    if (m->what != kScan) {
-      BLooper::MessageReceived(m);
-      return;
-    }
-    int64 serial = m->GetInt64("serial", 0);
-    BString path = m->GetString("path", "");
-    bool icons = m->GetBool("icons", true);
-    if (m->GetBool("trash", false)) {
-      try {
-        path = Lister::TrashDirectory(path.String(), true).c_str();
-      } catch (const std::exception &error) {
-        BMessage failed(kScanDone);
-        failed.AddInt64("serial", serial);
-        failed.AddString("path", path);
-        failed.AddString("error", error.what());
-        target.SendMessage(&failed);
-        return;
-      }
-    }
-    BMessage batch(kRows);
-    batch.AddInt64("serial", serial);
-    int count = 0;
-    auto send = [&]() {
-      target.SendMessage(&batch, (BHandler *)nullptr, 500000);
-      batch.MakeEmpty();
-      batch.what = kRows;
-      batch.AddInt64("serial", serial);
-      count = 0;
-    };
-    auto row = [&](const char *full, const char *label, bool parent = false) {
-      struct stat st;
-      if (lstat(full, &st))
-        return;
-      BMessage item;
-      item.AddString("name", label);
-      item.AddString("path", full);
-      item.AddBool("parent", parent);
-      bool link = S_ISLNK(st.st_mode);
-      bool dir = S_ISDIR(st.st_mode);
-      struct stat resolved;
-      if (link && stat(full, &resolved) == 0)
-        dir = S_ISDIR(resolved.st_mode);
-      item.AddInt32("kind", link ? 2 : dir ? 1 : 0);
-      item.AddBool("directory", dir);
-      item.AddInt64("size", st.st_size);
-      item.AddInt64("date", st.st_mtime);
-      entry_ref ref;
-      BEntry e(full, false);
-      if (e.GetRef(&ref) == B_OK) {
-        item.AddRef("ref", &ref);
-        if (icons) {
-          BBitmap bitmap(BRect(0, 0, 15, 15), B_CMAP8);
-          if (BNodeInfo::GetTrackerIcon(&ref, &bitmap, B_MINI_ICON) == B_OK)
-            item.AddData("icon", B_RAW_TYPE, bitmap.Bits(),
-                         bitmap.BitsLength());
-        }
-      }
-      batch.AddMessage("entry", &item);
-      if (++count == 80)
-        send();
-    };
-    BMessage done(kScanDone);
-    done.AddInt64("serial", serial);
-    if (path == "@disks") {
-      BVolumeRoster roster;
-      BVolume volume;
-      while (generation->load() == serial &&
-             roster.GetNextVolume(&volume) == B_OK) {
-        BDirectory root;
-        BEntry e;
-        BPath p;
-        char name[B_FILE_NAME_LENGTH];
-        if (volume.GetRootDirectory(&root) == B_OK &&
-            root.GetEntry(&e) == B_OK && e.GetPath(&p) == B_OK &&
-            volume.GetName(name) == B_OK)
-          row(p.Path(), name);
-      }
-    } else {
-      char resolved[PATH_MAX];
-      if (!realpath(path.String(), resolved)) {
-        done.AddString("error", strerror(errno));
-      } else {
-        path = resolved;
-        DIR *dir = opendir(path.String());
-        if (!dir)
-          done.AddString("error", strerror(errno));
-        else {
-          if (path != "/") {
-            std::string parent = path.String();
-            parent = parent.substr(0, parent.find_last_of('/'));
-            if (parent.empty())
-              parent = "/";
-            row(parent.c_str(), "..", true);
-          }
-          while (generation->load() == serial) {
-            auto e = readdir(dir);
-            if (!e)
-              break;
-            if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
-              continue;
-            row(Lister::Join(path.String(), e->d_name).c_str(), e->d_name);
-          }
-          closedir(dir);
-          BNode node(path.String());
-          node_ref ref;
-          if (node.GetNodeRef(&ref) == B_OK)
-            done.AddData("node", B_RAW_TYPE, &ref, sizeof(ref));
-        }
-      }
-    }
-    if (generation->load() == serial) {
-      if (count)
-        send();
-      done.AddString("path", path);
-      target.SendMessage(&done, (BHandler *)nullptr, 500000);
-    }
-  }
-};
+constexpr uint32 kGridMode = 'gmod', kRememberView = 'grem',
+                 kForgetView = 'gfor', kExpireProgress = 'expr',
+                 kToggleTree = 'ttre';
 } // namespace
-class FileList : public BColumnListView {
-public:
-  Pane *pane;
-  NameColumn *name;
-  FileList(Pane *p, const Preferences &prefs)
-      : BColumnListView("files", B_WILL_DRAW | B_NAVIGABLE, B_FANCY_BORDER),
-        pane(p) {
-    name = new NameColumn(prefs);
-    AddColumn(name, 0);
-    AddColumn(new SizeColumn(), 1);
-    AddColumn(new BDateColumn("Modified", 160, 80, 280), 2);
-    SetSelectionMode(B_MULTIPLE_SELECTION_LIST);
-    SetSortColumn(name, false, true);
-    SetInvocationMessage(new BMessage(kInvoke));
-    SetSelectionMessage(new BMessage(kSelection));
-  }
-  void MakeFocus(bool f = true) override {
-    BColumnListView::MakeFocus(f);
-    if (f)
-      pane->Activate();
-  }
-  void SelectionChanged() override {
-    BColumnListView::SelectionChanged();
-    if (!pane->IsScanning())
-      pane->Activate();
-  }
-  void KeyDown(const char *b, int32 n) override {
-    if (n == 1 && b[0] == B_TAB) {
-      Window()->PostMessage(kSwitch);
-      return;
-    }
-    if (n == 1 && b[0] == B_BACKSPACE) {
-      BMessage parent(kParent);
-      pane->MessageReceived(&parent);
-      return;
-    }
-    if (n == 1 && b[0] == ' ') {
-      auto r = FocusRow();
-      if (r) {
-        bool selected = false;
-        for (auto s = CurrentSelection(); s; s = CurrentSelection(s))
-          if (r == s)
-            selected = true;
-        if (selected)
-          Deselect(r);
-        else
-          AddToSelection(r);
-      }
-      return;
-    }
-    BColumnListView::KeyDown(b, n);
-  }
-  bool InitiateDrag(BPoint p, bool) override {
-    BMessage m(B_SIMPLE_DATA);
-    for (auto r = CurrentSelection(); r; r = CurrentSelection(r)) {
-      auto f = static_cast<FileRow *>(r);
-      if (!f->parent)
-        m.AddRef("refs", &f->ref);
-    }
-    if (!m.HasRef("refs"))
-      return false;
-    DragMessage(&m, BRect(p.x, p.y, p.x + 90, p.y + 22));
-    return true;
-  }
-  void MessageDropped(BMessage *m, BPoint) override {
-    BMessage drop(*m);
-    drop.what = kDrop;
-    drop.AddString("destination", pane->Path());
-    Window()->PostMessage(&drop);
-  }
-};
 Pane::Pane(int32 number, const Preferences &p)
     : BView("pane", B_WILL_DRAW | B_SUPPORTS_LAYOUT), id(number), prefs(p),
       generation(std::make_shared<std::atomic<int64>>(0)) {
   SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
   SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
-  role = new BButton("role", "Destination", new BMessage(kActivate));
+  role = new BStringView("role", id == 0 ? "Left panel" : "Right panel");
+  role->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
   auto menu = new BPopUpMenu("Go");
   const char *names[] = {"Parent",  "Root",  "Home",
                          "Desktop", "Disks", "Trash (this volume)"};
@@ -323,11 +82,41 @@ Pane::Pane(int32 number, const Preferences &p)
   filter = new BTextControl("filter", "Filter:", "", new BMessage(kFilterDone));
   filter->SetModificationMessage(new BMessage(kFilterChanged));
   filter->SetExplicitMinSize(BSize(120, B_SIZE_UNSET));
-  filter->SetToolTip("Show names containing this text. Enter returns to the list; Escape clears.");
-  clearFilter = new BButton("clear filter", "Clear", new BMessage(kClearFilter));
+  filter->SetToolTip("Show names containing this text. Enter returns to the "
+                     "list; Escape clears.");
+  clearFilter =
+      new BButton("clear filter", "Clear", new BMessage(kClearFilter));
   clearFilter->SetEnabled(false);
-  list = new FileList(this, p);
+  list = CreateFileDetails(this, &entries, p);
   list->SetExplicitMinSize(BSize(260, 180));
+  grid = CreateFileGrid(this, &entries);
+  auto gridScroll = new BScrollView("icons scroll", grid, 0, false, true);
+  cards = new BCardView("panel views");
+  cards->AddChild(list);
+  cards->AddChild(gridScroll);
+  auto modes = new BPopUpMenu("View");
+  const char *modeNames[] = {"Details", "Icons", "Large icons", "Thumbnails"};
+  for (int32 i = 0; i < 4; ++i) {
+    auto message = new BMessage(kGridMode);
+    message->AddInt32("mode", i);
+    modes->AddItem(new BMenuItem(modeNames[i], message));
+  }
+  modes->AddSeparatorItem();
+  modes->AddItem(new BMenuItem("Remember view for this folder",
+                               new BMessage(kRememberView)));
+  modes->AddItem(
+      new BMenuItem("Use default for this folder", new BMessage(kForgetView)));
+  modes->SetRadioMode(false);
+  modes->SetLabelFromMarked(false);
+  display = new BMenuField("display mode", "", modes);
+  modes->AddSeparatorItem();
+  modes->AddItem(new BMenuItem("Folder tree", new BMessage(kToggleTree)));
+  tree = new FolderTree();
+  auto content = new BSplitView(B_HORIZONTAL, 4);
+  content->AddChild(tree);
+  content->AddChild(cards);
+  content->SetCollapsible(0, false);
+  content->SetCollapsible(1, false);
   status = new BStringView("status", "Ready");
   status->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
   BLayoutBuilder::Group<>(this, B_VERTICAL, 5)
@@ -335,13 +124,14 @@ Pane::Pane(int32 number, const Preferences &p)
       .AddGroup(B_HORIZONTAL, 5)
       .Add(role)
       .Add(field)
+      .Add(display)
       .End()
       .Add(edit)
       .AddGroup(B_HORIZONTAL, 5)
       .Add(filter)
       .Add(clearFilter)
       .End()
-      .Add(list)
+      .Add(content)
       .Add(status);
 }
 Pane::~Pane() {
@@ -349,20 +139,17 @@ Pane::~Pane() {
   stop_watching(this);
   if (scanner)
     scanner->PostMessage(B_QUIT_REQUESTED);
-  for (auto row : hiddenRows)
-    delete row;
 }
 void Pane::AttachedToWindow() {
-  role->SetTarget(this);
+  display->Menu()->SetTargetForItems(this);
   edit->SetTarget(this);
   filter->SetTarget(this);
   clearFilter->SetTarget(this);
   filter->TextView()->AddFilter(new PaneInput(this, true));
   edit->TextView()->AddFilter(new PaneInput(this, false));
-  list->SetTarget(this);
   auto field = dynamic_cast<BMenuField *>(FindView("go"));
   field->Menu()->SetTargetForItems(this);
-  scanner = new Scanner(BMessenger(this), generation);
+  scanner = CreateDirectoryScanner(BMessenger(this), generation);
   scanner->Run();
   Apply(prefs);
   Navigate(path);
@@ -375,63 +162,74 @@ void Pane::Activate() {
   }
 }
 void Pane::SetSource(bool source) {
-  role->SetLabel(source ? "SOURCE" : "DESTINATION");
-  role->SetValue(source ? B_CONTROL_ON : B_CONTROL_OFF);
+  active = source;
+  BString label(id == 0 ? "Left panel" : "Right panel");
+  if (source)
+    label << " (active)";
+  role->SetText(label);
+  role->SetHighUIColor(B_PANEL_TEXT_COLOR);
   role->SetFont(source ? be_bold_font : be_plain_font);
 }
-void Pane::FocusList() { list->MakeFocus(true); }
+void Pane::SetDisplayMode(int32 value) {
+  mode = std::max(0, std::min(3, value));
+  cards->CardLayout()->SetVisibleItem(mode == 0 ? 0 : 1);
+  grid->SetMode(mode);
+  auto menu = display->Menu();
+  for (int i = 0; i < 4; ++i)
+    menu->ItemAt(i)->SetMarked(mode == i);
+  menu->Superitem()->SetLabel(menu->ItemAt(mode)->Label());
+  menu->ItemAt(5)->SetMarked(prefs.folderModes.count(path.String()));
+  menu->ItemAt(6)->SetEnabled(prefs.folderModes.count(path.String()));
+}
+void Pane::PublishDisplay(bool folder, bool forget) {
+  BMessage changed(kPaneDisplay);
+  if (folder) {
+    changed.AddString("folder", path);
+    changed.AddInt32("mode", mode);
+    changed.AddBool("forget", forget);
+  }
+  Window()->PostMessage(&changed);
+}
+void Pane::FocusList() {
+  if (mode == 0)
+    list->MakeFocus(true);
+  else
+    grid->MakeFocus(true);
+}
 void Pane::FocusFilter() {
   Activate();
   filter->MakeFocus(true);
   filter->TextView()->SelectAll();
 }
 void Pane::ClearRows() {
-  list->Clear();
-  for (auto row : hiddenRows)
-    delete row;
-  hiddenRows.clear();
+  entries.Clear();
+  list->Refresh();
+  grid->Reset();
 }
 void Pane::ApplyFilter() {
-  // Suppress selection callbacks changing pane roles while rows are detached.
-  bool wasScanning = scanning;
-  scanning = true;
-  for (int32 i = list->CountRows() - 1; i >= 0; --i) {
-    auto row = static_cast<FileRow *>(list->RowAt(i));
-    auto name = static_cast<NameField *>(row->GetField(0));
-    if (!Lister::MatchesNameFilter(name->String(), filter->Text(), row->parent)) {
-      list->Deselect(row);
-      list->RemoveRow(row);
-      hiddenRows.push_back(row);
-    }
-  }
-  for (auto i = hiddenRows.begin(); i != hiddenRows.end();) {
-    auto row = static_cast<FileRow *>(*i);
-    auto name = static_cast<NameField *>(row->GetField(0));
-    if (Lister::MatchesNameFilter(name->String(), filter->Text(), row->parent)) {
-      list->AddRow(row);
-      i = hiddenRows.erase(i);
-    } else
-      ++i;
-  }
-  scanning = wasScanning;
+  entries.Filter(filter->Text());
+  list->Refresh();
   clearFilter->SetEnabled(filter->Text()[0] != 0);
   if (!scanning)
     SendSelection();
 }
 void Pane::Apply(const Preferences &p) {
   prefs = p;
-  list->name->prefs = p;
-  list->SetFont(&p.font);
-  list->SetColumnVisible(1, p.size);
-  list->SetColumnVisible(2, p.date);
-  list->SetColor(B_COLOR_BACKGROUND, ui_color(B_PANEL_BACKGROUND_COLOR));
-  list->SetColor(B_COLOR_TEXT, ui_color(B_PANEL_TEXT_COLOR));
-  list->SetColor(B_COLOR_SELECTION,
-                 tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.80));
-  list->SetColor(B_COLOR_SELECTION_TEXT, ui_color(B_PANEL_TEXT_COLOR));
-  list->SetColor(B_COLOR_NON_FOCUS_SELECTION,
-                 tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.80));
-  list->Invalidate();
+  if (treeVisible != p.paneTree[id]) {
+    treeVisible = p.paneTree[id];
+    if (treeVisible)
+      tree->Show();
+    else
+      tree->Hide();
+  }
+  display->Menu()->ItemAt(8)->SetMarked(treeVisible);
+  tree->ShowPath(path.String());
+  auto view = prefs.folderModes.find(path.String());
+  SetDisplayMode(view == prefs.folderModes.end() ? prefs.paneMode[id]
+                                                 : view->second);
+  list->Apply(p);
+  grid->SetFont(&p.font);
+  grid->Update();
 }
 void Pane::Navigate(const char *p) {
   if (!scanner)
@@ -439,8 +237,10 @@ void Pane::Navigate(const char *p) {
   std::string request = p;
   if (request.empty())
     return;
-  if (request[0] != '/' && request != "@disks")
-    request = Lister::Join(path.String(), request);
+  if (request[0] != '/' && request != "@disks" && !Lister::IsVirtual(request))
+    request = Lister::IsVirtual(path.String())
+                  ? Lister::ChildLocation(path.String(), request)
+                  : Lister::Join(path.String(), request);
   stop_watching(this);
   savedSelection =
       (path == request.c_str()) ? Selected() : std::vector<std::string>{};
@@ -449,6 +249,9 @@ void Pane::Navigate(const char *p) {
     clearFilter->SetEnabled(false);
   }
   path = request.c_str();
+  auto view = prefs.folderModes.find(request);
+  SetDisplayMode(view == prefs.folderModes.end() ? prefs.paneMode[id]
+                                                 : view->second);
   edit->SetText(path);
   scanning = true;
   refreshPending = false;
@@ -459,7 +262,8 @@ void Pane::Navigate(const char *p) {
   BMessage m(kScan);
   m.AddString("path", path);
   m.AddInt64("serial", serial);
-  m.AddBool("icons", prefs.icons);
+  m.AddBool("icons", prefs.icons || mode > 0);
+  m.AddInt32("iconSize", mode == 0 ? 16 : 96);
   scanner->PostMessage(&m);
 }
 void Pane::Reload() {
@@ -469,48 +273,130 @@ void Pane::Reload() {
   }
   Navigate(path);
 }
-std::vector<std::string> Pane::Selected() const {
-  std::vector<std::string> out;
-  for (auto r = list->CurrentSelection(); r; r = list->CurrentSelection(r)) {
-    auto f = static_cast<FileRow *>(r);
-    if (!f->parent)
-      out.push_back(f->path);
-  }
-  return out;
-}
+std::vector<std::string> Pane::Selected() const { return entries.Selected(); }
 void Pane::Select(int mode) {
-  if (mode == 0) {
-    list->DeselectAll();
-    return;
-  }
-  auto selected = Selected();
-  for (int32 i = 0; i < list->CountRows(); i++) {
-    auto row = static_cast<FileRow *>(list->RowAt(i));
-    if (row->parent)
-      continue;
-    bool had = std::find(selected.begin(), selected.end(), row->path) !=
-               selected.end();
-    if (mode == 2 && had)
-      list->Deselect(row);
-    else
-      list->AddToSelection(row);
-  }
+  entries.Select(mode);
+  SendSelection();
 }
 void Pane::SendSelection() {
   BString s;
   int32 visible = 0;
-  for (int32 i = 0; i < list->CountRows(); ++i)
-    if (!static_cast<FileRow *>(list->RowAt(i))->parent)
+  for (auto entry : entries.Visible())
+    if (!entry->parent)
       ++visible;
   s << int32(Selected().size()) << " selected / " << visible;
   if (filter->Text()[0])
-    s << " of " << (visible + int32(hiddenRows.size())) << " entries (filtered)";
+    s << " of " << (visible + int32(entries.HiddenCount()))
+      << " entries (filtered)";
   else
     s << " entries";
   status->SetText(s);
+  list->SyncSelection();
+  grid->Update();
+  if (Window()) {
+    BMessage changed(kPreviewSelection);
+    changed.AddInt32("pane", id);
+    auto selected = Selected();
+    if (selected.size() == 1) {
+      auto found = transfers.find(selected[0]);
+      if (found != transfers.end() && !found->second.error.empty())
+        changed.AddString("operationError", found->second.error.c_str());
+    }
+    Window()->PostMessage(&changed);
+  }
 }
 void Pane::MessageReceived(BMessage *m) {
   switch (m->what) {
+  case kExpireProgress: {
+    std::vector<std::string> expired;
+    bool pending = false;
+    for (auto &item : transfers)
+      if (item.second.state == 2) {
+        if (item.second.expires <= system_time())
+          expired.push_back(item.first);
+        else
+          pending = true;
+      }
+    for (auto &file : expired) {
+      BMessage clear(kFileProgress);
+      clear.AddString("path", file.c_str());
+      clear.AddInt32("state", 0);
+      MessageReceived(&clear);
+    }
+    if (!pending)
+      progressTimer.reset();
+    break;
+  }
+  case kFileProgress: {
+    std::string file = m->GetString("path", "");
+    auto &transfer = transfers[file];
+    transfer.state = m->GetInt32("state", 0);
+    transfer.fraction = m->GetFloat("fraction", 0);
+    transfer.error = m->GetString("error", "");
+    entries.Transfer(file, transfer.state, transfer.fraction);
+    list->Redraw();
+    grid->Invalidate();
+    if (transfer.state == 2) {
+      transfer.expires = system_time() + 2500000;
+      if (!progressTimer) {
+        BMessage expire(kExpireProgress);
+        progressTimer.reset(
+            new BMessageRunner(BMessenger(this), &expire, 250000));
+      }
+    }
+    if (!transfer.state)
+      transfers.erase(file);
+    if (transfers.size() > 4096)
+      transfers.erase(transfers.begin());
+    break;
+  }
+  case kJobDone:
+    for (auto &transfer : transfers)
+      if (transfer.second.state == 1) {
+        transfer.second.state = 3;
+        transfer.second.error =
+            "Transfer did not complete. See Operations for details.";
+      }
+    Reload();
+    break;
+  case kToggleTree:
+    prefs.paneTree[id] = !prefs.paneTree[id];
+    treeVisible = prefs.paneTree[id];
+    if (treeVisible)
+      tree->Show();
+    else
+      tree->Hide();
+    display->Menu()->ItemAt(8)->SetMarked(treeVisible);
+    tree->ShowPath(path.String());
+    PublishDisplay();
+    break;
+  case kGridMode: {
+    prefs.paneMode[id] = m->GetInt32("mode", 0);
+    SetDisplayMode(prefs.paneMode[id]);
+    bool remembered = prefs.folderModes.count(path.String());
+    if (remembered)
+      prefs.folderModes[path.String()] = mode;
+    PublishDisplay(remembered);
+    Reload();
+    FocusList();
+    break;
+  }
+  case kRememberView:
+    if (prefs.folderModes.size() >= 4096 &&
+        !prefs.folderModes.count(path.String())) {
+      status->SetText("Folder view limit reached");
+      break;
+    }
+    prefs.folderModes[path.String()] = mode;
+    SetDisplayMode(mode);
+    PublishDisplay(true);
+    break;
+  case kForgetView:
+    prefs.folderModes.erase(path.String());
+    SetDisplayMode(prefs.paneMode[id]);
+    PublishDisplay(true, true);
+    Reload();
+    break;
   case kFilterChanged:
     ApplyFilter();
     break;
@@ -522,23 +408,29 @@ void Pane::MessageReceived(BMessage *m) {
   case kFilterDone:
     FocusList();
     break;
+  case kSwitch:
+    Window()->PostMessage(kSwitch);
+    break;
   case kActivate:
     Activate();
     FocusList();
     break;
   case kNavigate:
-    Navigate(edit->Text());
-    FocusList();
+    if (m->HasInt64("serial") && m->GetInt64("serial", -1) != serial)
+      break;
+    Navigate(m->GetString("path", edit->Text()));
+    if (m->GetBool("tree", false))
+      Activate();
+    else
+      FocusList();
     break;
   case kParent: {
-    std::string p = path.String();
-    if (p == "@disks")
-      p = "/";
-    if (p.size() > 1 && p.back() == '/')
-      p.pop_back();
-    auto i = p.find_last_of('/');
-    p = i == 0 || i == std::string::npos ? "/" : p.substr(0, i);
-    Navigate(p.c_str());
+    try {
+      Navigate(Lister::ParentLocation(path == "@disks" ? "/" : path.String())
+                   .c_str());
+    } catch (const std::exception &e) {
+      status->SetText(e.what());
+    }
     break;
   }
   case kRoot:
@@ -551,8 +443,8 @@ void Pane::MessageReceived(BMessage *m) {
     Navigate("/boot/home/Desktop");
     break;
   case kTrashFolder: {
-    if (path == "@disks") {
-      status->SetText("Open a volume first.");
+    if (path == "@disks" || Lister::IsVirtual(path.String())) {
+      status->SetText("Trash requires a local supported volume.");
       break;
     }
     stop_watching(this);
@@ -581,15 +473,15 @@ void Pane::MessageReceived(BMessage *m) {
       SendSelection();
     break;
   case kInvoke: {
-    auto r = static_cast<FileRow *>(list->FocusRow());
-    if (!r)
-      r = static_cast<FileRow *>(list->CurrentSelection());
+    auto r = entries.Focused();
     if (r) {
       if (r->directory)
         Navigate(r->path.c_str());
       else {
         BMessage open(kOpenPaths);
         open.AddString("path", r->path.c_str());
+        open.AddMessenger("pane", BMessenger(this));
+        open.AddInt64("serial", serial);
         Window()->PostMessage(&open);
       }
     }
@@ -600,33 +492,38 @@ void Pane::MessageReceived(BMessage *m) {
       break;
     BMessage e;
     for (int i = 0; m->FindMessage("entry", i, &e) == B_OK; i++) {
-      auto row = new FileRow(std::max(22.f, prefs.font.Size() + 9));
+      auto row = std::make_unique<PaneEntry>();
+      row->name = e.GetString("name", "");
       row->path = e.GetString("path", "");
       row->directory = e.GetBool("directory", false);
       row->parent = e.GetBool("parent", false);
-      e.FindRef("ref", &row->ref);
-      auto name = new NameField(e.GetString("name", ""), e.GetInt32("kind", 0));
-      name->parent = row->parent;
+      row->kind = e.GetInt32("kind", 0);
+      row->size = e.GetInt64("size", 0);
+      row->modified = e.GetInt64("date", 0);
+      auto transfer = transfers.find(row->path);
+      if (transfer != transfers.end()) {
+        row->transferState = transfer->second.state;
+        row->fraction = transfer->second.fraction;
+      }
       const void *bits;
       ssize_t length;
-      if (e.FindData("icon", B_RAW_TYPE, &bits, &length) == B_OK &&
-          length == 256) {
-        name->icon = new BBitmap(BRect(0, 0, 15, 15), B_CMAP8);
-        memcpy(name->icon->Bits(), bits, length);
+      int32 pixels = e.GetInt32("iconSize", 16);
+      if (pixels >= 16 && pixels <= 128 &&
+          e.FindData("icon", B_RAW_TYPE, &bits, &length) == B_OK &&
+          length == pixels * pixels * 4) {
+        row->icon = std::make_shared<BBitmap>(
+            BRect(0, 0, pixels - 1, pixels - 1), B_RGBA32);
+        if (row->icon->InitCheck() == B_OK)
+          memcpy(row->icon->Bits(), bits, length);
+        else
+          row->icon.reset();
       }
-      row->SetField(name, 0);
-      row->SetField(new BSizeField(row->directory ? -1 : e.GetInt64("size", 0)),
-                    1);
-      time_t date = e.GetInt64("date", 0);
-      row->SetField(new BDateField(&date), 2);
-      if (Lister::MatchesNameFilter(name->String(), filter->Text(), row->parent)) {
-        list->AddRow(row);
-        if (std::find(savedSelection.begin(), savedSelection.end(), row->path) !=
-            savedSelection.end())
-          list->AddToSelection(row);
-      } else
-        hiddenRows.push_back(row);
+      entries.Add(std::move(row));
     }
+    entries.Filter(filter->Text());
+    entries.RestoreSelection(savedSelection);
+    list->Refresh();
+    grid->Update();
     break;
   }
   case kScanDone: {
@@ -635,6 +532,7 @@ void Pane::MessageReceived(BMessage *m) {
     scanning = false;
     path = m->GetString("path", path);
     edit->SetText(path);
+    tree->ShowPath(path.String());
     const char *error;
     if (m->FindString("error", &error) == B_OK) {
       BString s("Cannot open: ");
@@ -657,6 +555,7 @@ void Pane::MessageReceived(BMessage *m) {
     break;
   case B_COLORS_UPDATED:
     Apply(prefs);
+    SetSource(active);
     break;
   default:
     BView::MessageReceived(m);

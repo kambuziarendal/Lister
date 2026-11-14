@@ -6,6 +6,58 @@ on `work/smb-first`; publication is prohibited by the current roadmap. The UI sa
 
 ## Verified checkpoint
 
+### Resumed safety/module increment
+
+Native development executable SHA256:
+`53981103328791379530b851352a37bf2b6f01c4345fe4260f00b916f4f1bd48`.
+This supersedes the development checkpoints below, not the installed package.
+40 source/build inputs were read back from the isolated Haiku guest and match
+the worktree. On this exact build: **55 local/selection checks, 84 archive/network
+checks and 9 deterministic commit/rollback fault checks pass**. The fault test
+links the native build's actual VirtualFile/VirtualOperation objects to an
+in-memory network adapter; real protocol tests use the separate owned fixtures.
+
+- `PaneModel` owns entries, visible selection and focus. `DirectoryScanner`,
+  `FileDetails` and `FileGrid` are separate workers/renderers. Only FileDetails
+  includes private column-list headers. The grid no longer depends on a hidden
+  detail renderer. Shift range shrinking and multi-selection drag are implemented.
+- `InlineAction` owns one frozen, token-identified question. New operations and
+  connections cannot replace it. Closing destroys its controls immediately.
+  `ConnectionView` is named for its actual inline lifecycle. Escape closes the
+  pending question first, without also aborting a separate file conflict.
+- Conflict answers identify the exact request and accept only its first answer.
+  A failed prompt delivery aborts rather than waiting forever. Cancelled/partial
+  jobs do not fill the progress bar as if completed.
+- Copy/cleanup moves emit completion only after source cleanup. Copy checks
+  source identity, mode and nanosecond mtime/ctime, rejects special files without
+  blocking, detects disappearing/replaced conflict targets, and reports directory
+  enumeration failures. Source snapshots are retained on incomplete moves.
+- Network commit fault tests cover cancellation after backup, failed commit,
+  failed rollback, retained staging/backup, destination changes, skip and abort.
+  Errors distinguish committed bytes with failed cleanup from an uncommitted
+  transfer and include retained recovery paths. No success event is emitted for
+  those incomplete outcomes.
+- Extraction/download preserves available POSIX modes and modification times,
+  stripping privileged mode bits. Explicit archive directory metadata is retained;
+  existing destination directories are not chmodded. Unknown remote timestamps
+  are still unknown. Upload metadata, ACLs, ownership and arbitrary BFS attributes
+  are not a parity claim.
+
+19 native UI assertions passed: grid range/shrink, copy/filter/drag with filesystem
+readback, frozen question/name, independent prompt/conflict Escape, real Replace,
+details-parent navigation, Tab/focus and responsive light/dark layouts. Basic
+connection form visually checked at 1024x650; normal dark view at 1140x650.
+The UI harness's original text-view range query and assumed native Home behavior
+were corrected; their failed attempts remain in the evidence, not counted as
+passes. The tested parent action uses an actual click and Enter.
+
+Private evidence: `reports/listi-safety-20261114/` under Kambuzi's local workspace.
+Graceful quit was acknowledged; the Listi UI was then absent from the guest process list.
+No public push, package installation, release or physical-hardware qualification.
+Not all UI/release gates below are closed by this increment.
+
+### Earlier checkpoints (historical binary identities)
+
 Native Haiku build succeeds. Executable SHA256:
 `2c14373a249fb15924f0ccf96bb15452d3ad3c25733935cd1c46ab940ade4560`.
 
@@ -55,22 +107,20 @@ workspace. Synthetic fixture credentials only. No real NAS account was used.
 
 ## Next review gates, not completed work
 
-1. Split `Pane.cpp` into directory scanning, entry/selection state, detailed/grid
-   views and pane coordination. The hidden detailed view currently holds shared
-   rows/selection for the grid; make that ownership explicit before expanding it.
-   Isolate private column-list APIs to the detail renderer. Split inline prompt
-   ownership out of `App.cpp`; rename `NetworkWindow` to reflect its inline view.
-2. Audit cancellation and conflict ownership, source/destination races and
-   partial-directory results. Inspect network commit/rollback boundaries and
-   retained-backup errors. File progress must not imply a whole move succeeded
-   before source cleanup. A prompt must not silently replace a pending decision.
-3. Preserve supported file metadata on extraction/download. Do not claim complete
-   metadata parity merely because local BFS copy preserves attributes.
-4. Verify grid range selection/drag, tree navigation on both sides, folder-view
-   preference round trips, preview cancellation, shortcut focus and Escape.
-   Recheck layout with details/conflicts/advanced connection options expanded,
-   at laptop size and with both system palettes. Review idle CPU and bounded caches.
-5. Installed-package and upgrade verification only after the above, then a private
+1. The module split and bounded cancellation/conflict/metadata increment above is
+   verified. Retain the platform limits: remote stat is not a snapshot, remote
+   rename is not universally atomic no-replace, and local path-based replacement
+   checks do not lock out changes to parent directories or the final stat/rename
+   interval. Qualify supported server/filesystem behavior before broader claims.
+2. Complete tree navigation on both sides, folder-view preference round trips,
+   preview cancellation and broader focus checks. Recheck simultaneous expanded
+   details/conflicts/advanced connection options at laptop size in both palettes.
+   Native window minimum-size growth can extend beyond the VM screen after
+   combined prompts/details; ordinary resized compact views pass, but this
+   expanded-state layout remains an open gate. Review idle CPU and bounded caches.
+3. Test single-file compression and additional metadata/format cases; the four
+   tested container formats do not qualify every libarchive format.
+4. Installed-package and upgrade verification only after the above, then a private
    ZIP candidate. Do not push this work to a public branch or publish a release.
 
 ## Current capability limits
