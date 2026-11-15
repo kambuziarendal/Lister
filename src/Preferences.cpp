@@ -20,13 +20,16 @@ rgb_color Preferences::Color(const BString &text) const {
 }
 void Preferences::Load(const BMessage &m) {
   const int32 stored = m.GetInt32("workspace", m.GetBool("simpleWorkspace", false) ? 1 : 0);
-  workspace = stored >= 0 && stored <= 2 ? static_cast<Workspace>(stored) : Workspace::Commander;
+  workspace = stored >= 0 && stored <= 3 ? static_cast<Workspace>(stored) : Workspace::Commander;
   singlePane = m.GetInt32("singlePane", 0) == 1 ? 1 : 0;
   paneMode[0] = std::max(0, std::min(3, m.GetInt32("leftMode", 0)));
   paneMode[1] = std::max(0, std::min(3, m.GetInt32("rightMode", 0)));
   paneTree[0] = m.GetBool("leftTree", false);
   paneTree[1] = m.GetBool("rightTree", false);
+  workbenchTree[0] = m.GetBool("workbenchLeftTree", true);
+  workbenchTree[1] = m.GetBool("workbenchRightTree", true);
   preview = m.GetBool("preview", false);
+  workbenchPreview = m.GetBool("workbenchPreview", true);
   folderModes.clear();
   BMessage folder;
   for (int32 i = 0; i < 4096 && m.FindMessage("folderView", i, &folder) == B_OK;
@@ -60,10 +63,12 @@ void Preferences::ApplyDialog(const BMessage &message) {
   for (int i = 0; i < 2; ++i) {
     updated.paneMode[i] = paneMode[i];
     updated.paneTree[i] = paneTree[i];
+    updated.workbenchTree[i] = workbenchTree[i];
   }
   updated.workspace = workspace;
   updated.singlePane = singlePane;
   updated.preview = preview;
+  updated.workbenchPreview = workbenchPreview;
   updated.folderModes = folderModes;
   *this = updated;
 }
@@ -77,7 +82,10 @@ BMessage Preferences::Save() const {
   m.AddInt32("rightMode", paneMode[1]);
   m.AddBool("leftTree", paneTree[0]);
   m.AddBool("rightTree", paneTree[1]);
+  m.AddBool("workbenchLeftTree", workbenchTree[0]);
+  m.AddBool("workbenchRightTree", workbenchTree[1]);
   m.AddBool("preview", preview);
+  m.AddBool("workbenchPreview", workbenchPreview);
   for (auto &entry : folderModes) {
     BMessage folder;
     folder.AddString("path", entry.first.c_str());

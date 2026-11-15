@@ -315,7 +315,8 @@ class MainWindow : public BWindow {
   }
   Pane *panes[2];
   ImagePreview *preview;
-  BMenuItem *previewMenu, *simpleMenu, *explorerMenu, *commanderMenu;
+  BMenuItem *previewMenu, *simpleMenu, *explorerMenu, *commanderMenu,
+      *workbenchMenu;
   BMenuBar *menu;
   BSplitView *split;
   BGroupView *footer;
@@ -329,7 +330,7 @@ class MainWindow : public BWindow {
     service.SendMessage(&saved);
   }
   void UpdatePreview() {
-    if (!prefs.preview || prefs.SinglePane()) { preview->ShowFile(""); return; }
+    if (!prefs.Preview() || prefs.SinglePane()) { preview->ShowFile(""); return; }
     auto selected = panes[source]->Selected();
     preview->ShowFile(selected.size() == 1 ? selected[0] : "");
   }
@@ -480,7 +481,7 @@ class MainWindow : public BWindow {
       panes[i]->SetWorkspace(prefs.workspace);
       panes[i]->SetSource(i == source);
     }
-    const bool showPreview = prefs.preview && !prefs.SinglePane();
+    const bool showPreview = prefs.Preview() && !prefs.SinglePane();
     if (showPreview != previewVisible) {
       previewVisible = showPreview;
       if (showPreview) preview->Show(); else preview->Hide();
@@ -499,7 +500,8 @@ class MainWindow : public BWindow {
     queue->SetCompact(prefs.SinglePane());
     simpleMenu->SetMarked(prefs.Simple());
     explorerMenu->SetMarked(prefs.workspace == Workspace::Explorer);
-    commanderMenu->SetMarked(!prefs.SinglePane());
+    commanderMenu->SetMarked(prefs.workspace == Workspace::Commander);
+    workbenchMenu->SetMarked(prefs.Workbench());
     ShowBank(prefs.buttons && !actionArea->Pending());
     const bool showCommand = prefs.command && !prefs.SinglePane();
     if (commandVisible != showCommand) {
@@ -618,7 +620,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.23.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.24.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
@@ -681,12 +683,16 @@ public:
     simpleMessage->AddInt32("workspace", int32(Workspace::Simple));
     auto explorerMessage = new BMessage(kWorkspace);
     explorerMessage->AddInt32("workspace", int32(Workspace::Explorer));
+    auto workbenchMessage = new BMessage(kWorkspace);
+    workbenchMessage->AddInt32("workspace", int32(Workspace::Workbench));
     explorerMenu = new BMenuItem("Explorer", explorerMessage);
     simpleMenu = new BMenuItem("Simple", simpleMessage);
     commanderMenu = new BMenuItem("Commander", new BMessage(kWorkspace));
+    workbenchMenu = new BMenuItem("Workbench", workbenchMessage);
     workspace->AddItem(simpleMenu);
     workspace->AddItem(explorerMenu);
     workspace->AddItem(commanderMenu);
+    workspace->AddItem(workbenchMenu);
     viewMenu->AddItem(workspace);
     auto fileView = new BMenu("File view");
     const char* viewNames[] = {"Details", "Icons", "Large icons", "Thumbnails"};
@@ -867,7 +873,9 @@ public:
           }
           reply.AddString("result", pane->Path());
         } else if (!strcmp(property, "Workspace"))
-          reply.AddString("result", prefs.Simple() ? "Simple" : prefs.SinglePane() ? "Explorer" : "Commander");
+          reply.AddString("result", prefs.Simple() ? "Simple" :
+              prefs.workspace == Workspace::Explorer ? "Explorer" :
+              prefs.Workbench() ? "Workbench" : "Commander");
         else if (!strcmp(property, "PathReady"))
           reply.AddBool("result",
                         !panes[0]->IsScanning() && !panes[1]->IsScanning());
@@ -1003,15 +1011,15 @@ public:
       break;
     case kPreviewToggle:
       if (prefs.SinglePane()) break;
-      prefs.preview = !prefs.preview;
-      if (prefs.preview != previewVisible) {
-        previewVisible = prefs.preview;
+      prefs.SetPreview(!prefs.Preview());
+      if (prefs.Preview() != previewVisible) {
+        previewVisible = prefs.Preview();
         if (previewVisible)
           preview->Show();
         else
           preview->Hide();
       }
-      previewMenu->SetMarked(prefs.preview);
+      previewMenu->SetMarked(prefs.Preview());
       UpdatePreview();
       Save();
       break;
@@ -1023,8 +1031,8 @@ public:
       }
       break;
     case kPaneDisplay:
-      prefs.paneTree[0] = panes[0]->TreeVisible();
-      prefs.paneTree[1] = panes[1]->TreeVisible();
+      prefs.SetTree(0, panes[0]->TreeVisible());
+      prefs.SetTree(1, panes[1]->TreeVisible());
       prefs.paneMode[0] = panes[0]->DisplayMode();
       prefs.paneMode[1] = panes[1]->DisplayMode();
       if (m->HasString("folder")) {
@@ -1044,7 +1052,7 @@ public:
     case kWorkspace:
       {
         int32 value = m->GetInt32("workspace", m->GetBool("simple", false) ? 1 : 0);
-        if (value >= 0 && value <= 2) SetWorkspace(static_cast<Workspace>(value));
+        if (value >= 0 && value <= 3) SetWorkspace(static_cast<Workspace>(value));
       }
       break;
     case kActivate:

@@ -316,6 +316,16 @@ editing, writing and flushing succeed. Supported ZIP/7z encryption is retained.
 Split, remote, nested and RAR editing remain separate work. See
 ARCHIVES-0.23.0.md.
 
+## 0.24.0: Arbeidsbenk
+
+Det fjerde godkjente arbeidsoppsettet bygges av de eksisterende, kvalifiserte
+komponentene. Arbeidsbenk har to paneler og starter med begge mappetrær og
+forhåndsvisningen synlig. Filter, adresser, handlingsbank, søk og operasjonslogg
+er tilgjengelige uten nye filoperasjoner i samme versjon. Bytte mellom oppsett
+beholder panelobjekter, mapper, utvalg, delere og pågående jobber. Commander og
+Arbeidsbenk lagrer tre- og forhåndsvisningsvalg separat. Se
+WORKSPACES-0.24.0.md.
+
 ## Long-term portability direction
 
 Listi remains a native Haiku application. Portability is developed gradually,

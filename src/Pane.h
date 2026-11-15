@@ -51,7 +51,7 @@ public:
   void Sort(PaneSort);
   int32 CurrentView() const { return mode; }
   int32 DisplayMode() const { return prefs.paneMode[id]; }
-  bool TreeVisible() const { return prefs.paneTree[id]; }
+  bool TreeVisible() const { return prefs.Tree(id); }
   void FolderModes(const std::map<std::string, int32> &modes) {
     prefs.folderModes = modes;
   }

@@ -360,7 +360,7 @@ void Pane::SetWorkspace(Workspace workspace) {
   // A hidden filter must not silently hide entries in the minimal workspace.
   // Keep its text for Commander, but suspend its effect while it is hidden.
   if (changed) { ApplyFilter(); grid->Update(); }
-  const bool visible = workspace == Workspace::Explorer || (prefs.paneTree[id] && !simple);
+  const bool visible = workspace == Workspace::Explorer || (prefs.Tree(id) && !simple);
   if (treeVisible != visible) {
     treeVisible = visible;
     if (visible) tree->Show(); else tree->Hide();
@@ -649,8 +649,8 @@ void Pane::MessageReceived(BMessage *m) {
   case kToggleTree:
     if (prefs.SinglePane()) break;
     tree->Reset();
-    prefs.paneTree[id] = !prefs.paneTree[id];
-    treeVisible = prefs.paneTree[id];
+    prefs.SetTree(id, !prefs.Tree(id));
+    treeVisible = prefs.Tree(id);
     if (treeVisible)
       tree->Show();
     else

@@ -39,6 +39,17 @@ int main() {
   check(live.paneMode[0]==3 && live.paneMode[1]==2,"stale dialog preserves current pane modes");
   check(live.paneTree[0] && live.paneTree[1],"stale dialog preserves both trees");
   check(live.preview && live.folderModes["/synthetic"]==1,"stale dialog preserves preview and folder overrides");
+  live.workspace=Workspace::Workbench;live.workbenchTree[0]=false;
+  live.workbenchTree[1]=true;live.workbenchPreview=false;
+  live.ApplyDialog(stale);
+  check(live.Workbench() && !live.SinglePane(),"stale dialog preserves Workbench");
+  restored.Load(live.Save());
+  check(restored.Workbench() && !restored.workbenchTree[0] && restored.workbenchTree[1] &&
+        !restored.workbenchPreview,"Workbench customization survives restart");
+  check(!live.Save().GetBool("simpleWorkspace",true),"Workbench rolls back safely to Commander");
+  BMessage oldWorkbench;oldWorkbench.AddInt32("workspace",3);restored.Load(oldWorkbench);
+  check(restored.Workbench() && restored.workbenchTree[0] && restored.workbenchTree[1] &&
+        restored.workbenchPreview,"Workbench defaults expose both trees and preview");
   for(float size:{std::numeric_limits<float>::quiet_NaN(),std::numeric_limits<float>::infinity(),-1.f,7.f,41.f}) {
     BMessage m;m.AddFloat("fontSize",size);live.Load(m);
     check(live.font.Size()==12,"invalid persisted font safely defaults to 12");

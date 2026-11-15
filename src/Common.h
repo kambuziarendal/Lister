@@ -88,16 +88,36 @@ enum : uint32 {
   kNameAccepted = 'name',
   kOpenPaths = 'opth'
 };
-enum class Workspace : int32 { Commander = 0, Simple = 1, Explorer = 2 };
+enum class Workspace : int32 {
+  Commander = 0,
+  Simple = 1,
+  Explorer = 2,
+  Workbench = 3
+};
 struct Preferences {
   BFont font = *be_plain_font;
   bool icons = true, size = true, date = true, buttons = true, command = false;
   int32 paneMode[2] = {0, 0};
   bool paneTree[2] = {false, false};
+  bool workbenchTree[2] = {true, true};
   bool preview = false;
+  bool workbenchPreview = true;
   Workspace workspace = Workspace::Commander;
-  bool SinglePane() const { return workspace != Workspace::Commander; }
+  bool SinglePane() const {
+    return workspace == Workspace::Simple || workspace == Workspace::Explorer;
+  }
   bool Simple() const { return workspace == Workspace::Simple; }
+  bool Workbench() const { return workspace == Workspace::Workbench; }
+  bool Tree(int pane) const {
+    return Workbench() ? workbenchTree[pane] : paneTree[pane];
+  }
+  void SetTree(int pane, bool value) {
+    (Workbench() ? workbenchTree[pane] : paneTree[pane]) = value;
+  }
+  bool Preview() const { return Workbench() ? workbenchPreview : preview; }
+  void SetPreview(bool value) {
+    (Workbench() ? workbenchPreview : preview) = value;
+  }
   int32 singlePane = 0;
   std::map<std::string, int32> folderModes;
   BString editor = "/boot/system/apps/StyledEdit",
