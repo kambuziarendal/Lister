@@ -161,13 +161,19 @@ BMessage MakeFileSelection(const std::vector<std::string> &paths, bool cut) {
 
 void PutFileClipboard(const std::vector<std::string> &paths, bool cut, BClipboard *clipboard) {
   if (std::any_of(paths.begin(),paths.end(),[](const auto &path){return ParseLocation(path).Archive();})) {
-    if (cut) throw std::runtime_error("Use Move to other panel to move entries within one archive. Copy/Paste keeps originals.");
     if (paths.empty() || paths.size()>1024) throw std::runtime_error("Select between 1 and 1024 archive entries.");
     for(const auto &path:paths) {
       const auto location=ParseLocation(path);
       if(!location.Archive()||location.path=="/") throw std::runtime_error("Copy archive entries separately from local files.");
     }
-    Job selection{Action::Copy,paths,""};FreezeArchiveTargets(selection);
+    Job selection{cut ? Action::Move : Action::Copy,paths,""};FreezeArchiveTargets(selection);
+    if (cut) {
+      const auto archive = ParseLocation(paths.front()).archive;
+      PrepareArchiveEditTarget(archive);
+      for (const auto &path : paths)
+        if (ParseLocation(path).archive != archive)
+          throw std::runtime_error("Cut entries from one archive at a time.");
+    }
     BMessage message, encoded=EncodeJob(selection,0);
     message.AddMessage("listi:archive-copy",&encoded);
     Lock lock(clipboard);Commit(clipboard,message);
@@ -184,7 +190,12 @@ ClipboardPaste PrepareFilePaste(const std::string &destination, BClipboard *clip
     Lock lock(clipboard); BMessage encoded;
     if (clipboard->Data()->FindMessage("listi:archive-copy",&encoded)==B_OK) {
       if (encoded.FlattenedSize()>2*1024*1024) throw std::runtime_error("Clipboard selection is too large.");
-      auto job=DecodeJob(encoded);job.action=Action::Copy;job.destination=destination;
+      if (clipboard->Data()->HasString(kLease))
+        throw std::runtime_error("An archive cut transfer is pending. Let it finish or cut the remaining entries again.");
+      auto job=DecodeJob(encoded);
+      const bool cut = job.action == Action::Move;
+      if (!cut && job.action != Action::Copy) throw std::runtime_error("Invalid archive clipboard action.");
+      job.destination=destination;
       if(job.sources.empty()||job.sources.size()>1024)throw std::runtime_error("Invalid archive clipboard selection.");
       for(const auto &path:job.sources) {
         const auto location=ParseLocation(path);
@@ -195,12 +206,22 @@ ClipboardPaste PrepareFilePaste(const std::string &destination, BClipboard *clip
         if(FindArchiveVolumes(entry.first).Fingerprint()!=entry.second)
           throw std::runtime_error("An archive changed since Copy. Select the entries again.");
       ClipboardPaste paste;
-      if(ParseLocation(destination).Archive()) job=PrepareArchiveCopy(job);
+      if (cut) job = PrepareArchiveMove(job);
+      else if(ParseLocation(destination).Archive()) job=PrepareArchiveCopy(job);
       else {
         if(destination.empty()||destination[0]!='/')throw std::runtime_error("Paste into a local folder or a writable archive.");
         FreezeLocalJob(job,destination);
       }
-      paste.jobs.push_back(job);return paste;
+      paste.jobs.push_back(job);
+      if (cut) {
+        static std::atomic<int64> serial{0};
+        paste.archiveCut = true;
+        paste.lease = std::to_string(getpid()) + ":archive:" + std::to_string(system_time()) + ":" + std::to_string(++serial);
+        BMessage message(*clipboard->Data());
+        Require(message.AddString(kLease, paste.lease.c_str()), "Reserve archive cut clipboard");
+        Commit(clipboard, message);
+      }
+      return paste;
     }
   }
   if (ParseLocation(destination).Archive()) {
@@ -261,6 +282,17 @@ void FinishFilePaste(const ClipboardPaste &paste, const std::vector<std::string>
     Lock lock(clipboard);
     BMessage message(*clipboard->Data());
     if (paste.lease != message.GetString(kLease, "")) return;
+    if (paste.archiveCut) {
+      // A move is all-or-nothing for one source archive. Failed/cancelled jobs
+      // release the lease without silently refreshing the original snapshot.
+      bool complete = !paste.jobs.empty();
+      for (const auto &path : paste.jobs.front().sources)
+        complete = complete && std::find(moved.begin(), moved.end(), path) != moved.end();
+      if (complete) message.RemoveName("listi:archive-copy");
+      message.RemoveName(kLease);
+      Commit(clipboard, message);
+      return;
+    }
     for (const auto &item : paste.items) {
       if (!item.cut || std::find(moved.begin(), moved.end(), item.path) == moved.end()) continue;
       // Tracker may already have updated the reference after a rename, or

@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: MIT
+#include "ArchiveJobs.h"
+#include "VirtualFile.h"
+#include <Application.h>
+#include <Directory.h>
+#include <Entry.h>
+#include <Path.h>
+#include <cerrno>
+#include <fcntl.h>
+#include <fstream>
+#include <iostream>
+#include <sys/stat.h>
+#include <unistd.h>
+using namespace Lister;
+namespace {
+enum Fault { None, DestinationRename, SourceRename, CorruptDestination } fault=None;
+std::string sourceArchive,destinationArchive;
+bool injected=false;
+const std::string payload="Listi move fault payload";
+std::string readBytes(const std::string &path){std::ifstream in(path,std::ios::binary);return {std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};}
+void clean(const std::string &p){BDirectory d(p.c_str());BEntry e;while(d.GetNextEntry(&e,false)==B_OK){struct stat s;e.GetStat(&s);if(S_ISDIR(s.st_mode)){BPath path;e.GetPath(&path);clean(path.Path());}e.Remove();}rmdir(p.c_str());}
+}
+extern "C" int __real_rename(const char *,const char *);
+extern "C" int __wrap_rename(const char *from,const char *to){
+ if (!injected && ((fault==DestinationRename&&to==destinationArchive)||(fault==SourceRename&&to==sourceArchive))) {
+  injected=true;errno=fault==DestinationRename?ENOSPC:EIO;return -1;
+ }
+ int status=__real_rename(from,to);
+ if(!status&&!injected&&fault==CorruptDestination&&to==destinationArchive){
+  auto bytes=readBytes(to);auto at=bytes.find(payload);
+  if(at!=std::string::npos){int fd=open(to,O_WRONLY);if(fd>=0){injected=pwrite(fd,"X",1,at)==1;fsync(fd);close(fd);}}
+ }
+ return status;
+}
+int main(){
+ BApplication app("application/x-vnd.Listi-archive-move-fault-test");char pattern[]="/tmp/Listi-move-fault-XXXXXX";auto made=mkdtemp(pattern);if(!made)return 2;std::string root=made;
+ mkdir((root+"/in").c_str(),0700);std::ofstream(root+"/in/item")<<payload;std::ofstream(root+"/in/keep")<<"keep";
+ int checks=0,failures=0;auto check=[&](bool ok,const std::string&label){++checks;failures+=!ok;std::cout<<(ok?"PASS ":"FAIL ")<<label<<std::endl;};
+ for(auto mode:{DestinationRename,SourceRename,CorruptDestination}){
+  fault=None;injected=false;
+  auto s=PrepareArchiveJob(false,{root+"/in/item",root+"/in/keep"});s.archiveFormat="zip";SetArchiveDestination(s,root,"source"+std::to_string(mode));
+  auto d=PrepareArchiveJob(false,{root+"/in/keep"});d.archiveFormat="tar";SetArchiveDestination(d,root,"dest"+std::to_string(mode));
+  if(Run(s,{}).completed!=1||Run(d,{}).completed!=1)return 2;
+  sourceArchive=s.destination;destinationArchive=d.destination;
+  auto source=OpenArchive(sourceArchive),target=OpenArchive(destinationArchive),item=ChildLocation(source,"item");
+  auto original=readBytes(sourceArchive),targetBefore=readBytes(destinationArchive);
+  auto job=PrepareArchiveMove(Job{Action::Move,{item},target});fault=mode;int completions=0;
+  Hooks hooks;hooks.fileDone=[&](const std::string&,const std::string&){++completions;};auto result=Run(job,hooks);fault=None;
+  check(injected&&!result.errors.empty()&&!result.completed&&result.completedRoots.empty()&&!completions,"fault "+std::to_string(mode)+" never reports successful move");
+  check(readBytes(sourceArchive)==original,"fault "+std::to_string(mode)+" retains source archive bytes exactly");
+  if(mode==DestinationRename)check(readBytes(destinationArchive)==targetBefore,"destination publication ENOSPC keeps prior archive");
+  if(mode==SourceRename)check(readBytes(destinationArchive)!=targetBefore,"source publication failure retains committed destination copy");
+  if(mode==CorruptDestination){bool mismatch=false;for(auto &error:result.errors)mismatch|=error.find("Destination bytes differ")!=std::string::npos;
+   check(mismatch,"read-back byte comparison catches damaged output before source deletion");}
+ }
+ clean(root);std::cout<<checks<<" checks, "<<failures<<" failures\n";return failures?1:0;
+}

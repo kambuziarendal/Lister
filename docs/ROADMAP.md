@@ -9,9 +9,10 @@ Dolphin-kravet og er ikke en påstand om ferdig funksjonslikhet.
 **Tilleggskrav 15. november 2026:** Arkiver skal så langt formatet tillater det
 oppføre seg som mapper i filbehandleren, med samme filhandlinger og uten separate
 arbeidsflyter. Dette gjelder alle støttede arkivformater, ikke bare ZIP og 7z.
-0.25.0 tar et første verifiserbart steg. Full likhet, rediger-og-lagre-tilbake,
-flytting mellom containere, lenker/spesialmetadata, flerpartsarkiver og skrivemotorer
-for formater som RAR gjenstår. Ikke merk kravet ferdig før disse grensene er løst.
+0.25.0 utvider mappehandlingene. 0.26.0 legger til klipp/lim inn og flytting
+mellom skrivbare lokale arkiver med verifisering før kildeopprydding.
+Full likhet, flytting mellom lokale mapper og arkiver, rediger-og-lagre-tilbake,
+lenker/spesialmetadata, flerpartsarkiver og skrivemotorer for RAR gjenstår. Ikke merk kravet ferdig før disse grensene er løst.
 Skipta er nytt arbeidsnavn for den planlagte delen tidligere omtalt som Deila.
 
 14. november 2026. Første mål er en god, særpreget filbehandler til daglig bruk.

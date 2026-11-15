@@ -340,6 +340,11 @@ class MainWindow : public BWindow {
     pendingDrop = {};
     pendingNamedEntry = {};
     pendingArchiveEdit = {};
+    if (archiveClipboardPending) {
+      try { Lister::FinishFilePaste(clipboardPaste, {}); }
+      catch (const std::exception &e) { Notice(e.what()); }
+      clipboardPaste = {}; archiveClipboardPending = false;
+    }
     ShowBank(prefs.buttons);
     panes[source]->FocusList();
   }
@@ -373,6 +378,18 @@ class MainWindow : public BWindow {
   void ConfirmArchiveAddition(const Lister::Job &job) {
     pendingArchiveEdit = job;
     BString text;
+    if (job.action == Lister::Action::MoveArchive) {
+      text << "Move " << int32(job.sources.size()) << " selected archive entries to:\n"
+           << job.destination.c_str();
+      const bool sameArchive = !job.sources.empty() &&
+        Lister::ParseLocation(job.sources.front()).archive == Lister::ParseLocation(job.destination).archive;
+      text << (sameArchive
+        ? "\nEntries move within this archive. Existing names are never replaced."
+        : "\nSource entries are removed only after the saved destination is verified."
+          " If interrupted after copying, both copies may remain. Existing names require a choice.");
+      AskInline(text.String(), "Move entries", BMessage(kArchiveEditAccepted));
+      return;
+    }
     if (!job.archiveRenames.empty()) text << "Move selected entries inside this archive:\n";
     else text << "Add " << int32(job.sources.size()) << " selected entries to:\n";
     text << job.destination.c_str();
@@ -437,6 +454,7 @@ class MainWindow : public BWindow {
     } catch (const std::exception &e) { Notice(e.what()); }
   }
   Lister::ClipboardPaste clipboardPaste;
+  bool archiveClipboardPending = false;
   std::set<int64> clipboardJobs;
   std::vector<std::string> clipboardMoved;
   void ClipboardAction(uint32 action) {
@@ -461,9 +479,11 @@ class MainWindow : public BWindow {
       }
       clipboardPaste = Lister::PrepareFilePaste(panes[source]->Path());
       if (clipboardPaste.jobs.size() == 1 &&
-          clipboardPaste.jobs[0].action == Lister::Action::EditArchive) {
+          (clipboardPaste.jobs[0].action == Lister::Action::EditArchive ||
+           clipboardPaste.jobs[0].action == Lister::Action::MoveArchive)) {
+        archiveClipboardPending = clipboardPaste.archiveCut;
         ConfirmArchiveAddition(clipboardPaste.jobs[0]);
-        clipboardPaste = {};
+        if (!archiveClipboardPending) clipboardPaste = {};
         return;
       }
       clipboardMoved.clear();
@@ -657,7 +677,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.25.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.26.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
@@ -884,6 +904,7 @@ public:
              "Cancel all before quitting.");
       return false;
     }
+    if (archiveClipboardPending) CloseAction();
     be_app->PostMessage(B_QUIT_REQUESTED);
     return true;
   }
@@ -1035,6 +1056,7 @@ public:
                 BMessage(kInlineCancel));
       break;
     case kInlineClosed:
+      if (!actionArea->Pending() && archiveClipboardPending) CloseAction();
       ShowBank(prefs.buttons && !actionArea->Pending());
       if (!actionArea->Pending())
         panes[source]->FocusList();
@@ -1251,6 +1273,12 @@ public:
     }
     case kArchiveEditAccepted:
       if(!pendingArchiveEdit.destination.empty()){
+        if (archiveClipboardPending) {
+          pendingArchiveEdit.tag = ++clipboardSerial;
+          clipboardJobs.insert(pendingArchiveEdit.tag);
+          clipboardMoved.clear();
+          archiveClipboardPending = false;
+        }
         queue->Enqueue(pendingArchiveEdit);pendingArchiveEdit={};
       }
       break;

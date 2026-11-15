@@ -502,6 +502,9 @@ Job PrepareArchiveMutation(const Job &transfer) {
     return PrepareArchiveEditJob(location.archive,{},transfer.sources);
   }
   Require(location.Archive(), "Choose a destination inside an archive.");
+  if (transfer.action == Action::Move && !transfer.sources.empty() &&
+      ParseLocation(transfer.sources.front()).archive != location.archive)
+    return PrepareArchiveMove(transfer);
   auto edit=PrepareArchiveEditTarget(location.archive);
   if (transfer.action==Action::MakeDirectory) {
     edit.archiveFolders.push_back(MemberPath(location.path));
@@ -539,6 +542,152 @@ Job PrepareArchiveCopy(const Job &transfer) {
   }
   return edit;
 }
+Job PrepareArchiveMove(const Job &transfer) {
+  Require(!transfer.sources.empty() && transfer.sources.size() <= 1024,
+    "Select between 1 and 1024 entries inside one writable archive.");
+  Guards(transfer); VerifyArchiveSets(transfer);
+  const auto target = ParseLocation(transfer.destination);
+  const auto source = ParseLocation(transfer.sources.front());
+  Require(source.Archive() && target.Archive(),
+    "Archive Cut/Move currently requires a writable local archive at both ends. Use Copy for local folders.");
+  auto from = PrepareArchiveEditTarget(source.archive);
+  auto to = PrepareArchiveEditTarget(target.archive, target.path);
+  const auto a = from.expectedSources.at(source.archive), b = to.expectedSources.at(target.archive);
+  Require(source.archive == target.archive || a.device != b.device || a.inode != b.inode,
+    "Source and destination are aliases of the same archive. Open the same archive path in both panels.");
+  std::set<std::string> names, members;
+  for (const auto &path : transfer.sources) {
+    const auto location = ParseLocation(path);
+    Require(location.Archive() && location.archive == source.archive && !MemberPath(location.path).empty(),
+      "Move entries from one archive at a time, not its root.");
+    Require(names.insert(LocationLeaf(path)).second, "Selected entries have duplicate names.");
+    members.insert(MemberPath(location.path));
+  }
+  for (const auto &member : members)
+    for (const auto &other : members)
+      Require(member == other || other.compare(0, member.size()+1, member+"/") != 0,
+        "Select either a folder or its contents, not both.");
+  if (source.archive == target.archive)
+    PrepareArchiveMutation(Job{Action::Move, transfer.sources, transfer.destination});
+  Job move = transfer;
+  move.action = Action::MoveArchive;
+  move.expectedSources = from.expectedSources;
+  move.expectedSources.insert(to.expectedSources.begin(), to.expectedSources.end());
+  move.expectedArchiveSets = from.expectedArchiveSets;
+  move.expectedArchiveSets.insert(to.expectedArchiveSets.begin(), to.expectedArchiveSets.end());
+  move.destinationFolder = to.destinationFolder;
+  move.expectedDestination = to.expectedDestination;
+  // Do not refresh stale clipboard/confirmation guards during preparation.
+  Guards(transfer); VerifyArchiveSets(transfer);
+  return move;
+}
+namespace {
+// Compare the durable destination's decoded bytes with the private source
+// snapshot. A directory merge may retain additional destination entries.
+void VerifyMovedEntry(const std::string &local, const std::string &destination,
+                      const TransferControl &control, unsigned depth = 0) {
+  control.Check(); Require(depth <= 64, "Move verification exceeds the folder depth limit.");
+  struct stat st; FileEntry target;
+  Require(!lstat(local.c_str(), &st) && !S_ISLNK(st.st_mode) &&
+    StatFile(destination, target, control) && !target.link &&
+    bool(S_ISDIR(st.st_mode)) == target.directory, "Destination verification failed. Source entries were retained.");
+  if (S_ISDIR(st.st_mode)) {
+    for (const auto &child : Children(local))
+      VerifyMovedEntry(child, ChildLocation(destination, Leaf(child)), control, depth+1);
+    return;
+  }
+  Require(S_ISREG(st.st_mode) && target.sizeKnown && target.size == st.st_size,
+    "Destination size verification failed. Source entries were retained.");
+  FD input(open(local.c_str(), O_RDONLY|O_NOFOLLOW));
+  Require(input.n >= 0, "Cannot read move verification snapshot.");
+  std::vector<char> buffer(65536); int64_t total = 0;
+  ReadFile(destination, [&](const char *bytes, size_t size) {
+    while (size) {
+      control.Check(); const auto amount = std::min(size, buffer.size());
+      size_t have = 0;
+      while (have < amount) {
+        auto n = read(input.n, buffer.data()+have, amount-have);
+        if (n < 0 && errno == EINTR) continue;
+        Require(n > 0, "Move verification snapshot is incomplete."); have += n;
+      }
+      Require(!memcmp(bytes, buffer.data(), amount), "Destination bytes differ. Source entries were retained.");
+      total += amount; bytes += amount; size -= amount;
+    }
+  }, control);
+  Require(total == st.st_size, "Destination verification was incomplete. Source entries were retained.");
+}
+Result RunArchiveMove(const Job &job, const Hooks &hooks) {
+  Result result; bool copied = false;
+  try {
+    Guards(job); VerifyArchiveSets(job);
+    Require(job.action == Action::MoveArchive, "Invalid archive move job.");
+    // Revalidate the complete structure even for decoded/queued jobs.
+    PrepareArchiveMove(job);
+    const auto source = ParseLocation(job.sources.front());
+    const auto target = ParseLocation(job.destination);
+    Hooks internal = hooks; internal.fileDone = {}; internal.fileFailed = {};
+    auto sourceGuard = PrepareArchiveEditJob(source.archive, {}, job.sources);
+    auto checkSource = [&] {
+      if (hooks.proceed && !hooks.proceed()) throw Cancelled();
+      Guards(sourceGuard); VerifyArchiveSets(sourceGuard);
+    };
+    internal.proceed = [&] {
+      checkSource(); Guards(job); VerifyArchiveSets(job); return true;
+    };
+    if (source.archive == target.archive) {
+      auto rename = PrepareArchiveMutation(Job{Action::Move, job.sources, job.destination});
+      result = RunArchiveEdit(rename, internal);
+    } else {
+      Stage stage(job.destinationFolder);
+      const auto snapshot = PathOf(stage.dir);
+      Job extract{Action::Copy, job.sources, snapshot}; FreezeLocalJob(extract, snapshot);
+      auto extracted = Run(extract, internal);
+      if (extracted.cancelled) throw Cancelled();
+      Require(extracted.errors.empty() && !extracted.skipped && extracted.completed == int(job.sources.size()),
+        extracted.errors.empty() ? "Could not snapshot the complete selection. Archives are unchanged." : extracted.errors.front());
+      std::vector<std::string> additions;
+      for (const auto &path : job.sources) additions.push_back(Join(snapshot, LocationLeaf(path)));
+      auto add = PrepareArchiveEditJob(target.archive, additions, {}, target.path);
+      auto written = RunArchiveEdit(add, internal);
+      if (written.cancelled) throw Cancelled();
+      Require(written.errors.empty() && written.completed == 1,
+        written.errors.empty() ? "Destination archive update failed." : written.errors.front());
+      copied = true;
+      // Destination is now committed and fsynced. Never roll it back to stale
+      // bytes if source cleanup fails; retain both copies and report the failure.
+      auto published = PrepareArchiveEditTarget(target.archive);
+      sourceGuard.expectedSources.insert(published.expectedSources.begin(), published.expectedSources.end());
+      sourceGuard.expectedArchiveSets.insert(published.expectedArchiveSets.begin(), published.expectedArchiveSets.end());
+      internal.proceed = [&] { checkSource(); Guards(published); return true; };
+      TransferControl verify; verify.proceed = internal.proceed;
+      for (const auto &path : job.sources)
+        VerifyMovedEntry(Join(snapshot, LocationLeaf(path)), ChildLocation(job.destination, LocationLeaf(path)), verify);
+      checkSource();
+      // Rebuild the source only while the verified destination identity and
+      // contents remain frozen, including the final pre-rename guard.
+      result = RunArchiveEdit(sourceGuard, internal);
+    }
+    if (!result.cancelled && result.errors.empty() && result.completed == 1) {
+      result.completedRoots.clear(); result.completed = job.sources.size();
+      for (const auto &path : job.sources) {
+        const auto destination = ChildLocation(job.destination, LocationLeaf(path));
+        result.completedRoots.emplace_back(path, destination);
+        if (hooks.fileDone) hooks.fileDone(path, destination);
+      }
+    } else {
+      result.completed = 0; result.completedRoots.clear();
+      if (copied) result.errors.push_back("Destination copy was saved, but source cleanup did not complete. Check both archives before retrying.");
+    }
+  } catch (const Cancelled &) {
+    result.cancelled = true;
+    if (copied) result.errors.push_back("Move cancelled after copying. Source entries were retained; destination copies may remain.");
+  } catch (const std::exception &e) {
+    result.errors.push_back(e.what());
+    if (copied) result.errors.push_back("Destination copy was saved. Source cleanup did not complete; check both archives before retrying.");
+  }
+  return result;
+}
+}
 void SetArchiveDestination(Job &job,const std::string &folder,const std::string &name) {
   Require(!folder.empty() && folder[0]=='/' && !IsVirtual(folder),"Choose a local destination folder.");
   Require(!name.empty() && name.size()<B_FILE_NAME_LENGTH && name!="." && name!=".." && name.find_first_of("/\\\r\n")==std::string::npos,
@@ -553,6 +702,7 @@ void SetArchiveDestination(Job &job,const std::string &folder,const std::string 
   job.entryName=name;job.destination=destination;
 }
 Result RunArchiveJob(const Job &job,const Hooks &hooks) {
+  if(job.action==Action::MoveArchive)return RunArchiveMove(job,hooks);
   if(job.action==Action::EditArchive)return RunArchiveEdit(job,hooks);
   Result result;
   std::set<std::string> completedPaths;

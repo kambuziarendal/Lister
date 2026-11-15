@@ -2,8 +2,12 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.25.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.26.0**. Published preview: **0.2.0**.
 
+
+0.26.0 adds clipboard Cut/Paste and panel Move between writable local archives.
+The destination is saved and verified byte-for-byte before source removal.
+Interrupted cleanup can leave both copies. See [archive move behavior](docs/ARCHIVE-MOVE-0.26.0.md).
 
 0.25.0 connects ordinary Copy/Paste and drag-and-drop to transactional archive
 editing. Writable archives also support new folders, rename, delete and moves

@@ -18,6 +18,7 @@ struct ClipboardPaste {
   std::vector<ClipboardItem> items;
   std::vector<Job> jobs;
   std::string lease;
+  bool archiveCut = false;
 };
 // Tracker's native file-reference wire format. No text paths or credentials.
 std::vector<ClipboardItem> ReadFileClipboard(const BMessage &);

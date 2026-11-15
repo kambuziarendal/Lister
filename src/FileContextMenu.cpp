@@ -69,7 +69,7 @@ void FileActions(BMenu &menu, const ContextMenuOptions &options) {
   }
   menu.AddSeparatorItem();
   add("Copy", kClipboardCopy, local || options.archiveRemove);
-  add("Cut", kClipboardCut, local);
+  add("Cut", kClipboardCut, local || options.archiveRemove);
   add("Copy to other panel", kCopy, dual);
   add("Move to other panel", kMove, (local || options.archiveRemove) && dual);
   menu.AddSeparatorItem();

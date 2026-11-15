@@ -62,6 +62,7 @@ const char *Verb(Lister::Action a) {
   case Lister::Action::CreateArchive: return "Create archive";
   case Lister::Action::ExtractArchive: return "Extract archive";
   case Lister::Action::EditArchive: return "Update archive";
+  case Lister::Action::MoveArchive: return "Move archive entries";
   case Lister::Action::Copy:
     return "Copy";
   case Lister::Action::Move:
@@ -447,7 +448,7 @@ void OperationQueue::Loop() {
     uint64_t total = 0;
     if (job.action == Lister::Action::Copy ||
         job.action == Lister::Action::Move || job.action == Lister::Action::Duplicate || job.action == Lister::Action::CreateArchive ||
-        job.action == Lister::Action::EditArchive)
+        job.action == Lister::Action::EditArchive || job.action == Lister::Action::MoveArchive)
       for (auto &s : job.sources)
         total += Size(s, [this] { return Proceed(); });
     start.AddInt64("total", std::max<uint64_t>(1, total));
@@ -509,7 +510,7 @@ void OperationQueue::Loop() {
     BMessage done(kJobDone);
     done.AddInt64("tag", job.tag);
     if (job.action == Lister::Action::Move || job.action == Lister::Action::Duplicate || job.action == Lister::Action::CreateArchive ||
-        job.action == Lister::Action::EditArchive)
+        job.action == Lister::Action::EditArchive || job.action == Lister::Action::MoveArchive)
       for (const auto &root : result.completedRoots)
         done.AddString("moved", root.first.c_str());
     BString summary;
