@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "ArchiveBackend.h"
+#include "ArchiveVolumes.h"
 #include <algorithm>
 #include <cctype>
 #include <regex>
@@ -44,11 +45,10 @@ const ArchiveBackend backends[] = {{"libarchive", LibarchiveAvailable,
                                     LibarchiveOpen, LibarchiveList,
                                     LibarchiveRead}};
 void RejectSplitArchive(const std::string &path) {
-  static const std::regex split(
-      R"((\.part[0-9]+\.rar|\.(7z|zip|tar)\.[0-9]{3}|\.[rz][0-9]{2})$)",
-      std::regex::icase);
+  static const std::regex split(R"((\.(zip|tar)\.[0-9]{3}|\.z[0-9]{2})$)",
+                                std::regex::icase);
   if (std::regex_search(path, split))
-    throw std::runtime_error("Multipart archives are not supported yet. "
+    throw std::runtime_error("This split ZIP/tar format is not supported yet. "
                              "Listi has not extracted an incomplete volume.");
 }
 const ArchiveBackend &Backend() {
@@ -90,7 +90,16 @@ std::string OpenArchive(const std::string &path,
   if (IsVirtual(path))
     return "";
   RejectSplitArchive(path);
-  if (!SevenZipFormat(path).empty() && SevenZipAvailable())
+  const auto parts = FindArchiveVolumes(path);
+  if (parts.kind != ArchiveVolumes::Single && !SevenZipAvailable())
+    throw std::runtime_error("Install the optional p7zip package from "
+                             "HaikuDepot to read split archives inside Listi.");
+  auto format = SevenZipFormat(parts.files.front().path);
+  if (parts.kind != ArchiveVolumes::Single &&
+      (format.empty() || (parts.kind == ArchiveVolumes::Joined7z && format != "7z") ||
+       (parts.kind == ArchiveVolumes::Rar && format != "rar" && format != "rar5")))
+    throw std::runtime_error("The first archive part is damaged or does not match this set.");
+  if (!format.empty() && SevenZipAvailable())
     return SevenZipOpen(path, control);
   if (!LibarchiveAvailable() && !ArchiveExtension(path))
     return "";
@@ -99,14 +108,32 @@ std::string OpenArchive(const std::string &path,
 std::vector<FileEntry> ListArchive(const Location &location,
                                    const TransferControl &control) {
   RejectSplitArchive(location.archive);
-  if (!SevenZipFormat(location.archive).empty() && SevenZipAvailable())
+  const auto parts = FindArchiveVolumes(location.archive);
+  if (parts.kind != ArchiveVolumes::Single && !SevenZipAvailable())
+    throw std::runtime_error("Install the optional p7zip package from "
+                             "HaikuDepot to read split archives inside Listi.");
+  auto format = SevenZipFormat(parts.files.front().path);
+  if (parts.kind != ArchiveVolumes::Single &&
+      (format.empty() || (parts.kind == ArchiveVolumes::Joined7z && format != "7z") ||
+       (parts.kind == ArchiveVolumes::Rar && format != "rar" && format != "rar5")))
+    throw std::runtime_error("The first archive part is damaged or does not match this set.");
+  if (!format.empty() && SevenZipAvailable())
     return SevenZipList(location, control);
   return Backend().list(location, control);
 }
 void ReadArchive(const Location &location, const DataSink &sink,
                  const TransferControl &control) {
   RejectSplitArchive(location.archive);
-  if (!SevenZipFormat(location.archive).empty() && SevenZipAvailable())
+  const auto parts = FindArchiveVolumes(location.archive);
+  if (parts.kind != ArchiveVolumes::Single && !SevenZipAvailable())
+    throw std::runtime_error("Install the optional p7zip package from "
+                             "HaikuDepot to read split archives inside Listi.");
+  auto format = SevenZipFormat(parts.files.front().path);
+  if (parts.kind != ArchiveVolumes::Single &&
+      (format.empty() || (parts.kind == ArchiveVolumes::Joined7z && format != "7z") ||
+       (parts.kind == ArchiveVolumes::Rar && format != "rar" && format != "rar5")))
+    throw std::runtime_error("The first archive part is damaged or does not match this set.");
+  if (!format.empty() && SevenZipAvailable())
     SevenZipRead(location, sink, control);
   else
     Backend().read(location, sink, control);

@@ -4,6 +4,7 @@
 #define INITGUID
 #include "ArchiveBackend.h"
 #include "ArchivePasswords.h"
+#include "ArchiveVolumes.h"
 #include "DynamicLibrary.h"
 #include "vendor/p7zip/CPP/7zip/Archive/IArchive.h"
 #include "vendor/p7zip/CPP/7zip/ICoder.h"
@@ -195,7 +196,7 @@ struct State {
   std::shared_ptr<Module> engine = Engine();
   std::string path, identity, format;
   const TransferControl &control;
-  int fd = -1;
+  ArchiveVolumes volumes;
   uint64_t generation = ArchivePasswordGeneration();
   ArchiveSecretPtr secret;
   bool retry = false, requested = false;
@@ -205,32 +206,17 @@ struct State {
     Require(engine->lib.Available(),
             "Install the optional p7zip package from HaikuDepot, then reopen "
             "this archive in Listi.");
-    fd = open(p.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
-    Require(fd >= 0, "Cannot open archive");
-    try {
-      struct stat st;
-      Require(!fstat(fd, &st) && S_ISREG(st.st_mode),
-              "Archive must be a regular file");
-      identity = ArchivePasswordIdentity(st);
-      format = SevenZipFormat(p);
-      Require(engine->formats.count(format),
-              "The p7zip engine does not support this archive");
-    } catch (...) {
-      close(fd);
-      fd = -1;
-      throw;
-    }
-  }
-  ~State() {
-    if (fd >= 0)
-      close(fd);
+    volumes = FindArchiveVolumes(p);
+    path = volumes.files.front().path;
+    identity = volumes.Fingerprint();
+    format = SevenZipFormat(path);
+    Require(engine->formats.count(format),
+            "The p7zip engine does not support this archive");
   }
   void Check() { control.Check(); }
   void Verify() {
-    struct stat st, named;
-    Require(!fstat(fd, &st) && !lstat(path.c_str(), &named) &&
-                identity == ArchivePasswordIdentity(st) &&
-                identity == ArchivePasswordIdentity(named),
+    volumes.Verify();
+    Require(FindArchiveVolumes(path).Fingerprint() == identity,
             "Archive changed during reading or password entry. Open it again.");
   }
   template <typename F> HRESULT Call(F fn) {
@@ -269,7 +255,24 @@ struct State {
 };
 struct Input : IInStream {
   State &s;
-  explicit Input(State &state) : s(state) {}
+  size_t first, last, opened = SIZE_MAX;
+  int fd = -1;
+  uint64_t position = 0, length = 0;
+  explicit Input(State &state, size_t part = SIZE_MAX) : s(state) {
+    first = part == SIZE_MAX ? 0 : part;
+    last = part == SIZE_MAX && s.volumes.kind == ArchiveVolumes::Joined7z
+               ? s.volumes.files.size()
+               : first + 1;
+    for (size_t i = first; i < last; ++i) {
+      Require(uint64_t(s.volumes.files[i].size) <= uint64_t(INT64_MAX) - length,
+              "Archive set is too large");
+      length += s.volumes.files[i].size;
+    }
+  }
+  ~Input() {
+    if (fd >= 0)
+      close(fd);
+  }
   REFS HRESULT QueryInterface(REFIID id, void **out) override {
     *out = nullptr;
     if (Equal(id, IID_IUnknown) || Equal(id, IID_IInStream))
@@ -281,30 +284,61 @@ struct Input : IInStream {
     AddRef();
     return S_OK;
   }
+  void OpenPart(size_t index) {
+    if (opened == index)
+      return;
+    if (fd >= 0)
+      close(fd);
+    fd = -1;
+    opened = SIZE_MAX;
+    const auto &part = s.volumes.files[index];
+    fd = open(part.path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    struct stat st;
+    Require(fd >= 0 && !fstat(fd, &st) && S_ISREG(st.st_mode) &&
+                ArchivePasswordIdentity(st) == part.identity,
+            "Archive part changed or disappeared while reading");
+    opened = index;
+  }
   HRESULT Read(void *data, UInt32 size, UInt32 *n) override {
     if (n)
       *n = 0;
     return s.Call([&] {
+      uint64_t start = 0;
+      size_t part = first;
+      while (part < last &&
+             position >= start + uint64_t(s.volumes.files[part].size))
+        start += s.volumes.files[part++].size;
+      if (part == last || !size)
+        return;
+      OpenPart(part);
+      auto available =
+          uint64_t(s.volumes.files[part].size) - (position - start);
       ssize_t got;
       do {
-        got = read(s.fd, data, size);
+        got = pread(fd, data, std::min<uint64_t>(size, available),
+                    position - start);
       } while (got < 0 && errno == EINTR);
-      Require(got >= 0, "Archive read failed");
+      Require(got > 0, "Archive part is truncated or unreadable");
+      position += got;
       if (n)
         *n = got;
     });
   }
-  HRESULT Seek(Int64 offset, UInt32 origin, UInt64 *position) override {
+  HRESULT Seek(Int64 offset, UInt32 origin, UInt64 *out) override {
     return s.Call([&] {
       Require(origin <= 2, "Invalid archive seek");
-      auto pos = lseek(s.fd, offset, origin);
-      Require(pos >= 0, "Archive seek failed");
-      if (position)
-        *position = pos;
+      uint64_t base = origin == 0 ? 0 : origin == 1 ? position : length;
+      Require(offset >= -int64_t(base) && offset <= INT64_MAX - int64_t(base),
+              "Invalid archive seek");
+      position = base + offset;
+      if (out)
+        *out = position;
     });
   }
 };
-struct OpenCallback : IArchiveOpenCallback, ICryptoGetTextPassword {
+struct OpenCallback : IArchiveOpenCallback,
+                      ICryptoGetTextPassword,
+                      IArchiveOpenVolumeCallback {
   State &s;
   explicit OpenCallback(State &state) : s(state) {}
   REFS HRESULT QueryInterface(REFIID id, void **out) override {
@@ -313,10 +347,58 @@ struct OpenCallback : IArchiveOpenCallback, ICryptoGetTextPassword {
       *out = static_cast<IArchiveOpenCallback *>(this);
     else if (Equal(id, IID_ICryptoGetTextPassword))
       *out = static_cast<ICryptoGetTextPassword *>(this);
+    else if (Equal(id, IID_IArchiveOpenVolumeCallback))
+      *out = static_cast<IArchiveOpenVolumeCallback *>(this);
     else
       return E_NOINTERFACE;
     AddRef();
     return S_OK;
+  }
+  HRESULT GetProperty(PROPID property, PROPVARIANT *value) override {
+    memset(value, 0, sizeof(*value));
+    return s.Call([&] {
+      if (property == kpidName) {
+        auto name = Wide(LocationLeaf(s.path).c_str());
+        value->vt = VT_BSTR;
+        value->bstrVal = s.engine->lib.Function<decltype(&SysAllocStringLen)>(
+            "SysAllocStringLen")(name.data(), name.size());
+        Require(value->bstrVal, "Cannot allocate archive volume name");
+      } else if (property == kpidSize) {
+        value->vt = VT_UI8;
+        value->uhVal.QuadPart = s.volumes.files[0].size;
+      } else if (property == kpidIsDir) {
+        value->vt = VT_BOOL;
+        value->boolVal = 0;
+      }
+    });
+  }
+  HRESULT GetStream(const wchar_t *name, IInStream **stream) override {
+    *stream = nullptr;
+    auto result = s.Call([&] {
+      auto requested = UTF8(const_cast<wchar_t *>(name));
+      Require(!requested.empty() &&
+                  requested.find_first_of("/\\:") == std::string::npos &&
+                  requested != "." && requested != "..",
+              "Archive requested an unsafe volume path");
+      auto lower = [](std::string text) {
+        for (auto &c : text)
+          c = std::tolower(static_cast<unsigned char>(c));
+        return text;
+      };
+      for (size_t i = 1; i < s.volumes.files.size(); ++i)
+        if (lower(LocationLeaf(s.volumes.files[i].path)) == lower(requested)) {
+          auto input = new Input(s, i);
+          try {
+            input->OpenPart(i);
+          } catch (...) {
+            input->Release();
+            throw;
+          }
+          *stream = input;
+          return;
+        }
+    });
+    return result == S_OK && !*stream ? S_FALSE : result;
   }
   HRESULT SetTotal(const UInt64 *, const UInt64 *) override {
     return s.Call([] {});
@@ -362,7 +444,7 @@ struct Archive {
     s.Check();
     s.Verify();
     s.requested = false;
-    Require(lseek(s.fd, 0, SEEK_SET) == 0, "Cannot rewind archive");
+    Require(input->Seek(0, 0, nullptr) == S_OK, "Cannot rewind archive");
     UInt64 limit = 0;
     auto result = archive->Open(input, &limit, callback);
     s.Rethrow();
@@ -381,11 +463,36 @@ struct Archive {
     UInt32 count = 0;
     Require(archive->GetNumberOfItems(&count) == S_OK && count <= 200000,
             "Archive has too many entries");
-    Variant volume(*s.engine);
-    Require(archive->GetArchiveProperty(kpidIsVolume, &volume.value) == S_OK,
-            "Cannot read archive volume state");
-    Require(volume.value.vt != VT_BOOL || !volume.value.boolVal,
-            "Multipart archives are not supported yet; nothing was extracted.");
+    Variant error(*s.engine), flags(*s.engine), index(*s.engine),
+        countVolumes(*s.engine);
+    Require(archive->GetArchiveProperty(kpidError, &error.value) == S_OK,
+            "Cannot inspect archive completeness");
+    if (error.value.vt == VT_BSTR && error.value.bstrVal &&
+        error.value.bstrVal[0])
+      throw std::runtime_error("Archive is incomplete or damaged: " +
+                               UTF8(error.value.bstrVal));
+    Require(archive->GetArchiveProperty(kpidErrorFlags, &flags.value) == S_OK &&
+                (flags.value.vt != VT_UI4 || flags.value.ulVal == 0),
+            "Archive is incomplete or damaged; nothing was extracted.");
+    Require(archive->GetArchiveProperty(kpidVolumeIndex, &index.value) ==
+                    S_OK &&
+                (index.value.vt != VT_UI4 || index.value.ulVal == 0),
+            "The first archive volume is missing.");
+    if (s.volumes.kind == ArchiveVolumes::Rar) {
+      Require(archive->GetArchiveProperty(kpidNumVolumes,
+                                          &countVolumes.value) == S_OK &&
+                  countVolumes.value.vt == VT_UI4 &&
+                  countVolumes.value.ulVal == s.volumes.files.size(),
+              "Archive parts do not form one complete set.");
+    }
+    if (s.volumes.kind == ArchiveVolumes::Joined7z) {
+      Variant size(*s.engine);
+      Require(
+          archive->GetArchiveProperty(kpidPhySize, &size.value) == S_OK &&
+              size.value.vt == VT_UI8 &&
+              size.value.uhVal.QuadPart == input->length,
+          "Split 7z parts are incomplete or contain unexpected trailing data.");
+    }
     std::vector<FileEntry> out;
     out.reserve(count);
     std::set<std::string> names;
@@ -427,7 +534,12 @@ struct Archive {
       Variant attr(*s.engine);
       Property(i, kpidAttrib, attr);
       // p7zip encodes UNIX modes in the high word of Win32 attributes.
-      if (!bits && attr.value.vt == VT_UI4 && (attr.value.ulVal & 0x8000))
+      Variant host(*s.engine);
+      Property(i, kpidHostOS, host);
+      bool rarUnix = s.format == "rar5" && host.value.vt == VT_BSTR &&
+                     UTF8(host.value.bstrVal) == "Unix";
+      if (!bits && attr.value.vt == VT_UI4 &&
+          ((attr.value.ulVal & 0x8000) || rarUnix))
         bits = attr.value.ulVal >> 16;
       if (attr.value.vt == VT_UI4 && (attr.value.ulVal & 0x400))
         e.link = true;
@@ -562,8 +674,8 @@ struct Scratch {
   }
 };
 void Retry(State &s, unsigned attempt) {
-  Require(s.requested && attempt < 3,
-          "Wrong password, damaged archive or unsupported archive method.");
+  Require(s.requested && attempt < 3, "Wrong password, missing/damaged archive "
+                                      "part or unsupported archive method.");
   s.secret.reset();
   s.retry = true;
 }
@@ -605,7 +717,7 @@ std::string SevenZipOpen(const std::string &path, const TransferControl &c) {
   Contents(path, c);
   Location loc;
   loc.scheme = "archive";
-  loc.archive = path;
+  loc.archive = FindArchiveVolumes(path).files.front().path;
   loc.path = "/";
   return loc.URL();
 }

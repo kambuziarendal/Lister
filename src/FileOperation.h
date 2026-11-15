@@ -20,6 +20,8 @@ struct Job {
   std::string destination;
   // Optional identity guards for operations frozen from the system clipboard or a drop.
   std::map<std::string, NodeIdentity> expectedSources;
+  // Archive set fingerprints captured before destination/password questions.
+  std::map<std::string, std::string> expectedArchiveSets;
   NodeIdentity expectedDestination;
   int64_t tag = 0;
   // Only Duplicate/Link use an explicit leaf name, always without replacement.

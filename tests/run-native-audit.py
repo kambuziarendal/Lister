@@ -6,7 +6,7 @@ src=Path(__file__).resolve().parents[1];out=src/'build/native-audit-tests';out.m
 objects=list((src/'src/objects.x86_64-cc13-release').glob('*.o'))
 objects=[str(p) for p in objects if p.name not in ['App.o','SelfTest.o','VirtualTest.o'] and not p.name.startswith('_')]
 # Link actual native implementation, not Linux surrogates.
-names=['sevenzip-backend','archive-passwords','archive-jobs','preferences-state','navigation-history','selection-model','selection-summary','selection-sort','saved-places','saved-searches','file-search','live-search','file-clipboard','file-drop','named-entry','file-properties','properties-faults','attribute-copy','job-snapshot','icon-cache','audit-io','theme-text']
+names=['archive-volumes','sevenzip-backend','archive-passwords','archive-jobs','preferences-state','navigation-history','selection-model','selection-summary','selection-sort','saved-places','saved-searches','file-search','live-search','file-clipboard','file-drop','named-entry','file-properties','properties-faults','attribute-copy','job-snapshot','icon-cache','audit-io','theme-text']
 import sys
 if len(sys.argv)>1: names=sys.argv[1:]
 for name in names:

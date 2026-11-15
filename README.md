@@ -2,7 +2,7 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.20.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.21.0**. Published preview: **0.2.0**.
 
 Find files: **Command+Shift+F** opens cancellable recursive local name search
 and native BFS formulas, with optional live updates. Save named criteria and
@@ -202,5 +202,7 @@ Encrypted ZIP is read by optional libarchive. Install optional **p7zip** for
 stay inside Listi. Passwords are requested in a masked field and cached only in
 memory; **Files > Archives > Forget archive passwords** clears the cache.
 See [password handling](docs/ARCHIVES-0.19.0.md) and
-[7z/RAR support and limits](docs/ARCHIVES-0.20.0.md). Split volumes, encrypted
-archive creation and editing existing archives remain unimplemented.
+[7z/RAR support and limits](docs/ARCHIVES-0.20.0.md).
+[Multipart archives](docs/ARCHIVES-0.21.0.md) support `.7z.001`, `.part1.rar`
+and `.rar/.r00` sets. Keep the parts together and open any part. Encrypted archive
+creation and editing existing archives remain unimplemented.

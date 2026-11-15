@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "ArchiveJobs.h"
 #include "ArchiveBackend.h"
+#include "ArchiveVolumes.h"
 #include "DynamicLibrary.h"
 #include "JobSnapshot.h"
 #include "VirtualFile.h"
@@ -58,6 +59,10 @@ std::string LocalSource(const std::string &path) {
   auto loc=ParseLocation(path);
   Require(loc.Local() || loc.Archive(), "Archive jobs currently require local files or a local archive.");
   return loc.Archive()?loc.archive:path;
+}
+void VerifyArchiveSets(const Job &job) {
+  for(const auto &item:job.expectedArchiveSets)
+    Require(FindArchiveVolumes(item.first).Fingerprint()==item.second,"Archive parts changed after selection. Select the archive again.");
 }
 void Guards(const Job &job) {
   for(const auto &item:job.expectedSources) {
@@ -189,6 +194,11 @@ Job PrepareArchiveJob(bool extract,const std::vector<std::string> &sources) {
     if(!extract)Require(!IsVirtual(source),"Copy archive entries to a local folder before packing them.");
     Require(names.insert(LocationLeaf(source)).second,"Selected entries have duplicate names.");
     job.expectedSources[local]={int32_t(s.st_dev),int64_t(s.st_ino)};
+    if(extract){
+      auto set=FindArchiveVolumes(local);job.expectedArchiveSets[set.files[0].path]=set.Fingerprint();
+      for(const auto &part:set.files){struct stat st;Require(!lstat(part.path.c_str(),&st),"Archive part disappeared.");job.expectedSources[part.path]={int32_t(st.st_dev),int64_t(st.st_ino)};}
+      Require(FindArchiveVolumes(local).Fingerprint()==set.Fingerprint(),"Archive parts changed during selection.");
+    }
   }
   return job;
 }
@@ -196,6 +206,7 @@ void SetArchiveDestination(Job &job,const std::string &folder,const std::string 
   Require(!folder.empty() && folder[0]=='/' && !IsVirtual(folder),"Choose a local destination folder.");
   Require(!name.empty() && name.size()<B_FILE_NAME_LENGTH && name!="." && name!=".." && name.find_first_of("/\\\r\n")==std::string::npos,
     "Enter a single file or folder name.");
+  VerifyArchiveSets(job);
   Job sourceGuards=job;sourceGuards.destinationFolder.clear();Guards(sourceGuards);
   struct stat s;Require(!stat(folder.c_str(),&s)&&S_ISDIR(s.st_mode),"Destination is not a folder.");
   job.destinationFolder=folder;job.expectedDestination={int32_t(s.st_dev),int64_t(s.st_ino)};
@@ -215,7 +226,7 @@ Result RunArchiveJob(const Job &job,const Hooks &hooks) {
   try {
     Require(!job.sources.empty(),"Archive source selection is empty.");
     for(const auto &source:job.sources)Require(job.expectedSources.count(LocalSource(source)),"Archive source identity is missing.");
-    Guards(job);
+    Guards(job);VerifyArchiveSets(job);
     Require(!job.destinationFolder.empty()&&!job.entryName.empty(),"Archive destination is missing.");
     struct stat target;
     Require(lstat(job.destination.c_str(),&target)!=0 && errno==ENOENT,
@@ -265,7 +276,7 @@ Result RunArchiveJob(const Job &job,const Hooks &hooks) {
       for(const auto &item:original){struct stat s;Require(!lstat(item.first.c_str(),&s)&&Unchanged(item.second,s),"Archive changed during extraction.");}
       Require(stage.dir.GetEntry(&publish)==B_OK,"Extraction staging folder disappeared.");
     }
-    check();
+    check();VerifyArchiveSets(job);
     // Native no-clobber publication. A new target appearing while the job runs
     // must never be overwritten, including an empty directory or a symlink.
     Require(publish.MoveTo(&stage.parent,job.entryName.c_str(),false)==B_OK,

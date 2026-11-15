@@ -1,5 +1,5 @@
 name listi
-version 0.20.0-1
+version 0.21.0-1
 architecture x86_64
 summary "Listi: a native source/destination file commander"
 description "Two resizable panels with folder trees, icons and previews, local archive browsing, SMB/SFTP/FTP connections, background file operations and inline conflict handling. Private native file-manager candidate. Inspired by Directory Opus 5 workflows; independently implemented with Haiku BeAPI."
@@ -8,10 +8,10 @@ vendor "Kambuzi EDB"
 copyrights { "2026 Kambuzi EDB" }
 licenses { "MIT" "LGPL-2.1" }
 provides {
- listi = 0.20.0
- lister = 0.20.0
- app:listi = 0.20.0
- app:lister = 0.20.0
+ listi = 0.21.0
+ lister = 0.21.0
+ app:listi = 0.21.0
+ app:lister = 0.21.0
 }
 requires {
  haiku >= r1~beta6
@@ -24,4 +24,4 @@ urls { "https://github.com/kambuziarendal/Lister" }
 
 # Rename the package without leaving the predecessor installed beside it.
 replaces { lister }
-conflicts { lister < 0.20.0 }
+conflicts { lister < 0.21.0 }

@@ -37,6 +37,9 @@ BMessage EncodeJob(const Job &job, uint32 what) {
     item.AddInt64("node", entry.second.inode);
     m.AddMessage("identity", &item);
   }
+  for (const auto &entry : job.expectedArchiveSets) {
+    BMessage item;item.AddString("path",entry.first.c_str());item.AddString("fingerprint",entry.second.c_str());m.AddMessage("archiveSet",&item);
+  }
   return m;
 }
 Job DecodeJob(const BMessage &m) {
@@ -53,6 +56,8 @@ Job DecodeJob(const BMessage &m) {
   BMessage item;
   for (int32 i = 0; m.FindMessage("identity", i, &item) == B_OK; ++i)
     job.expectedSources[item.GetString("path", "")] = {item.GetInt32("device", -1), item.GetInt64("node", -1)};
+  for (int32 i=0;m.FindMessage("archiveSet",i,&item)==B_OK;++i)
+    job.expectedArchiveSets[item.GetString("path","")]=item.GetString("fingerprint","");
   return job;
 }
 }

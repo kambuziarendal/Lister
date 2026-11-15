@@ -286,3 +286,11 @@ WinZip AES-128/256 reading/extraction. Explicit forget and cancel, bounded retry
 no password persistence. Encrypted 7z/RAR, ZIP header encryption and unusual
 compression combinations require another adapter. Creating encrypted archives,
 split volumes and archive editing remain open. See ARCHIVES-0.19.0.md.
+
+## 0.20.0 and 0.21.0: native 7z/RAR and multipart inputs
+
+Encrypted 7z/RAR4/RAR5 reading was delivered privately in 0.20.0 with optional
+p7zip. 0.21.0 adds numbered 7z, modern RAR and old RAR volume sets, with the same
+password workflow and atomic whole-archive publication. See ARCHIVES-0.21.0.md.
+Next: encrypted ZIP/7z creation, editing existing archives, then Workbench.
+Split ZIP, split creation and remote/nested archive materialization remain open.
