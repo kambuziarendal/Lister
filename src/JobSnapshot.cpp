@@ -22,6 +22,9 @@ void FreezeLocalJob(Job &job, const std::string &folder) {
 BMessage EncodeJob(const Job &job, uint32 what) {
   BMessage m(what);
   m.AddInt32("action", int(job.action));
+  m.AddString("archiveFormat", job.archiveFormat.c_str());
+  m.AddInt32("archiveLevel", job.archiveLevel);
+  m.AddString("entryName", job.entryName.c_str());
   m.AddString("destination", job.destination.c_str());
   m.AddString("destinationFolder", job.destinationFolder.c_str());
   m.AddInt32("destinationDevice", job.expectedDestination.device);
@@ -39,6 +42,9 @@ BMessage EncodeJob(const Job &job, uint32 what) {
 Job DecodeJob(const BMessage &m) {
   Job job;
   job.action = static_cast<Action>(m.GetInt32("action", 0));
+  job.archiveFormat = m.GetString("archiveFormat", "zip");
+  job.archiveLevel = m.GetInt32("archiveLevel", 6);
+  job.entryName = m.GetString("entryName", "");
   job.destination = m.GetString("destination", "");
   job.destinationFolder = m.GetString("destinationFolder", "");
   job.expectedDestination = {m.GetInt32("destinationDevice", -1), m.GetInt64("destinationNode", -1)};

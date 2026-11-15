@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace Lister {
-enum class Action { Copy, Move, Delete, Trash, Restore, MakeDirectory, Rename, Duplicate, Link };
+enum class Action { Copy, Move, Delete, Trash, Restore, MakeDirectory, Rename, Duplicate, Link, CreateArchive, ExtractArchive };
 enum class Decision { Replace, ReplaceAll, Skip, SkipAll, Abort };
 struct NodeIdentity {
   int32_t device = -1;
@@ -25,6 +25,8 @@ struct Job {
   // Only Duplicate/Link use an explicit leaf name, always without replacement.
   std::string entryName;
   bool relativeLink = true;
+  std::string archiveFormat = "zip";
+  int archiveLevel = 6;
   std::string destinationFolder; // Captured parent for rename/new-folder questions.
 };
 struct Hooks {

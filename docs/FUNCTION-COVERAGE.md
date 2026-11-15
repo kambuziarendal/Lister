@@ -192,8 +192,8 @@ Dette er kildegjennomgang av 0.4.0, ikke nye runtime-prøver:
 | ID | Brukerbehov og konkret prøve | Referanse | Listi, basis 0.4; oppdateringer merket | Vår retning |
 |---|---|---|---|---|
 | A01 | Gå inn i et arkiv, naviger mapper og gå ut igjen | K1 archive; A1 | D: bredere native matrise i 0.16.0, installert LZ4-browsing/Commander-uttrekk prøvd; flere UI-varianter gjenstår, T | Arkiv som eksplisitt skrivebeskyttet sted i panelet |
-| A02 | Trekk ut valgte oppføringer med metadata, uten sti-/lenkerømming | K1; A1 ark-extract | D: native uttrekk og angreps-/metadata-fixtures består; installert Commander-uttrekk prøvd, enkelpanel-uttrekk gjenstår, T | Samme sikre kø og valgt mål som annen kopiering |
-| A03 | Lag, oppdater og legg filer til et arkiv | A1 ark-create, ark-editing-files | M | Egen arkivjobb med forhåndsvisning og atomisk erstatning der mulig |
+| A02 | Trekk ut valgte oppføringer med metadata, uten sti-/lenkerømming | K1; A1 ark-extract | D: native uttrekk og angreps-/metadata-fixtures består; 0.18.0 legger til frosset utpakking til ny mappe i alle oppsett, T | Samme sikre kø og valgt mål som annen kopiering |
+| A03 | Lag, oppdater og legg filer til et arkiv | A1 ark-create, ark-editing-files | D: 0.18.0 oppretter nye lokale arkiver; oppdatering/tilføying gjenstår | Egen arkivjobb med forhåndsvisning og atomisk erstatning der mulig |
 | A04 | Åpne/lage passordbeskyttede og delte arkiver | A1 ark-password-protection, ark-multi-volume | M | Avgrenset formatstøtte og passordlivsløp, ikke lagring i vanlig oppsett |
 | A05 | Åpne enkeltkomprimerte filer og flere tilgjengelige arkivformater | K1 filter/archive; A1 | D: 0.16.0 kvalifiserer 7z, RAR/RAR5, CPIO, ar, ISO, XAR, CAB, LHA og komprimeringsfiltre; se ARCHIVES-0.16.0.md for varianter og mangler, T | Oppgi faktisk runtime-støtte og test hvert lovet format |
 | A06 | Bruk arkiver på nett eller inni andre arkiver | A1/KIO: konkret kombinasjon må runtime-avklares | M: bare lokal ytterfil; referansens kanttilfeller også uprøvd | Eget materialiserings-/cachelivsløp før støtte loves |

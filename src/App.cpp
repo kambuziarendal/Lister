@@ -5,6 +5,7 @@
 #include "FileContextMenu.h"
 #include "NamedEntry.h"
 #include "JobSnapshot.h"
+#include "ArchiveWindow.h"
 #include "MessageStore.h"
 #include "PropertiesWindow.h"
 #include "OpenWith.h"
@@ -343,6 +344,20 @@ class MainWindow : public BWindow {
   int source = 0;
   int64 clipboardSerial = 0;
   Lister::Job pendingDrop, pendingNamedEntry;
+  BMessenger archiveWindow;
+  void ArchiveAction(bool extract) {
+    if(actionArea->Pending()){queue->ErrorInfo("Finish or cancel the open question first.");return;}
+    if(archiveWindow.IsValid()){archiveWindow.SendMessage('arav');return;}
+    try {
+      auto job=Lister::PrepareArchiveJob(extract,panes[source]->Selected());
+      std::string folder=panes[prefs.SinglePane()?source:1-source]->Path();
+      if(folder=="@disks" || Lister::IsVirtual(folder)) {
+        auto loc=Lister::ParseLocation(job.sources[0]);
+        folder=Lister::ParentLocation(loc.Archive()?loc.archive:job.sources[0]);
+      }
+      archiveWindow=OpenArchiveWindow(job,folder,BMessenger(this));
+    }catch(const std::exception &e){Notice(e.what());}
+  }
   void NamedEntry(Lister::Action action) {
     if (actionArea->Pending()) {
       queue->ErrorInfo("Finish or cancel the open question first.");
@@ -557,7 +572,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.17.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.18.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
@@ -596,6 +611,10 @@ public:
     more->AddItem(new BMenuItem("Duplicate...", new BMessage(kDuplicate), 'D', B_SHIFT_KEY));
     more->AddItem(new BMenuItem("Create symbolic link...", new BMessage(kCreateLink), 'L', B_SHIFT_KEY));
     files->AddItem(more);
+    auto archives = new BMenu("Archives");
+    archives->AddItem(new BMenuItem("Create archive...",new BMessage(kCreateArchive),'P',B_SHIFT_KEY));
+    archives->AddItem(new BMenuItem("Extract to folder...",new BMessage(kExtractArchive),'E',B_SHIFT_KEY));
+    files->AddItem(archives);
     files->AddItem(new BMenuItem("Properties...", new BMessage(kProperties), 'I', B_SHIFT_KEY));
     files->AddSeparatorItem();
     files->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
@@ -1096,6 +1115,9 @@ public:
       } catch (const std::exception &e) { Notice(e.what()); }
       break;
     }
+    case kCreateArchive: ArchiveAction(false); break;
+    case kExtractArchive: ArchiveAction(true); break;
+    case kArchiveAccepted: queue->Enqueue(Lister::DecodeJob(*m)); break;
     case kOpenWith: {
       auto selected = panes[source]->Selected();
       if (selected.size() != 1) Notice("Select one local file for Open with.");

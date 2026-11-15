@@ -44,6 +44,8 @@ enum : uint32 {
   kClipboardPaste = 'cpst',
   kDuplicate = 'dupl',
   kCreateLink = 'link',
+  kCreateArchive = 'arcr',
+  kExtractArchive = 'arex',
   kCopy = 'copy',
   kMove = 'move',
   kDelete = 'dele',

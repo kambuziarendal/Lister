@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "FileOperation.h"
+#include "ArchiveJobs.h"
 #include "NamedEntry.h"
 #include "Trash.h"
 #include <Directory.h>
@@ -523,6 +524,7 @@ struct Runner {
 };
 } // namespace
 Result Run(const Job &j, const Hooks &h) {
+  if (j.action == Action::CreateArchive || j.action == Action::ExtractArchive) return RunArchiveJob(j,h);
   // Source-only actions must not depend on the location in the other pane.
   const bool usesDestination =
       j.action == Action::Copy || j.action == Action::Move ||

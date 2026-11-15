@@ -77,6 +77,10 @@ void FileActions(BMenu &menu, const ContextMenuOptions &options) {
   add("Duplicate...", kDuplicate, single && local);
   add("Create symbolic link...", kCreateLink, single && local);
   add("Move to Trash...", kDelete, local);
+  auto archives=new BMenu("Archives");
+  auto pack=new BMenuItem("Create archive...",new BMessage(kCreateArchive));pack->SetEnabled(local);archives->AddItem(pack);
+  auto extract=new BMenuItem("Extract to folder...",new BMessage(kExtractArchive));extract->SetEnabled(!local || (single&&!directory));archives->AddItem(extract);
+  menu.AddItem(archives);
   menu.AddSeparatorItem();
   add("Properties...", kProperties, single && local);
 }

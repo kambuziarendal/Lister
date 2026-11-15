@@ -270,3 +270,11 @@ nederste handlingsknapper. Enkel og Commander beholdes. Se
 [arbeidsoppsett](WORKSPACES-0.17.0.md) og [kodeaudit](AUDIT-0.17.0.md).
 Arbeidsbenk, mappekort/arbeidssett og gjenstående arkivfunksjoner ligger fortsatt
 i køen. Kodeaudit er ikke bevis på feilfrihet eller full ekstern formatdekning.
+
+### Arkivtrinn 0.18.0
+
+Ny privat kandidat: oppretting med favorittformat, standard og komprimeringsnivå,
+og utpakking til en ny lokal mappe i alle tre oppsett. Opprinnelige arkiver
+og eksisterende mål blir aldri erstattet. Se ARCHIVES-0.18.0.md for grenser.
+Passord, delte arkiver, redigering av eksisterende arkiver og en raskere
+én-gangsleser for store uttrekk står igjen som separate trinn.

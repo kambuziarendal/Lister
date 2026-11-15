@@ -2,7 +2,7 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.17.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.18.0**. Published preview: **0.2.0**.
 
 Find files: **Command+Shift+F** opens cancellable recursive local name search
 and native BFS formulas, with optional live updates. Save named criteria and
@@ -41,6 +41,14 @@ for actions on the current folder. Selection status includes total file size;
 folders and links are counted separately without scanning their contents.
 See [selection and folder actions](docs/SELECTION-CONTEXT-0.16.2.md).
 See [context menu behavior](docs/CONTEXT-MENU-0.14.0.md).
+
+## Archive jobs
+
+**Files > Archives** or the right-click **Archives** submenu creates archives
+(**Command+Shift+P**) or extracts to a new folder (**Command+Shift+E**) in all
+workspaces. ZIP, 7z, tar.gz, tar.xz and tar writers are probed from the optional
+system libarchive. Choose favorites, a default format and compression level.
+Existing targets are never replaced. See [archive workflows and limits](docs/ARCHIVES-0.18.0.md).
 
 ## Workspaces
 
