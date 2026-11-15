@@ -95,7 +95,7 @@ public:
 };
 }
 Pane::Pane(int32 number, const Preferences &p)
-    : BView("pane", B_WILL_DRAW | B_SUPPORTS_LAYOUT), id(number), prefs(p),
+    : BView("pane", B_WILL_DRAW | B_SUPPORTS_LAYOUT | B_FULL_UPDATE_ON_RESIZE), id(number), prefs(p),
       generation(std::make_shared<std::atomic<int64>>(0)) {
   SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
   auto menu = new BPopUpMenu("Go");
@@ -224,15 +224,21 @@ void Pane::InvalidateActivityBorder() {
   Invalidate(BRect(b.left, b.top + 4, b.left + 3, b.bottom - 4));
   Invalidate(BRect(b.right - 3, b.top + 4, b.right, b.bottom - 4));
 }
-void Pane::Draw(BRect) {
-  if (simple) return;
-  const auto neutral = Lister::PanelBlend(ui_color(B_PANEL_BACKGROUND_COLOR),
-                                         ui_color(B_PANEL_TEXT_COLOR), 0.12f);
-  SetHighColor(Lister::PanelBlend(neutral, ui_color(B_KEYBOARD_NAVIGATION_COLOR),
-                                  activityLevel));
-  SetPenSize(2);
-  StrokeRect(Bounds().InsetByCopy(1, 1));
-  SetPenSize(1);
+void Pane::Draw(BRect update) {
+  // Resizing moves the frame through the exposed gaps between child controls.
+  // Repaint those gaps instead of leaving previous frame edges behind.
+  PushState();
+  SetHighColor(ViewColor());
+  FillRect(update);
+  if (!simple) {
+    const auto neutral = Lister::PanelBlend(ui_color(B_PANEL_BACKGROUND_COLOR),
+                                           ui_color(B_PANEL_TEXT_COLOR), 0.12f);
+    SetHighColor(Lister::PanelBlend(neutral, ui_color(B_KEYBOARD_NAVIGATION_COLOR),
+                                    activityLevel));
+    SetPenSize(2);
+    StrokeRect(Bounds().InsetByCopy(1, 1));
+  }
+  PopState();
 }
 void Pane::UpdateActivityAppearance() {
   const bool highlighted = active && !simple;

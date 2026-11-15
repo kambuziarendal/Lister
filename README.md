@@ -2,7 +2,7 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.16.2**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.16.3**. Published preview: **0.2.0**.
 
 Find files: **Command+Shift+F** opens cancellable recursive local name search
 and native BFS formulas, with optional live updates. Save named criteria and
@@ -113,7 +113,7 @@ C core will have separate POSIX tests; it does not exist in this release.
 
 `make` uses Haiku makefile-engine. The executable is in
 `src/objects.*-release/Listi`, not the project root. `make package` uses
-PackageInfo and produces `dist/Listi-0.16.2-1-x86_64.hpkg`. Retain previous
+PackageInfo and produces `dist/Listi-0.16.3-1-x86_64.hpkg`. Retain previous
 packages for rollback; reinstalling one does not restore or roll back files you
 have copied, moved or deleted.
 
