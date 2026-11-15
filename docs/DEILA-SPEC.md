@@ -209,6 +209,14 @@ Decided:
 - The first MVP is secret-link, single-publisher, read-only and CLI-first.
 - Groups and public mode are later stages.
 - Transport evidence comes before language selection.
+- C++ is the preferred baseline because Listi is native C++ and the leading
+  transport candidate, libtorrent-rasterbar, has a direct C++ API. A spike must
+  still prove the Haiku build, binary size, resource use and parser boundaries
+  before this becomes final. Rust is chosen only if measured safety or
+  maintenance gains justify another toolchain and a narrow C ABI boundary.
+- The portable core must not depend on Haiku APIs. Platform adapters cover file
+  metadata, key storage, service lifecycle and local IPC on Haiku, BSD, Linux,
+  Windows and macOS. Listi remains a Haiku-native optional client.
 - External security review is required before a stable format or public release.
 
 Pending explicit human approval:
@@ -232,4 +240,3 @@ Pending explicit human approval:
 - Report what was measured on Haiku separately from what merely compiled.
 - Keep the binary and operational model small enough for ordinary users to
   install, understand and recover.
-
