@@ -276,10 +276,10 @@ void ReadFile(const std::string &p, const DataSink &sink,
     if (!S_ISREG(before.st_mode))
       throw std::runtime_error("Only regular files can be read: " + p);
     uint64_t bytes = 0;
-    char buf[131072];
+    std::vector<char> buf(131072);
     for (;;) {
       c.Check();
-      ssize_t n = read(fd, buf, sizeof(buf));
+      ssize_t n = read(fd, buf.data(), buf.size());
       if (n < 0) {
         if (errno == EINTR)
           continue;
@@ -287,7 +287,7 @@ void ReadFile(const std::string &p, const DataSink &sink,
       }
       if (!n)
         break;
-      sink(buf, n);
+      sink(buf.data(), n);
       bytes += n;
       c.Tick(n);
     }

@@ -137,10 +137,12 @@ PaneEntry *PaneModel::Focused() const {
       return entry;
   return nullptr;
 }
-void PaneModel::Transfer(const std::string &path, int state, float fraction) {
+bool PaneModel::Transfer(const std::string &path, int state, float fraction) {
   for (auto &entry : entries)
     if (entry->path == path) {
       entry->transferState = state;
       entry->fraction = fraction;
+      return true;
     }
+  return false;
 }

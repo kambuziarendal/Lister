@@ -224,7 +224,10 @@ void FolderTree::MessageReceived(BMessage *m) {
   }
   parent->loaded = true;
   const char *path;
-  for (int32 i = 0; m->FindString("child", i, &path) == B_OK; ++i) {
+  // AddUnder inserts immediately after the parent, so insert in reverse to
+  // preserve the reader's ascending name order.
+  for (int32 i = count - 1; i >= 0; --i) {
+    if (m->FindString("child", i, &path) != B_OK) continue;
     auto item = new TreeItem(path, Lister::LocationLeaf(path).c_str());
     items[path] = item;
     list->AddUnder(item, parent);

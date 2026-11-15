@@ -82,7 +82,7 @@ public:
       laidOutBounds = Bounds();
       laidOut = true;
     }
-    bool show = !pane->IsSimple() || grid->ContentHeight(fullWidth) > grid->Bounds().Height() + 1;
+    bool show = !pane->IsSinglePane() || grid->ContentHeight(fullWidth) > grid->Bounds().Height() + 1;
     if (resized || show != barVisible) {
       if (!resized) BScrollView::DoLayout();
       barVisible = show;
@@ -159,6 +159,8 @@ Pane::Pane(int32 number, const Preferences &p)
   contentSplitterSize = content->SplitterSize();
   content->AddChild(tree);
   content->AddChild(cards);
+  content->SetItemWeight(0, 0.24f, false);
+  content->SetItemWeight(1, 0.76f, true);
   content->SetCollapsible(0, false);
   content->SetCollapsible(1, false);
   status = new BStringView("status", "Ready");
@@ -230,7 +232,7 @@ void Pane::Draw(BRect update) {
   PushState();
   SetHighColor(ViewColor());
   FillRect(update);
-  if (!simple) {
+  if (!prefs.SinglePane()) {
     const auto neutral = Lister::PanelBlend(ui_color(B_PANEL_BACKGROUND_COLOR),
                                            ui_color(B_PANEL_TEXT_COLOR), 0.12f);
     SetHighColor(Lister::PanelBlend(neutral, ui_color(B_KEYBOARD_NAVIGATION_COLOR),
@@ -241,7 +243,7 @@ void Pane::Draw(BRect update) {
   PopState();
 }
 void Pane::UpdateActivityAppearance() {
-  const bool highlighted = active && !simple;
+  const bool highlighted = active && !prefs.SinglePane();
   list->SetActive(highlighted);
   grid->SetActive(highlighted);
   auto text = edit->TextView();
@@ -252,7 +254,7 @@ void Pane::UpdateActivityAppearance() {
     text->SetLowColor(background);
     text->Invalidate();
   }
-  edit->SetToolTip(simple ? "Folder path" : active ? "Active file panel" : "Inactive file panel");
+  edit->SetToolTip(prefs.SinglePane() ? "Folder path" : active ? "Active file panel" : "Inactive file panel");
 }
 void Pane::SetSource(bool source) {
   if (active == source) return;
@@ -260,7 +262,7 @@ void Pane::SetSource(bool source) {
   UpdateActivityAppearance();
   activityTimer.reset();
   ++activitySerial;
-  if (!simple && Window()) {
+  if (!prefs.SinglePane() && Window()) {
     activityFrom = activityLevel;
     activityStarted = system_time();
     activitySteps = 0;
@@ -312,6 +314,12 @@ void Pane::FocusList() {
   else
     grid->MakeFocus(true);
 }
+void Pane::ToggleTreeFocus() {
+  auto focused = Window()->CurrentFocus();
+  while (focused && focused != tree) focused = focused->Parent();
+  if (focused) FocusList();
+  else if (treeVisible) tree->FindView("folder tree")->MakeFocus();
+}
 void Pane::FocusFilter() {
   if (simple) return;
   Activate();
@@ -320,6 +328,7 @@ void Pane::FocusFilter() {
 }
 void Pane::ClearRows() {
   entries.Clear();
+  icons.Clear();
   list->Refresh();
   grid->Reset();
 }
@@ -330,11 +339,12 @@ void Pane::ApplyFilter() {
   if (!scanning)
     SendSelection();
 }
-void Pane::SetSimple(bool value) {
+void Pane::SetWorkspace(Workspace workspace) {
+  const bool value = workspace == Workspace::Simple;
   const bool changed = simple != value;
   simple = value;
-  prefs.simple = value;
-  list->SetSimple(value);
+  prefs.workspace = workspace;
+  list->SetSimple(prefs.SinglePane());
   if (chromeVisible == simple) {
     chromeVisible = !simple;
     for (BView* control : {static_cast<BView*>(header), static_cast<BView*>(filterRow),
@@ -350,14 +360,14 @@ void Pane::SetSimple(bool value) {
   // A hidden filter must not silently hide entries in the minimal workspace.
   // Keep its text for Commander, but suspend its effect while it is hidden.
   if (changed) { ApplyFilter(); grid->Update(); }
-  const bool visible = prefs.paneTree[id] && !simple;
+  const bool visible = workspace == Workspace::Explorer || (prefs.paneTree[id] && !simple);
   if (treeVisible != visible) {
     treeVisible = visible;
     if (visible) tree->Show(); else tree->Hide();
   }
   if (visible) tree->ShowPath(path.String());
   display->Menu()->ItemAt(8)->SetMarked(treeVisible);
-  display->Menu()->ItemAt(8)->SetEnabled(!simple);
+  display->Menu()->ItemAt(8)->SetEnabled(!prefs.SinglePane());
   activityTimer.reset();
   ++activitySerial;
   activityLevel = active ? 1.f : 0.f;
@@ -366,7 +376,7 @@ void Pane::SetSimple(bool value) {
 }
 void Pane::Apply(const Preferences &p) {
   prefs = p;
-  SetSimple(p.simple);
+  SetWorkspace(p.workspace);
   tree->ShowPath(path.String());
   auto view = prefs.folderModes.find(path.String());
   SetDisplayMode(view == prefs.folderModes.end() ? prefs.paneMode[id]
@@ -609,9 +619,10 @@ void Pane::MessageReceived(BMessage *m) {
     transfer.state = m->GetInt32("state", 0);
     transfer.fraction = m->GetFloat("fraction", 0);
     transfer.error = m->GetString("error", "");
-    entries.Transfer(file, transfer.state, transfer.fraction);
-    list->Redraw();
-    grid->Invalidate();
+    if (entries.Transfer(file, transfer.state, transfer.fraction)) {
+      list->RedrawEntry(file);
+      grid->RedrawEntry(file);
+    }
     if (transfer.state == 2) {
       transfer.expires = system_time() + 2500000;
       if (!progressTimer) {
@@ -636,7 +647,7 @@ void Pane::MessageReceived(BMessage *m) {
     Reload();
     break;
   case kToggleTree:
-    if (simple) break;
+    if (prefs.SinglePane()) break;
     tree->Reset();
     prefs.paneTree[id] = !prefs.paneTree[id];
     treeVisible = prefs.paneTree[id];
@@ -815,12 +826,7 @@ void Pane::MessageReceived(BMessage *m) {
       if (pixels >= 16 && pixels <= 128 &&
           e.FindData("icon", B_RAW_TYPE, &bits, &length) == B_OK &&
           length == pixels * pixels * 4) {
-        row->icon = std::make_shared<BBitmap>(
-            BRect(0, 0, pixels - 1, pixels - 1), B_RGBA32);
-        if (row->icon->InitCheck() == B_OK)
-          memcpy(row->icon->Bits(), bits, length);
-        else
-          row->icon.reset();
+        row->icon = icons.Get(bits, length, pixels);
       }
       entries.Add(std::move(row));
     }

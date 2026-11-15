@@ -19,7 +19,8 @@ rgb_color Preferences::Color(const BString &text) const {
   return ui_color(B_PANEL_TEXT_COLOR);
 }
 void Preferences::Load(const BMessage &m) {
-  simple = m.GetBool("simpleWorkspace", false);
+  const int32 stored = m.GetInt32("workspace", m.GetBool("simpleWorkspace", false) ? 1 : 0);
+  workspace = stored >= 0 && stored <= 2 ? static_cast<Workspace>(stored) : Workspace::Commander;
   singlePane = m.GetInt32("singlePane", 0) == 1 ? 1 : 0;
   paneMode[0] = std::max(0, std::min(3, m.GetInt32("leftMode", 0)));
   paneMode[1] = std::max(0, std::min(3, m.GetInt32("rightMode", 0)));
@@ -60,7 +61,7 @@ void Preferences::ApplyDialog(const BMessage &message) {
     updated.paneMode[i] = paneMode[i];
     updated.paneTree[i] = paneTree[i];
   }
-  updated.simple = simple;
+  updated.workspace = workspace;
   updated.singlePane = singlePane;
   updated.preview = preview;
   updated.folderModes = folderModes;
@@ -68,7 +69,9 @@ void Preferences::ApplyDialog(const BMessage &message) {
 }
 BMessage Preferences::Save() const {
   BMessage m;
-  m.AddBool("simpleWorkspace", simple);
+  // Older versions open single-pane workspaces as Simple, never a hidden target.
+  m.AddBool("simpleWorkspace", SinglePane());
+  m.AddInt32("workspace", static_cast<int32>(workspace));
   m.AddInt32("singlePane", singlePane);
   m.AddInt32("leftMode", paneMode[0]);
   m.AddInt32("rightMode", paneMode[1]);

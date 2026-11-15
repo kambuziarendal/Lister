@@ -177,7 +177,7 @@ public:
   DetailsList(Pane *p, PaneModel *state, const Preferences &prefs)
       : BColumnListView("files", B_WILL_DRAW | B_NAVIGABLE | B_DRAW_ON_CHILDREN, B_FANCY_BORDER),
         pane(p), model(state) {
-    simple = prefs.simple;
+    simple = prefs.SinglePane();
     name = new NameColumn(prefs);
     name->batchTarget = ScrollView();
     AddColumn(name, 0);
@@ -396,6 +396,10 @@ public:
   bool CancelSelectionGesture() override { return list->band->Escape(); }
   void MakeFocus(bool focus = true) override { list->MakeFocus(focus); }
   void Redraw() override { list->Invalidate(); }
+  void RedrawEntry(const std::string &path) override {
+    auto found = rows.find(path);
+    if (found != rows.end()) list->UpdateRow(found->second);
+  }
   void SetSimple(bool value) override {
     list->simple = value;
     list->UpdateScrollBars();

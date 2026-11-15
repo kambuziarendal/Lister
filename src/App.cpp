@@ -4,6 +4,8 @@
 #include "FileDrop.h"
 #include "FileContextMenu.h"
 #include "NamedEntry.h"
+#include "JobSnapshot.h"
+#include "MessageStore.h"
 #include "PropertiesWindow.h"
 #include "OpenWith.h"
 #include "ExplicitSubmit.h"
@@ -97,19 +99,10 @@ public:
       return;
     }
     if (m->what == kSavePreferences) {
-      BString path = SettingsPath(), tmp = path;
-      tmp << ".tmp";
-      BFile file(tmp, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
-      status_t s = m->Flatten(&file);
-      if (s == B_OK)
-        s = file.Sync();
-      if (s == B_OK) {
-        BEntry e(tmp);
-        s = e.Rename(path, true);
-      }
-      if (s != B_OK) {
+      try { Lister::SaveMessageStore(SettingsPath().String(), *m); }
+      catch (const std::exception &e) {
         BMessage error(kServiceError);
-        error.AddString("error", "Could not save preferences.");
+        error.AddString("error", (std::string("Could not save preferences: ") + e.what()).c_str());
         app.SendMessage(&error);
       }
       return;
@@ -133,64 +126,28 @@ public:
           return;
         }
       }
-      if (Lister::IsVirtual(path.String())) {
-        if (mode == "terminal" || mode == "command" || mode == "edit")
-          throw std::runtime_error(
-              "Copy this entry to a local folder before editing or opening a "
-              "terminal. Remote edits are not uploaded automatically.");
-        if (mode == "view") {
-          std::string text;
-          struct PreviewFull {};
-          bool truncated = false;
-          try {
-            Lister::ReadFile(path.String(), [&](const char *p, size_t n) {
-              size_t available = 1024 * 1024 - text.size();
-              text.append(p, std::min(n, available));
-              if (n > available)
-                throw PreviewFull();
-            });
-          } catch (const PreviewFull &) {
-            truncated = true;
-          }
-          if (text.find('\0') != std::string::npos)
-            throw std::runtime_error("Binary file. Copy it to a local folder "
-                                     "to open it with another application.");
-          BMessage done(kViewLoaded);
-          done.AddString("path", path);
-          done.AddString("text", text.c_str());
-          done.AddBool("truncated", truncated);
-          app.SendMessage(&done);
-          return;
-        }
-        throw std::runtime_error(
-            "Use View for a text preview, or Copy to a local folder to open "
-            "this file with its application.");
-      }
       if (mode == "view") {
-        std::ifstream in(path.String(), std::ios::binary);
-        if (!in) {
-          BMessage error(kServiceError);
-          error.AddString("error", "Could not read the selected file.");
-          app.SendMessage(&error);
-          return;
-        }
-        std::string data(1024 * 1024, '\0');
-        in.read(data.data(), data.size());
-        data.resize(in.gcount());
-        if (data.find('\0') != std::string::npos) {
-          BMessage error(kServiceError);
-          error.AddString("error", "This is a binary file. Open it with its "
-                                   "associated application.");
-          app.SendMessage(&error);
-          return;
-        }
+        std::string text;
+        struct PreviewFull {};
+        bool truncated = false;
+        try {
+          Lister::ReadFile(path.String(), [&](const char *p, size_t n) {
+            size_t available = 1024 * 1024 - text.size();
+            text.append(p, std::min(n, available));
+            if (n > available) throw PreviewFull();
+          });
+        } catch (const PreviewFull &) { truncated = true; }
+        if (text.find('\0') != std::string::npos)
+          throw std::runtime_error("Binary file. Open it with its associated application.");
         BMessage done(kViewLoaded);
         done.AddString("path", path);
-        done.AddString("text", data.c_str());
-        done.AddBool("truncated", !in.eof());
+        done.AddString("text", text.c_str());
+        done.AddBool("truncated", truncated);
         app.SendMessage(&done);
         return;
       }
+      if (Lister::IsVirtual(path.String()))
+        throw std::runtime_error("Copy this entry locally before editing or opening it with an application. Remote edits are not uploaded automatically.");
       status_t s = B_OK;
       if (mode == "terminal" || mode == "command") {
         BString application =
@@ -350,7 +307,7 @@ class MainWindow : public BWindow {
   }
   Pane *panes[2];
   ImagePreview *preview;
-  BMenuItem *previewMenu, *simpleMenu, *commanderMenu;
+  BMenuItem *previewMenu, *simpleMenu, *explorerMenu, *commanderMenu;
   BMenuBar *menu;
   BSplitView *split;
   BGroupView *footer;
@@ -364,8 +321,9 @@ class MainWindow : public BWindow {
     service.SendMessage(&saved);
   }
   void UpdatePreview() {
+    if (!prefs.preview || prefs.SinglePane()) { preview->ShowFile(""); return; }
     auto selected = panes[source]->Selected();
-    preview->ShowFile(prefs.preview && !prefs.simple && selected.size() == 1 ? selected[0] : "");
+    preview->ShowFile(selected.size() == 1 ? selected[0] : "");
   }
   InlineAction *actionArea;
   void CloseAction() {
@@ -391,7 +349,7 @@ class MainWindow : public BWindow {
       return;
     }
     try {
-      auto job = Lister::PrepareNamedEntry(action, panes[source]->Selected(), panes[prefs.simple ? source : 1-source]->Path());
+      auto job = Lister::PrepareNamedEntry(action, panes[source]->Selected(), panes[prefs.SinglePane() ? source : 1-source]->Path());
       const bool duplicate = action == Lister::Action::Duplicate;
       std::string text = std::string(duplicate ? "Duplicate: " : "Link to: ") + job.sources[0] +
           "\nIn: " + job.destination;
@@ -442,7 +400,7 @@ class MainWindow : public BWindow {
   BMessenger service;
   bool bankVisible = true, commandVisible = true;
   void ShowBank(bool visible) {
-    visible = visible && !prefs.simple;
+    visible = visible && !prefs.SinglePane();
     if (bankVisible == visible)
       return;
     bankVisible = visible;
@@ -453,43 +411,45 @@ class MainWindow : public BWindow {
   }
   void ApplyWorkspace() {
     for (int i = 0; i < 2; ++i) {
-      const bool visible = !prefs.simple || i == source;
+      const bool visible = !prefs.SinglePane() || i == source;
       if (visible != paneVisible[i]) {
         paneVisible[i] = visible;
         if (visible) panes[i]->Show(); else panes[i]->Hide();
       }
-      panes[i]->SetSimple(prefs.simple);
+      panes[i]->SetWorkspace(prefs.workspace);
       panes[i]->SetSource(i == source);
     }
-    const bool showPreview = prefs.preview && !prefs.simple;
+    const bool showPreview = prefs.preview && !prefs.SinglePane();
     if (showPreview != previewVisible) {
       previewVisible = showPreview;
       if (showPreview) preview->Show(); else preview->Hide();
     }
     previewMenu->SetMarked(showPreview);
-    previewMenu->SetEnabled(!prefs.simple);
-    split->SetSpacing(prefs.simple ? 0 : 6);
-    split->SetSplitterSize(prefs.simple ? 0 : splitterSize);
-    if (footerVisible == prefs.simple) {
-      footerVisible = !prefs.simple;
+    previewMenu->SetEnabled(!prefs.SinglePane());
+    split->SetSpacing(prefs.SinglePane() ? 0 : 6);
+    split->SetSplitterSize(prefs.SinglePane() ? 0 : splitterSize);
+    if (footerVisible == prefs.SinglePane()) {
+      footerVisible = !prefs.SinglePane();
       if (footerVisible) footer->Show(); else footer->Hide();
     }
-    for (auto action : {kCopy, kMove, kSame, kSwitch, kFilter})
-      if (auto item = menu->FindItem(action)) item->SetEnabled(!prefs.simple);
-    queue->SetCompact(prefs.simple);
-    simpleMenu->SetMarked(prefs.simple);
-    commanderMenu->SetMarked(!prefs.simple);
+    for (auto action : {kCopy, kMove, kSame, kSwitch})
+      if (auto item = menu->FindItem(action)) item->SetEnabled(!prefs.SinglePane());
+    if (auto item = menu->FindItem(kFilter)) item->SetEnabled(!prefs.Simple());
+    queue->SetCompact(prefs.SinglePane());
+    simpleMenu->SetMarked(prefs.Simple());
+    explorerMenu->SetMarked(prefs.workspace == Workspace::Explorer);
+    commanderMenu->SetMarked(!prefs.SinglePane());
     ShowBank(prefs.buttons && !actionArea->Pending());
-    const bool showCommand = prefs.command && !prefs.simple;
+    const bool showCommand = prefs.command && !prefs.SinglePane();
     if (commandVisible != showCommand) {
       commandVisible = showCommand;
       if (showCommand) command->Show(); else command->Hide();
     }
     UpdatePreview();
   }
-  void SetWorkspace(bool simple) {
-    if (prefs.simple == simple) return;
-    prefs.simple = simple;
+  void SetWorkspace(Workspace value) {
+    if (prefs.workspace == value) return;
+    prefs.workspace = value;
     prefs.singlePane = source;
     ApplyWorkspace();
     if (!actionArea->Pending()) panes[source]->FocusList();
@@ -506,29 +466,12 @@ class MainWindow : public BWindow {
     j.destination = panes[1 - source]->Path();
     return j;
   }
-  BMessage Encode(const Lister::Job &j, uint32 what) {
-    BMessage m(what);
-    m.AddInt32("action", int(j.action));
-    m.AddString("destination", j.destination.c_str());
-    for (auto &s : j.sources)
-      m.AddString("source", s.c_str());
-    return m;
-  }
-  Lister::Job Decode(const BMessage &m) {
-    Lister::Job j;
-    j.action = static_cast<Lister::Action>(m.GetInt32("action", 0));
-    j.destination = m.GetString("destination", "");
-    const char *s;
-    for (int i = 0; m.FindString("source", i, &s) == B_OK; i++)
-      j.sources.push_back(s);
-    return j;
-  }
   void Operation(Lister::Action a) {
     if (actionArea->Pending()) {
       queue->ErrorInfo("Finish or cancel the open question first.");
       return;
     }
-    if (prefs.simple && (a == Lister::Action::Copy || a == Lister::Action::Move)) {
+    if (prefs.SinglePane() && (a == Lister::Action::Copy || a == Lister::Action::Move)) {
       Notice("Use Copy or Cut, then navigate and Paste. Panel transfers need Commander.");
       return;
     }
@@ -548,11 +491,14 @@ class MainWindow : public BWindow {
         return;
       }
       job.destination = panes[source]->Path();
+      if (a == Lister::Action::MakeDirectory) job.sources.clear();
       if (job.destination == "@disks") {
         Notice("Open a folder first.");
         return;
       }
-      auto message = Encode(job, kNameAccepted);
+      try { Lister::FreezeLocalJob(job, job.destination); }
+      catch (const std::exception &e) { Notice(e.what()); return; }
+      auto message = Lister::EncodeJob(job, kNameAccepted);
       AskInline(
           a == Lister::Action::Rename ? "Rename selected entry"
                                       : "Create a folder in the active panel",
@@ -562,11 +508,13 @@ class MainWindow : public BWindow {
               : "New folder");
       return;
     }
+    try { Lister::FreezeLocalJob(job, (a == Lister::Action::Copy || a == Lister::Action::Move) ? job.destination : ""); }
+    catch (const std::exception &e) { Notice(e.what()); return; }
     if (a == Lister::Action::Copy || a == Lister::Action::Move) {
       queue->Enqueue(job);
       return;
     }
-    auto m = Encode(job, kConfirm);
+    auto m = Lister::EncodeJob(job, kConfirm);
     BString text;
     if (a == Lister::Action::Trash)
       text << "Move " << int32(job.sources.size())
@@ -609,10 +557,10 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.16.3", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.17.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
-    source = prefs.simple ? prefs.singlePane : 0;
+    source = prefs.SinglePane() ? prefs.singlePane : 0;
     menu = new BMenuBar("menu");
     auto files = new BMenu("Files");
     struct Item {
@@ -661,10 +609,14 @@ public:
     auto viewMenu = new BMenu("View");
     auto workspace = new BMenu("Workspace");
     auto simpleMessage = new BMessage(kWorkspace);
-    simpleMessage->AddBool("simple", true);
+    simpleMessage->AddInt32("workspace", int32(Workspace::Simple));
+    auto explorerMessage = new BMessage(kWorkspace);
+    explorerMessage->AddInt32("workspace", int32(Workspace::Explorer));
+    explorerMenu = new BMenuItem("Explorer", explorerMessage);
     simpleMenu = new BMenuItem("Simple", simpleMessage);
     commanderMenu = new BMenuItem("Commander", new BMessage(kWorkspace));
     workspace->AddItem(simpleMenu);
+    workspace->AddItem(explorerMenu);
     workspace->AddItem(commanderMenu);
     viewMenu->AddItem(workspace);
     auto fileView = new BMenu("File view");
@@ -846,7 +798,7 @@ public:
           }
           reply.AddString("result", pane->Path());
         } else if (!strcmp(property, "Workspace"))
-          reply.AddString("result", prefs.simple ? "Simple" : "Commander");
+          reply.AddString("result", prefs.Simple() ? "Simple" : prefs.SinglePane() ? "Explorer" : "Commander");
         else if (!strcmp(property, "PathReady"))
           reply.AddBool("result",
                         !panes[0]->IsScanning() && !panes[1]->IsScanning());
@@ -981,7 +933,7 @@ public:
         queue->Collapse();
       break;
     case kPreviewToggle:
-      if (prefs.simple) break;
+      if (prefs.SinglePane()) break;
       prefs.preview = !prefs.preview;
       if (prefs.preview != previewVisible) {
         previewVisible = prefs.preview;
@@ -1021,18 +973,22 @@ public:
       panes[source]->MessageReceived(m);
       break;
     case kWorkspace:
-      SetWorkspace(m->GetBool("simple", false));
+      {
+        int32 value = m->GetInt32("workspace", m->GetBool("simple", false) ? 1 : 0);
+        if (value >= 0 && value <= 2) SetWorkspace(static_cast<Workspace>(value));
+      }
       break;
     case kActivate:
       if (m->GetInt32("pane", source) < 0 || m->GetInt32("pane", source) > 1) break;
-      if (prefs.simple && m->GetInt32("pane", source) != source) break;
+      if (prefs.SinglePane() && m->GetInt32("pane", source) != source) break;
       source = m->GetInt32("pane", source);
       for (int i = 0; i < 2; i++)
         panes[i]->SetSource(i == source);
       UpdatePreview();
       break;
     case kSwitch:
-      if (prefs.simple) break;
+      if (prefs.workspace == Workspace::Explorer) { panes[source]->ToggleTreeFocus(); break; }
+      if (prefs.SinglePane()) break;
       source = 1 - source;
       for (int i = 0; i < 2; i++)
         panes[i]->SetSource(i == source);
@@ -1040,7 +996,7 @@ public:
       UpdatePreview();
       break;
     case kSame:
-      if (prefs.simple) break;
+      if (prefs.SinglePane()) break;
       panes[1 - source]->Navigate(panes[source]->Path());
       break;
     case kRefresh:
@@ -1055,7 +1011,7 @@ public:
       int32 which = m->GetInt32("pane", -1);
       if (which < 0 || which > 1) break;
       source = which;
-      if (prefs.simple) { prefs.singlePane = source; ApplyWorkspace(); Save(); }
+      if (prefs.SinglePane()) { prefs.singlePane = source; ApplyWorkspace(); Save(); }
       for (int i = 0; i < 2; ++i) panes[i]->SetSource(i == source);
       panes[source]->MessageReceived(m);
       Activate(); panes[source]->FocusList();
@@ -1070,7 +1026,7 @@ public:
         break;
       }
       const int32 owner = m->GetInt32("pane", -1);
-      if (owner < 0 || owner > 1 || (prefs.simple && owner != source)) break;
+      if (owner < 0 || owner > 1 || (prefs.SinglePane() && owner != source)) break;
       source = owner;
       for (int i = 0; i < 2; ++i) panes[i]->SetSource(i == source);
       const auto selected = panes[source]->Selected();
@@ -1099,7 +1055,7 @@ public:
         options.selected = selected.size();
         options.directory = m->GetBool("directory", false);
         options.local = local;
-        options.dual = !prefs.simple;
+        options.dual = !prefs.SinglePane();
         options.folderLocal = folderLocal;
         options.sort = panes[owner]->Sorting();
         options.view = panes[owner]->CurrentView();
@@ -1194,10 +1150,10 @@ public:
       break;
     case kConfirm:
       if (m->GetInt32("which", 0) == 1)
-        queue->Enqueue(Decode(*m));
+        queue->Enqueue(Lister::DecodeJob(*m));
       break;
     case kNameAccepted: {
-      auto j = Decode(*m);
+      auto j = Lister::DecodeJob(*m);
       try {
         j.destination =
             Lister::ChildLocation(j.destination, m->GetString("name", ""));
@@ -1338,9 +1294,9 @@ public:
   void ReadyToRun() override {
     Preferences prefs;
     BMessage settings;
-    BFile file(SettingsPath(), B_READ_ONLY);
-    if (settings.Unflatten(&file) == B_OK)
-      prefs.Load(settings);
+    std::string settingsError;
+    try { settings = Lister::LoadMessageStore(SettingsPath().String()); prefs.Load(settings); }
+    catch (const std::exception &e) { settingsError = e.what(); }
     services = new Services(BMessenger(this));
     services->Run();
     Lister::SavedPlaces places;
@@ -1354,6 +1310,7 @@ public:
     auto window = new MainWindow(prefs, BMessenger(services), places, placesError.empty(), searches, searchesError.empty());
     mainWindow = BMessenger(window);
     window->Show();
+    if (!settingsError.empty()) Notice((std::string("Could not load preferences. Defaults are shown: ") + settingsError).c_str());
     if (!searchesError.empty()) {
       searchesError = "Saved searches could not be loaded. The file has been preserved; changes are disabled. " + searchesError;
       Notice(searchesError.c_str());

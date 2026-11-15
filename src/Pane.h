@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "Common.h"
+#include "IconCache.h"
 #include "PaneModel.h"
 #include "NavigationHistory.h"
 #include "SavedPlaces.h"
@@ -31,15 +32,17 @@ public:
   void SetPlaces(const Lister::SavedPlaces &, bool writable);
   void SetSource(bool);
   void Apply(const Preferences &);
-  void SetSimple(bool);
+  void SetWorkspace(Workspace);
   void Select(int mode);
   std::vector<std::string> Selected() const;
   const char *Path() const { return path.String(); }
   bool CancelSelectionGesture();
   void FocusList();
+  void ToggleTreeFocus();
   void FocusFilter();
   void Activate();
   bool IsSimple() const { return simple; }
+  bool IsSinglePane() const { return prefs.SinglePane(); }
   bool IsScanning() const { return scanning; }
   void SendSelection(bool gesture = false);
   void ContextMenu(const std::string &entry, BPoint screen);
@@ -58,6 +61,7 @@ private:
   Preferences prefs;
   BString path = "/boot/home";
   PaneModel entries;
+  IconCache icons;
   FileDetails *list;
   FileGrid *grid;
   FolderTree *tree;

@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <map>
 #include <unistd.h>
+#include <sys/stat.h>
 
 namespace Lister {
 namespace {
@@ -35,9 +36,14 @@ struct Reader {
     if (!lib.Available())
       throw std::runtime_error(
           "Install libarchive from HaikuDepot to browse archives");
-    fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW);
+    fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
     if (fd < 0)
       throw std::runtime_error(path + ": " + strerror(errno));
+    struct stat opened;
+    if (fstat(fd, &opened) || !S_ISREG(opened.st_mode)) {
+      close(fd); fd = -1;
+      throw std::runtime_error("Archive input must be a regular file");
+    }
     handle = LIBCALL(lib, archive_read_new)();
     if (!handle) {
       close(fd);

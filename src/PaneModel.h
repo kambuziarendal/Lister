@@ -40,7 +40,7 @@ public:
   void SetSelection(const std::vector<std::string> &paths,
                     const std::string &focus);
   PaneEntry *Focused() const;
-  void Transfer(const std::string &path, int state, float fraction);
+  bool Transfer(const std::string &path, int state, float fraction);
 private:
   PaneSort sorting;
   std::vector<std::unique_ptr<PaneEntry>> entries;

@@ -29,6 +29,7 @@ public:
       return;
     }
     int64 serial = m->GetInt64("serial", 0);
+    if (generation->load() != serial) return;
     BString path = m->GetString("path", "");
     bool icons = m->GetBool("icons", true);
     int32 iconPixels = m->GetInt32("iconSize", 16);

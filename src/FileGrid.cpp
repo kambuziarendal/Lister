@@ -212,6 +212,10 @@ public:
     }
     Invalidate();
   }
+  void RedrawEntry(const std::string &path) override {
+    for (size_t i = 0; i < model->Visible().size(); ++i)
+      if (model->Visible()[i]->path == path) { Invalidate(Cell(i)); return; }
+  }
   void FrameResized(float, float) override { band->Cancel(); Update(); }
   void MakeFocus(bool focus = true) override {
     BView::MakeFocus(focus);
@@ -340,7 +344,7 @@ public:
       if (thumbnails.size() >= 256)
         thumbnails.erase(thumbnails.begin());
       thumbnails[path].reset(bitmap);
-      Invalidate();
+      RedrawEntry(path);
       return;
     }
     if (m->WasDropped()) {
@@ -357,6 +361,7 @@ public:
     int first = std::max(0, int(update.top / cellHeight) * Columns()),
         last = std::min(int(model->Visible().size()),
                         (int(update.bottom / cellHeight) + 1) * Columns());
+    auto focused = model->Focused();
     for (int i = first; i < last; ++i) {
       auto row = model->Visible()[i];
       auto cell = Cell(i).InsetByCopy(4, 4);
@@ -420,7 +425,7 @@ public:
         FillRect(BRect(cell.left + 4, cell.bottom - 3, cell.left + 4 + width,
                        cell.bottom - 1));
       }
-      if (IsFocus() && model->Focused() == row) {
+      if (IsFocus() && focused == row) {
         SetHighUIColor(B_KEYBOARD_NAVIGATION_COLOR);
         StrokeRoundRect(cell, 4, 4);
       }

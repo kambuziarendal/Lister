@@ -16,8 +16,38 @@
 #include <algorithm>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/stat.h>
 namespace {
 constexpr uint32 kLoad = 'pimg', kReady = 'pird';
+// A pinned, nonblocking regular-file reader avoids special-file stalls and
+// a second path lookup between validation and translator access.
+class PreviewInput : public BPositionIO {
+  int fd = -1;
+  off_t position = 0, length = 0;
+public:
+  explicit PreviewInput(const std::string &path) {
+    fd = open(path.c_str(), O_RDONLY | O_NONBLOCK);
+    struct stat st;
+    if (fd < 0 || fstat(fd, &st) || !S_ISREG(st.st_mode) ||
+        st.st_size < 0 || st.st_size > 64 * 1024 * 1024) {
+      if (fd >= 0) close(fd);
+      throw std::runtime_error("Preview requires a regular image file below 64 MiB");
+    }
+    length = st.st_size;
+  }
+  ~PreviewInput() override { close(fd); }
+  ssize_t ReadAt(off_t offset, void *buffer, size_t size) override {
+    return pread(fd, buffer, size, offset);
+  }
+  ssize_t WriteAt(off_t, const void *, size_t) override { return B_NOT_ALLOWED; }
+  off_t Seek(off_t offset, uint32 mode) override {
+    off_t base = mode == SEEK_SET ? 0 : mode == SEEK_CUR ? position : length;
+    if ((mode != SEEK_SET && mode != SEEK_CUR && mode != SEEK_END) ||
+        offset < -base || offset > INT64_MAX - base) return B_BAD_VALUE;
+    return position = base + offset;
+  }
+  off_t Position() const override { return position; }
+};
 class BoundedBitmap : public BMallocIO {
   const Lister::TransferControl &control;
 
@@ -122,13 +152,7 @@ BBitmap *LoadPreviewBitmap(const std::string &source,
       }
       path = temporary;
     }
-    BFile input(path.c_str(), B_READ_ONLY);
-    if (input.InitCheck() != B_OK)
-      throw std::runtime_error("Cannot read image");
-    off_t size = 0;
-    input.GetSize(&size);
-    if (size > 64 * 1024 * 1024)
-      throw std::runtime_error("Image is too large for a preview");
+    PreviewInput input(path);
     BoundedBitmap decoded(c);
     status_t status = BTranslatorRoster::Default()->Translate(
         &input, nullptr, nullptr, &decoded, B_TRANSLATOR_BITMAP);

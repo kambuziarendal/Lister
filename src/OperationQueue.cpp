@@ -15,8 +15,8 @@
 #include <dirent.h>
 #include <sys/stat.h>
 namespace {
-uint64_t Size(const std::string &p, const std::function<bool()> &proceed) {
-  if (!proceed())
+uint64_t Size(const std::string &p, const std::function<bool()> &proceed, unsigned depth = 0) {
+  if (depth > 64 || !proceed())
     return 0;
   if (Lister::IsVirtual(p)) {
     try {
@@ -29,7 +29,7 @@ uint64_t Size(const std::string &p, const std::function<bool()> &proceed) {
         return std::max<int64_t>(0, e.size);
       uint64_t total = 0;
       for (auto &child : Lister::ListFiles(p, control))
-        total += Size(child.path, proceed);
+        total += Size(child.path, proceed, depth + 1);
       return total;
     } catch (...) {
       return 0;
@@ -49,7 +49,7 @@ uint64_t Size(const std::string &p, const std::function<bool()> &proceed) {
   while (auto e = readdir(dir)) {
     if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
       continue;
-    total += Size(Lister::Join(p, e->d_name), proceed);
+    total += Size(Lister::Join(p, e->d_name), proceed, depth + 1);
     if (!proceed())
       break;
   }

@@ -73,18 +73,22 @@ struct Runner {
   const Job *guardedJob = nullptr;
   std::string guardedSource;
   void Guard() {
-    if (!guardedJob || guardedJob->expectedSources.empty()) return;
-    auto expected = guardedJob->expectedSources.find(guardedSource);
+    if (!guardedJob) return;
     struct stat st;
-    if (expected == guardedJob->expectedSources.end() ||
-        lstat(guardedSource.c_str(), &st) ||
-        st.st_dev != expected->second.device || st.st_ino != expected->second.inode)
-      throw std::runtime_error(guardedSource + ": selected source changed; left untouched");
+    if (!guardedJob->expectedSources.empty()) {
+      auto expected = guardedJob->expectedSources.find(guardedSource);
+      if (expected == guardedJob->expectedSources.end() ||
+          lstat(guardedSource.c_str(), &st) ||
+          st.st_dev != expected->second.device || st.st_ino != expected->second.inode)
+        throw std::runtime_error(guardedSource + ": selected source changed; left untouched");
+    }
     const auto &destination = guardedJob->expectedDestination;
-    if (stat(guardedJob->destination.c_str(), &st) || !S_ISDIR(st.st_mode) ||
-        st.st_dev != destination.device || st.st_ino != destination.inode)
+    const auto &path = guardedJob->destinationFolder.empty() ? guardedJob->destination : guardedJob->destinationFolder;
+    if (destination.device >= 0 && (stat(path.c_str(), &st) || !S_ISDIR(st.st_mode) ||
+        st.st_dev != destination.device || st.st_ino != destination.inode))
       throw std::runtime_error("Selected destination changed; operation stopped.");
   }
+
   bool deferCompletion = false;
   std::vector<std::pair<std::string, std::string>> copied;
   void Done(const std::string &src, const std::string &dst) {
@@ -105,12 +109,17 @@ struct Runner {
   void Attributes(const std::string &src, const std::string &dst) {
     BNode from(src.c_str()), to(dst.c_str());
     char name[B_ATTR_NAME_LENGTH];
-    while (from.GetNextAttrName(name) == B_OK) {
+    if (from.InitCheck() != B_OK || to.InitCheck() != B_OK)
+      throw std::runtime_error("Could not open copy metadata");
+    status_t status;
+    std::vector<char> buf(65536);
+    while ((status = from.GetNextAttrName(name)) == B_OK) {
       Check();
       attr_info info;
       if (from.GetAttrInfo(name, &info) != B_OK)
-        continue;
-      std::vector<char> buf(65536);
+        throw std::runtime_error(src + ": attribute changed during copy");
+      if (info.size == 0)
+        throw std::runtime_error(src + ": zero-length attribute cannot be preserved: " + name);
       off_t pos = 0;
       while (pos < info.size) {
         ssize_t n = from.ReadAttr(name, info.type, pos, buf.data(),
@@ -123,6 +132,8 @@ struct Runner {
         pos += n;
       }
     }
+    if (status != B_ENTRY_NOT_FOUND)
+      throw std::runtime_error(src + ": could not enumerate attributes");
   }
   bool Allow(const std::string &dst) {
     if (!Exists(dst))
@@ -171,8 +182,10 @@ struct Runner {
     return true;
   }
   using Snapshot = std::map<std::string, struct stat>;
-  void SnapshotTree(const std::string &path, Snapshot &entries, dev_t volume) {
+  void SnapshotTree(const std::string &path, Snapshot &entries, dev_t volume, unsigned depth = 0) {
     Check();
+    if (depth > 64 || entries.size() >= 200000)
+      throw std::runtime_error("Folder tree exceeds the safe operation limit");
     struct stat st;
     if (lstat(path.c_str(), &st))
       Fail(path);
@@ -188,7 +201,7 @@ struct Runner {
     while (auto e = NextEntry(dir.get(), path)) {
       if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
         continue;
-      SnapshotTree(Join(path, e->d_name), entries, volume);
+      SnapshotTree(Join(path, e->d_name), entries, volume, depth + 1);
     }
   }
   bool SameEntry(const struct stat &a, const struct stat &b) {
@@ -246,8 +259,9 @@ struct Runner {
     if (status != B_OK)
       throw std::runtime_error(dst + ": " + strerror(status));
   }
-  bool Copy(const std::string &src, const std::string &dst) {
+  bool Copy(const std::string &src, const std::string &dst, unsigned depth = 0) {
     Check();
+    if (depth > 64) throw std::runtime_error("Folder tree exceeds the safe copy depth");
     Guard();
     struct stat st;
     if (lstat(src.c_str(), &st) != 0)
@@ -273,7 +287,7 @@ struct Runner {
       while (auto e = NextEntry(dir.get(), src)) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
           continue;
-        if (!Copy(Join(src, e->d_name), Join(dst, e->d_name)))
+        if (!Copy(Join(src, e->d_name), Join(dst, e->d_name), depth + 1))
           complete = false;
       }
       if (!existed) {
@@ -376,6 +390,7 @@ struct Runner {
     }
     if (job.action == Action::MakeDirectory) {
       Check();
+      Guard();
       if (mkdir(job.destination.c_str(), 0755))
         Fail(job.destination);
       result.completed++;

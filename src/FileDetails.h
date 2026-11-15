@@ -17,5 +17,6 @@ public:
   virtual void Refresh() = 0;
   virtual void SyncSelection() = 0;
   virtual void Redraw() = 0;
+  virtual void RedrawEntry(const std::string &) = 0;
 };
 FileDetails *CreateFileDetails(Pane *, PaneModel *, const Preferences &);

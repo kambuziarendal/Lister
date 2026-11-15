@@ -25,6 +25,7 @@ struct Job {
   // Only Duplicate/Link use an explicit leaf name, always without replacement.
   std::string entryName;
   bool relativeLink = true;
+  std::string destinationFolder; // Captured parent for rename/new-folder questions.
 };
 struct Hooks {
   std::function<bool()> proceed;

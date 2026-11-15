@@ -2,7 +2,7 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.16.3**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.17.0**. Published preview: **0.2.0**.
 
 Find files: **Command+Shift+F** opens cancellable recursive local name search
 and native BFS formulas, with optional live updates. Save named criteria and
@@ -41,6 +41,14 @@ for actions on the current folder. Selection status includes total file size;
 folders and links are counted separately without scanning their contents.
 See [selection and folder actions](docs/SELECTION-CONTEXT-0.16.2.md).
 See [context menu behavior](docs/CONTEXT-MENU-0.14.0.md).
+
+## Workspaces
+
+**View > Workspace > Explorer** shows a folder tree and one file panel, with
+navigation and filter controls but no bottom action buttons. Simple remains
+minimal; Commander keeps two panels. Switching preserves paths, selection and
+running jobs. See [workspace behavior](docs/WORKSPACES-0.17.0.md) and
+[code audit findings and limits](docs/AUDIT-0.17.0.md).
 
 ## Workflow
 

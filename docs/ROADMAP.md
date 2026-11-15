@@ -262,3 +262,11 @@ broader read/extract matrix, with lz4/zstd_bin helpers installed separately.
 Follow-up: password UI, multipart inputs, additional engines for unsupported
 families and archive extraction from the single-pane workspace. Do not substitute
 an external archive GUI for those missing internal workflows.
+
+### Utforsker og kodegjennomgang, privat 0.17.0
+
+Utforsker er implementert som neste trinn: mappetre og ett filpanel, uten
+nederste handlingsknapper. Enkel og Commander beholdes. Se
+[arbeidsoppsett](WORKSPACES-0.17.0.md) og [kodeaudit](AUDIT-0.17.0.md).
+Arbeidsbenk, mappekort/arbeidssett og gjenstående arkivfunksjoner ligger fortsatt
+i køen. Kodeaudit er ikke bevis på feilfrihet eller full ekstern formatdekning.

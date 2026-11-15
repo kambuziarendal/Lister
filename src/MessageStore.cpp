@@ -16,7 +16,7 @@ constexpr size_t MaxFile = 1024 * 1024;
 void Fail() { throw std::runtime_error(strerror(errno)); }
 }
 BMessage LoadMessageStore(const std::string &file) {
-  int fd = open(file.c_str(), O_RDONLY);
+  int fd = open(file.c_str(), O_RDONLY | O_NONBLOCK);
   if (fd < 0) {
     if (errno == ENOENT) { BMessage absent; absent.what = 'none'; return absent; }
     Fail();
