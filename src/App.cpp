@@ -17,6 +17,7 @@
 #include "VirtualFile.h"
 #include <Alert.h>
 #include <Application.h>
+#include <exception>
 #include <Button.h>
 #include <Entry.h>
 #include <File.h>
@@ -608,7 +609,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.16.1", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.16.2", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.simple ? prefs.singlePane : 0;
@@ -1074,23 +1075,44 @@ public:
       for (int i = 0; i < 2; ++i) panes[i]->SetSource(i == source);
       const auto selected = panes[source]->Selected();
       const std::string folder = panes[source]->Path(), destination = panes[1-source]->Path();
-      if (selected.empty()) break;
+      const bool background = m->GetBool("folderContext", false);
+      if (!background && selected.empty()) break;
+      const bool folderLocal = folder != "@disks" && !Lister::IsVirtual(folder);
       bool local = true;
       for (const auto &path : selected) local &= !Lister::IsVirtual(path);
       try {
         BMessage snapshot;
-        if (local) snapshot = Lister::MakeFileSelection(selected);
+        std::exception_ptr fileSnapshotError;
+        if (!background && local) {
+          try { snapshot = Lister::MakeFileSelection(selected); }
+          catch (...) { fileSnapshotError = std::current_exception(); }
+        }
+        struct stat folderBefore{};
+        if (folderLocal && (stat(folder.c_str(), &folderBefore) || !S_ISDIR(folderBefore.st_mode)))
+          throw std::runtime_error("The folder is unavailable. Open the menu again.");
         struct stat before{};
         const bool destinationKnown = !stat(destination.c_str(), &before);
         BPoint screen;
         if (m->FindPoint("screen", &screen) != B_OK) break;
-        const uint32 action = ShowFileContextMenu(screen, selected.size() == 1,
-                                                  m->GetBool("directory", false), local, !prefs.simple);
+        const auto choice = background ? ShowFolderContextMenu(screen, folderLocal)
+          : ShowFileContextMenu(screen, selected.size() == 1,
+              m->GetBool("directory", false), local, !prefs.simple, folderLocal);
+        const uint32 action = choice.what;
         if (!action) break;
         if (source != owner || selected != panes[owner]->Selected() ||
             folder != panes[owner]->Path() || destination != panes[1-owner]->Path())
           throw std::runtime_error("The panel changed. Open the file menu again.");
-        if (local) Lister::ReadFileClipboard(snapshot);
+        if (choice.folder) {
+          struct stat folderAfter{};
+          if (folderLocal && (stat(folder.c_str(), &folderAfter) ||
+              folderBefore.st_dev != folderAfter.st_dev || folderBefore.st_ino != folderAfter.st_ino))
+            throw std::runtime_error("The folder changed. Open the menu again.");
+          if (action == kProperties) { OpenFileProperties(folder); break; }
+          if (action == kRefresh) { panes[owner]->Reload(); break; }
+        } else if (local) {
+          if (fileSnapshotError) std::rethrow_exception(fileSnapshotError);
+          Lister::ReadFileClipboard(snapshot);
+        }
         if (action == kCopy || action == kMove || action == kCreateLink) {
           struct stat after{};
           if (destinationKnown && (stat(destination.c_str(), &after) ||

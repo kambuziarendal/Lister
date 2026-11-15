@@ -2,6 +2,7 @@
 #include "PaneModel.h"
 #include "NameFilter.h"
 #include <algorithm>
+#include <limits>
 #include <strings.h>
 void PaneModel::Clear() {
   visible.clear();
@@ -40,6 +41,26 @@ std::vector<std::string> PaneModel::Selected() const {
   for (auto entry : visible)
     if (!entry->parent && IsSelected(entry->path))
       result.push_back(entry->path);
+  return result;
+}
+SelectionSummary PaneModel::Summary() const {
+  SelectionSummary result;
+  // Cached listing metadata only: no filesystem/network calls during selection.
+  for (auto entry : visible) {
+    if (entry->parent) continue;
+    ++result.visible;
+    if (!IsSelected(entry->path)) continue;
+    ++result.selected;
+    if (entry->kind == 2) { ++result.links; continue; }
+    if (entry->directory) { ++result.folders; continue; }
+    ++result.files;
+    if (!entry->sizeKnown || entry->size < 0) { ++result.unknown; continue; }
+    const auto bytes = static_cast<uint64_t>(entry->size);
+    if (bytes > std::numeric_limits<uint64_t>::max() - result.bytes) {
+      result.bytes = std::numeric_limits<uint64_t>::max();
+      result.overflow = true;
+    } else result.bytes += bytes;
+  }
   return result;
 }
 void PaneModel::Select(int mode) {

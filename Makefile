@@ -1,4 +1,4 @@
-VERSION := 0.16.1
+VERSION := 0.16.2
 .PHONY: all test package clean
 all:
 	$(MAKE) -C src

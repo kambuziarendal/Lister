@@ -223,7 +223,7 @@ public:
           !model->Visible()[index]->parent) {
         const auto path = model->Visible()[index]->path;
         pane->ContextMenu(path, ConvertToScreen(point));
-      }
+      } else pane->ContextMenu("", ConvertToScreen(point));
       return;
     }
     int32 mods = modifiers();

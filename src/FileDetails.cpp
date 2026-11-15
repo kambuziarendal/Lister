@@ -146,6 +146,9 @@ public:
       const auto path = row->entry->path;
       list->MakeFocus();
       pane->ContextMenu(path, list->ScrollView()->ConvertToScreen(point));
+    } else {
+      list->MakeFocus();
+      pane->ContextMenu("", list->ScrollView()->ConvertToScreen(point));
     }
     return B_SKIP_MESSAGE;
   }
@@ -419,7 +422,7 @@ public:
         continue;
       auto row = new FileRow(entry, std::max(22.f, prefs.font.Size() + 9));
       row->SetField(new NameField(entry), 0);
-      row->SetField(new SizeField(entry->directory ? -1 : entry->size), 1);
+      row->SetField(new SizeField(entry->directory || !entry->sizeKnown ? -1 : entry->size), 1);
       time_t date = entry->modified;
       row->SetField(new DateField(&date), 2);
       rows.emplace(entry->path, row);

@@ -10,6 +10,7 @@
 #include "Trash.h"
 #include "VirtualFile.h"
 #include <Bitmap.h>
+#include <StringForSize.h>
 #include <CardLayout.h>
 #include <CardView.h>
 #include <Directory.h>
@@ -416,6 +417,13 @@ void Pane::Select(int mode) {
 }
 void Pane::ContextMenu(const std::string &path, BPoint screen) {
   if (scanning) return;
+  if (path.empty()) {
+    BMessage request(kContextMenu);
+    request.AddInt32("pane", id); request.AddPoint("screen", screen);
+    request.AddBool("folderContext", true);
+    Window()->MessageReceived(&request);
+    return;
+  }
   for (auto entry : entries.Visible()) {
     if (entry->path != path || entry->parent) continue;
     auto selected = entries.IsSelected(path) ? entries.Selected() : std::vector<std::string>{path};
@@ -437,17 +445,48 @@ bool Pane::CancelSelectionGesture() {
 }
 void Pane::SendSelection(bool gesture) {
   BString s;
-  int32 visible = 0;
-  for (auto entry : entries.Visible())
-    if (!entry->parent)
-      ++visible;
-  s << int32(Selected().size()) << " selected / " << visible;
+  const auto summary = entries.Summary();
+  s << uint64(summary.selected) << " selected";
+  if (summary.selected) {
+    s << ": ";
+    bool part = false;
+    if (summary.files) {
+      if (summary.files == summary.unknown) s << "size unknown";
+      else {
+        char text[64];
+        if (summary.overflow) s << "at least ";
+        s << string_for_size(summary.bytes, text, sizeof(text));
+        if (summary.unknown) s << " + unknown size";
+      }
+      part = true;
+    }
+    if (summary.folders) {
+      if (part) s << " + ";
+      s << uint64(summary.folders) << (summary.folders == 1 ? " folder" : " folders");
+      part = true;
+    }
+    if (summary.links) {
+      if (part) s << " + ";
+      s << uint64(summary.links) << (summary.links == 1 ? " link" : " links");
+    }
+  }
+  s << " / " << uint64(summary.visible);
   if (!simple && filter->Text()[0])
-    s << " of " << (visible + int32(entries.HiddenCount()))
+    s << " of " << uint64(summary.visible + entries.HiddenCount())
       << " entries (filtered)";
   else
     s << " entries";
   SetStatus(s);
+  if (summary.selected) {
+    BString tip(s);
+    if (summary.files && !summary.overflow)
+      tip << "\nKnown file sizes: " << uint64(summary.bytes) << " bytes.";
+    if (summary.folders || summary.links)
+      tip << "\nFolder contents and link targets are not counted.";
+    if (summary.unknown)
+      tip << "\nSize unavailable for " << uint64(summary.unknown) << " selected file(s).";
+    status->SetToolTip(tip);
+  }
   if (mode == 0) list->SyncSelection();
   else grid->SyncSelection();
   // Preview decoding is useful after the gesture, not for transient rows.
@@ -684,6 +723,7 @@ void Pane::MessageReceived(BMessage *m) {
       row->parent = e.GetBool("parent", false);
       row->kind = e.GetInt32("kind", 0);
       row->size = e.GetInt64("size", 0);
+      row->sizeKnown = e.GetBool("sizeKnown", true);
       row->modified = e.GetInt64("date", 0);
       auto transfer = transfers.find(row->path);
       if (transfer != transfers.end()) {

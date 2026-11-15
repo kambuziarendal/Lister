@@ -8,11 +8,16 @@
 class BBitmap;
 struct PaneEntry {
   std::string name, path;
-  bool directory = false, parent = false;
+  bool directory = false, parent = false, sizeKnown = true;
   int kind = 0, transferState = 0;
   int64_t size = 0, modified = 0;
   float fraction = 0;
   std::shared_ptr<BBitmap> icon;
+};
+struct SelectionSummary {
+  size_t visible = 0, selected = 0, files = 0, folders = 0, links = 0, unknown = 0;
+  uint64_t bytes = 0;
+  bool overflow = false;
 };
 // Pane owns entries and selection. Renderers never own each other's state.
 // All access occurs on the window thread; scanner messages carry values only.
@@ -25,6 +30,7 @@ public:
   size_t HiddenCount() const { return entries.size() - visible.size(); }
   bool IsSelected(const std::string &path) const { return selection.count(path); }
   std::vector<std::string> Selected() const;
+  SelectionSummary Summary() const;
   void Select(int mode);
   void Pick(int index, bool extend, bool toggle);
   void RestoreSelection(const std::vector<std::string> &paths);

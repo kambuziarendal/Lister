@@ -103,6 +103,7 @@ public:
         item.AddBool("directory", entry.directory);
         item.AddInt32("kind", entry.link ? 2 : entry.directory ? 1 : 0);
         item.AddInt64("size", entry.size);
+        item.AddBool("sizeKnown", entry.sizeKnown);
         item.AddInt64("date", entry.modified);
         if (icons) {
           BMimeType mime(entry.directory ? "application/x-vnd.Be-directory"
