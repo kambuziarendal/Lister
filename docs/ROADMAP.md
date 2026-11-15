@@ -21,6 +21,24 @@ størrelse/SHA-256 og valg etter filendelse i det aktive panelet.
 
 Skipta er nytt arbeidsnavn for den planlagte delen tidligere omtalt som Deila.
 
+## Aktiv prioritet: stabilitet før flere funksjoner, 15. november 2026
+
+Arne satte nye funksjoner på vent etter 0.30.0. Gå først gjennom samtidige
+filendringer, nettverksbrudd, store mapper/arkiver og samspillet jobb/grensesnitt.
+[Statusgjennomgangen](STABILITY-AUDIT-0.30.0.md) skiller eksisterende testbevis,
+friske native prøver og udekkede tilfeller. Ingen retting er levert av selve
+kartleggingen. Prioritert oppfølging:
+
+1. Feilet levering av katalograder må ikke gi vellykket, ufullstendig visning.
+2. Reduser kraftig gjentatt kontroll-/arkivarbeid i verifisert arkivflytting,
+   uten å svekke innholdskontroll eller kildevern.
+3. Utvid faktiske bruddprøver til opp-/nedlasting og publisering/opprydding
+   for SMB, FTP og SFTP, med målt avbrudd og gjenoppretting.
+4. Samlet langvarig jobb/UI-belastning og større datasett med målte grenser.
+
+Masseomdøping og tilpassbare handlinger nedenfor beholder plassen i planen, men
+kommer etter stabilitetstrinnene. Søkefiltrene i 0.30.0 er allerede levert lokalt.
+
 ## Hovedretning og neste trinn, presisert 15. november 2026
 
 Vi lager Listi først og fremst fordi vi savner DOpus på Haiku. DOpus-inspirert
