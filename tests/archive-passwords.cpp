@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "ArchivePasswords.h"
 #include "ArchiveJobs.h"
+#include "ArchiveBackend.h"
 #include <Application.h>
 #include <cstdio>
 #include <fstream>
@@ -55,7 +56,7 @@ int main(){
  SetArchivePasswordPrompt([&](const std::string &,bool,const TransferControl &){rename(changed.c_str(),(changed+".old").c_str());std::ofstream(changed)<<"replacement";return secret();});
  failed=false;try{read(changedEntry);}catch(const std::exception &e){failed=std::string(e.what()).find("Archive changed")!=std::string::npos;}check(failed,"replacement during prompt rejected");
  SetArchivePasswordPrompt([](const std::string &,bool,const TransferControl &){return secret();});
- failed=false;try{auto archive=OpenArchive(fixtures+"encrypted.7z");ListFiles(archive);}catch(const std::exception &e){failed=std::string(e.what()).find("not supported")!=std::string::npos;}check(failed,"encrypted 7z unsupported explicitly");
+ failed=false;try{auto archive=OpenArchive(fixtures+"encrypted.7z");ListFiles(archive);}catch(const std::exception &e){failed=std::string(e.what()).find("not supported")!=std::string::npos;}check(SevenZipAvailable()?!failed:failed,"encrypted 7z uses optional engine or rejects explicitly");
  struct stat st{};stat(fixture.c_str(),&st);auto identity=ArchivePasswordIdentity(st);auto generation=ArchivePasswordGeneration();
  auto another=st;another.st_ino++;check(identity!=ArchivePasswordIdentity(another),"cache identity binds inode");
  another=st;another.st_mtim.tv_nsec++;check(identity!=ArchivePasswordIdentity(another),"cache identity binds modification");

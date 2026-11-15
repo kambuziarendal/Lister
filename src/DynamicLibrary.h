@@ -5,8 +5,8 @@
 #include <stdexcept>
 #include <string>
 
-// Optional system libraries stay optional at app startup. No private ABI or
-// bundled copy: function types come from each library's public headers.
+// Optional system libraries stay optional at app startup. Function types come
+// from the corresponding headers; plugin adapters must verify their native ABI.
 class DynamicLibrary {
   void *handle = nullptr;
 

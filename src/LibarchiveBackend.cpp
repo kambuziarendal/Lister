@@ -161,7 +161,7 @@ struct Reader {
     if (error.find("encrypt") != std::string::npos ||
         error.find("Encrypt") != std::string::npos)
       error += " This encryption is not supported by the installed archive engine. "
-               "Encrypted 7z/RAR and ZIP header encryption need another adapter.";
+               "Install the optional p7zip package for encrypted 7z/RAR. ZIP header encryption needs another adapter.";
     throw std::runtime_error(error);
   }
   struct archive_entry *Next() {
@@ -176,7 +176,7 @@ struct Reader {
     if (LIBCALL(lib, archive_entry_is_encrypted)(entry) &&
         (LIBCALL(lib, archive_format)(handle) & ARCHIVE_FORMAT_BASE_MASK) != ARCHIVE_FORMAT_ZIP)
       throw std::runtime_error("Encrypted 7z/RAR is not supported by this archive engine. "
-                               "It needs an additional Listi adapter; no external app was opened.");
+                               "Install the optional p7zip package from HaikuDepot, then reopen it in Listi.");
     return entry;
   }
   bool CompressedOrArchive() const {
@@ -185,39 +185,9 @@ struct Reader {
            LIBCALL(lib, archive_filter_code)(handle, 0) != ARCHIVE_FILTER_NONE;
   }
 };
-std::string SafeName(const char *raw) {
-  if (!raw)
-    throw std::runtime_error("Archive entry has no name");
-  std::string name = raw;
-  if (name.size() > 32768)
-    throw std::runtime_error("Archive path is too long");
-  if (!name.empty() && (name[0] == '/' || name[0] == '\\'))
-    throw std::runtime_error("Archive contains an unsafe absolute path");
-  if (name.find('\\') != std::string::npos ||
-      name.find_first_of("\r\n") != std::string::npos)
-    throw std::runtime_error("Archive contains an unsupported path");
-  std::string out;
-  size_t at = 0;
-  while (at < name.size()) {
-    auto end = name.find('/', at);
-    if (end == std::string::npos)
-      end = name.size();
-    auto part = name.substr(at, end - at);
-    if (part == ".." || (out.empty() && part.size() > 1 && part[1] == ':'))
-      throw std::runtime_error(
-          "Archive contains an unsafe parent or drive path");
-    if (!part.empty() && part != ".") {
-      if (!out.empty())
-        out += '/';
-      out += part;
-    }
-    at = end + 1;
-  }
-  return out;
-}
 std::string EntryName(Reader &reader, struct archive_entry *entry,
                       const Location &location) {
-  auto name = SafeName(LIBCALL(reader.lib, archive_entry_pathname)(entry));
+  auto name = SafeArchivePath(LIBCALL(reader.lib, archive_entry_pathname)(entry));
   if (LIBCALL(reader.lib, archive_format)(reader.handle) ==
       ARCHIVE_FORMAT_RAW) {
     name = LocationLeaf(location.archive);

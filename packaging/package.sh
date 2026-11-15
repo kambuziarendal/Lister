@@ -13,9 +13,11 @@ mkdir -p "$stage/apps" "$stage/data/licenses" "$stage/data/deskbar/menu/Applicat
 cp "$1" "$stage/apps/Listi"
 cp PackageInfo "$stage/.PackageInfo"
 cp LICENSE "$stage/data/licenses/MIT"
+cp src/vendor/p7zip/copying.txt "$stage/data/licenses/LGPL-2.1"
 cp README.md docs/*.md "$stage/documentation/packages/listi/"
 mkdir -p "$stage/documentation/packages/listi/reference"
 cp docs/reference/*.json "$stage/documentation/packages/listi/reference/"
+cp -R src/vendor/p7zip "$stage/documentation/packages/listi/reference/p7zip"
 ln -s /boot/system/apps/Listi "$stage/data/deskbar/menu/Applications/Listi"
 # Normalize mtimes. Haiku package also records filesystem atime/creation time,
 # so package-container bytes are not guaranteed identical across rebuilds.
