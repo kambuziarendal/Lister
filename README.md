@@ -2,8 +2,13 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.27.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.28.0**. Published preview: **0.2.0**.
 
+
+0.28.0 adds read-only recursive folder comparison with quick byte-size checks or
+SHA-256 content verification. **Listi > Compare folders** starts from the two
+panels. Right-click a file and choose **Select same file type** to select visible
+files with the same extension. See [comparison and selection](docs/COMPARE-0.28.0.md).
 
 0.27.0 adds external editing of writable archive files with verified automatic
 save-back, conflict detection and retained private working copies. See

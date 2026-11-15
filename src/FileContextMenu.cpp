@@ -66,6 +66,8 @@ void FileActions(BMenu &menu, const ContextMenuOptions &options) {
     add("Open with...", kOpenWith, single && local);
     add("View", kView, single);
     add("Edit", kEdit, single && (local || options.archiveRemove));
+    const std::string typeLabel = options.fileType.empty() ? "Select same file type" : "Select same file type (" + options.fileType + ")";
+    add(typeLabel.c_str(), kSelectType, !options.fileType.empty());
   }
   menu.AddSeparatorItem();
   add("Copy", kClipboardCopy, local || options.archiveRemove);

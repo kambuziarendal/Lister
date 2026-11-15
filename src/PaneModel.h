@@ -14,6 +14,7 @@ struct PaneEntry {
   float fraction = 0;
   std::shared_ptr<BBitmap> icon;
 };
+std::string FileTypeKey(const std::string &name);
 struct PaneSort { int column = 0; bool ascending = true; };
 struct SelectionSummary {
   size_t visible = 0, selected = 0, files = 0, folders = 0, links = 0, unknown = 0;
@@ -35,6 +36,8 @@ public:
   std::vector<std::string> Selected() const;
   SelectionSummary Summary() const;
   void Select(int mode);
+  std::string FocusedFileType() const;
+  bool SelectSameFileType();
   void Pick(int index, bool extend, bool toggle);
   void RestoreSelection(const std::vector<std::string> &paths);
   void SetSelection(const std::vector<std::string> &paths,

@@ -4,6 +4,33 @@
 #include <algorithm>
 #include <limits>
 #include <strings.h>
+std::string FileTypeKey(const std::string &name) {
+  std::string folded = name;
+  for (char &c : folded) if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+  // A compressed TAR is a different type from a single compressed stream.
+  for (const char *suffix : {".tar.gz", ".tar.bz2", ".tar.xz", ".tar.lzma", ".tar.lz", ".tar.zst"}) {
+    const std::string ending = suffix;
+    if (folded.size() > ending.size() && folded.compare(folded.size()-ending.size(), ending.size(), ending) == 0)
+      return ending;
+  }
+  auto dot = folded.rfind('.');
+  if (dot == std::string::npos || dot == 0 || dot + 1 == folded.size()) return {};
+  return folded.substr(dot);
+}
+std::string PaneModel::FocusedFileType() const {
+  auto entry = Focused();
+  return entry && !entry->directory && !entry->parent && entry->kind != 2 ? FileTypeKey(entry->name) : std::string();
+}
+bool PaneModel::SelectSameFileType() {
+  const auto type = FocusedFileType();
+  if (type.empty()) return false;
+  selection.clear();
+  for (auto entry : visible)
+    if (!entry->parent && !entry->directory && entry->kind != 2 && FileTypeKey(entry->name) == type)
+      selection.insert(entry->path);
+  anchor = focused;
+  return true;
+}
 void PaneModel::Clear() {
   visible.clear();
   entries.clear();

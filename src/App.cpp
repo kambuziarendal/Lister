@@ -9,6 +9,7 @@
 #include "JobSnapshot.h"
 #include "ArchiveWindow.h"
 #include "ArchiveEditor.h"
+#include "FolderCompare.h"
 #include "MessageStore.h"
 #include "PropertiesWindow.h"
 #include "OpenWith.h"
@@ -683,7 +684,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.27.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.28.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
@@ -740,6 +741,7 @@ public:
     select->AddItem(
         new BMenuItem("None", new BMessage(kNone), 'A', B_SHIFT_KEY));
     select->AddItem(new BMenuItem("Invert", new BMessage(kInvert), 'I'));
+    select->AddItem(new BMenuItem("Same file type", new BMessage(kSelectType)));
     menu->AddItem(select);
     auto viewMenu = new BMenu("View");
     auto workspace = new BMenu("Workspace");
@@ -779,6 +781,7 @@ public:
     view->AddItem(new BMenuItem("Refresh", new BMessage(kRefresh), 'L'));
     view->AddItem(new BMenuItem("Filter names", new BMessage(kFilter), 'F'));
     view->AddItem(new BMenuItem("Find files...", new BMessage(kSearch), 'F', B_SHIFT_KEY));
+    view->AddItem(new BMenuItem("Compare folders...", new BMessage(kCompareFolders)));
     view->AddItem(new BMenuItem("Terminal here", new BMessage(kTerminal), 'T'));
     view->AddItem(new BMenuItem("Operations", new BMessage(kShowJobs), 'O'));
     view->AddSeparatorItem();
@@ -1214,6 +1217,7 @@ public:
           }
           selectedArchive=selectedLocation.archive;
         }
+        options.fileType = panes[owner]->SelectedFileType();
         options.sort = panes[owner]->Sorting();
         options.view = panes[owner]->CurrentView();
         const auto choice = ShowContextMenu(screen, options);
@@ -1420,6 +1424,12 @@ public:
       break;
     case kShowJobs:
       queue->Toggle();
+      break;
+    case kCompareFolders:
+      OpenFolderCompare(panes[source]->Path(), panes[1-source]->Path());
+      break;
+    case kSelectType:
+      if (!panes[source]->SelectSameFileType()) Notice("Choose a file with a filename extension. Only visible files of that type are selected; folders and links are excluded.");
       break;
     case kAll:
       panes[source]->Select(1);

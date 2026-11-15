@@ -16,6 +16,8 @@ Full likhet, flytting mellom lokale mapper og arkiver,
 lenker/spesialmetadata, flerpartsarkiver og skrivemotorer for RAR gjenstår. Ikke merk kravet ferdig før disse grensene er løst.
 **Nytt krav 15. november:** Rekursiv mappe-diff med størrelseskontroll og valgfri SHA-256.
 Kontekstmenyen skal kunne velge alle filer av samme type som den klikkede filen.
+Implementert i lokal kandidat 0.28.0: skrivbeskyttet rekursiv sammenligning med
+størrelse/SHA-256 og valg etter filendelse i det aktive panelet.
 
 Skipta er nytt arbeidsnavn for den planlagte delen tidligere omtalt som Deila.
 

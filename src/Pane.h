@@ -34,6 +34,8 @@ public:
   void Apply(const Preferences &);
   void SetWorkspace(Workspace);
   void Select(int mode);
+  bool SelectSameFileType();
+  std::string SelectedFileType() const { return entries.FocusedFileType(); }
   std::vector<std::string> Selected() const;
   const char *Path() const { return path.String(); }
   bool CancelSelectionGesture();
