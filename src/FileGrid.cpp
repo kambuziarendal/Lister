@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "FileDrop.h"
 #include "FileGrid.h"
+#include "PanelAppearance.h"
 #include "RubberBand.h"
 #include "Pane.h"
 #include "PaneModel.h"
@@ -90,6 +91,13 @@ class GridView : public FileGrid {
   }
 
 public:
+  void SetActive(bool active) override {
+    const auto background = Lister::PanelBackground(B_DOCUMENT_BACKGROUND_COLOR, active);
+    if (ViewColor() == background) return;
+    SetViewColor(background);
+    SetLowColor(background);
+    Invalidate();
+  }
   GridView(Pane *p, PaneModel *state)
       : FileGrid("file grid", B_WILL_DRAW | B_NAVIGABLE | B_FRAME_EVENTS |
                                B_FULL_UPDATE_ON_RESIZE),
@@ -353,8 +361,8 @@ public:
       auto row = model->Visible()[i];
       auto cell = Cell(i).InsetByCopy(4, 4);
       bool selected = Selected(row);
-      SetHighUIColor(selected ? B_LIST_SELECTED_BACKGROUND_COLOR
-                              : B_DOCUMENT_BACKGROUND_COLOR);
+      if (selected) SetHighUIColor(B_LIST_SELECTED_BACKGROUND_COLOR);
+      else SetHighColor(ViewColor());
       FillRoundRect(cell, 4, 4);
       BBitmap *picture = row->icon.get();
       if (mode == 3 && !row->directory && !row->parent) {

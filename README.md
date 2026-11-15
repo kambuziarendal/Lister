@@ -174,3 +174,7 @@ Simple and restored when returning to Commander. No function keys are assigned.
 Drag from empty list space to select a rectangle in either renderer. Ctrl or
 Shift adds to the original selection. Escape restores that original selection.
 Dragging an item still starts file drag-and-drop. Selection scrolls at the edges.
+
+Commander identifies the active panel with a thin themed outline and subtle
+address/file-area tint, without left/right labels. Only the outline briefly
+animates on panel switches; Simple stays neutral.

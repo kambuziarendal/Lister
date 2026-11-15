@@ -2,6 +2,7 @@
 #include "FileDrop.h"
 // Only this renderer depends on Haiku's private ColumnListView API.
 #include "FileDetails.h"
+#include "PanelAppearance.h"
 #include "RubberBand.h"
 #include <Region.h>
 #include <StringForSize.h>
@@ -371,6 +372,7 @@ class DetailsView : public FileDetails {
   DetailsList *list;
   std::map<std::string, FileRow *> rows;
   Preferences prefs;
+  bool active = false;
 public:
   DetailsView(Pane *pane, PaneModel *state, const Preferences &p)
       : FileDetails("file details", B_WILL_DRAW | B_SUPPORTS_LAYOUT),
@@ -386,6 +388,11 @@ public:
     list->simple = value;
     list->UpdateScrollBars();
   }
+  void SetActive(bool value) override {
+    active = value;
+    const auto color = Lister::PanelBackground(B_PANEL_BACKGROUND_COLOR, active);
+    if (list->Color(B_COLOR_BACKGROUND) != color) list->SetColor(B_COLOR_BACKGROUND, color);
+  }
   void Apply(const Preferences &p) override {
     prefs = p;
     list->name->prefs = p;
@@ -394,7 +401,7 @@ public:
     list->SetFont(&p.font);
     list->SetColumnVisible(1, p.size);
     list->SetColumnVisible(2, p.date);
-    list->SetColor(B_COLOR_BACKGROUND, ui_color(B_PANEL_BACKGROUND_COLOR));
+    list->SetColor(B_COLOR_BACKGROUND, Lister::PanelBackground(B_PANEL_BACKGROUND_COLOR, active));
     list->SetColor(B_COLOR_TEXT, ui_color(B_PANEL_TEXT_COLOR));
     list->SetColor(B_COLOR_SELECTION,
                     tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.80));

@@ -24,6 +24,7 @@ public:
   Pane(int32 id, const Preferences &);
   ~Pane();
   void AttachedToWindow() override;
+  void Draw(BRect) override;
   void MessageReceived(BMessage *) override;
   void Navigate(const char *path);
   void Reload();
@@ -80,7 +81,13 @@ private:
   BButton *clearFilter;
   BStringView *status;
   void SetStatus(const char *);
-  BStringView *role;
+  void UpdateActivityAppearance();
+  void InvalidateActivityBorder();
+  std::unique_ptr<BMessageRunner> activityTimer;
+  int64 activitySerial = 0;
+  bigtime_t activityStarted = 0;
+  int activitySteps = 0;
+  float activityLevel = 0, activityFrom = 0;
   bool active = false;
   struct Transfer {
     float fraction = 0;

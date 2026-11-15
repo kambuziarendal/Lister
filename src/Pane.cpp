@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "Pane.h"
+#include "PanelAppearance.h"
 #include "DirectoryScanner.h"
 #include "FileDetails.h"
 #include "FileGrid.h"
@@ -60,7 +61,7 @@ public:
 };
 constexpr uint32 kRememberView = 'grem',
                  kForgetView = 'gfor', kExpireProgress = 'expr',
-                 kToggleTree = 'ttre';
+                 kToggleTree = 'ttre', kActivityFrame = 'actf';
 } // namespace
 namespace {
 class GridScroll : public BScrollView {
@@ -97,8 +98,6 @@ Pane::Pane(int32 number, const Preferences &p)
     : BView("pane", B_WILL_DRAW | B_SUPPORTS_LAYOUT), id(number), prefs(p),
       generation(std::make_shared<std::atomic<int64>>(0)) {
   SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
-  role = new BStringView("role", id == 0 ? "Left panel" : "Right panel");
-  role->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
   auto menu = new BPopUpMenu("Go");
   const char *names[] = {"Parent",  "Root",  "Home",
                          "Desktop", "Disks", "Trash (this volume)"};
@@ -168,7 +167,6 @@ Pane::Pane(int32 number, const Preferences &p)
   status->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
   header = new BGroupView(B_HORIZONTAL, 5);
   header->SetName("panel toolbar");
-  header->AddChild(role);
   header->AddChild(field);
   header->AddChild(display);
   filterRow = new BGroupView(B_HORIZONTAL, 5);
@@ -218,14 +216,56 @@ void Pane::Activate() {
     Window()->PostMessage(&m);
   }
 }
+void Pane::InvalidateActivityBorder() {
+  const auto b = Bounds();
+  // Only the empty outer inset is animated, never the file views or controls.
+  Invalidate(BRect(b.left, b.top, b.right, b.top + 3));
+  Invalidate(BRect(b.left, b.bottom - 3, b.right, b.bottom));
+  Invalidate(BRect(b.left, b.top + 4, b.left + 3, b.bottom - 4));
+  Invalidate(BRect(b.right - 3, b.top + 4, b.right, b.bottom - 4));
+}
+void Pane::Draw(BRect) {
+  if (simple) return;
+  const auto neutral = Lister::PanelBlend(ui_color(B_PANEL_BACKGROUND_COLOR),
+                                         ui_color(B_PANEL_TEXT_COLOR), 0.12f);
+  SetHighColor(Lister::PanelBlend(neutral, ui_color(B_KEYBOARD_NAVIGATION_COLOR),
+                                  activityLevel));
+  SetPenSize(2);
+  StrokeRect(Bounds().InsetByCopy(1, 1));
+  SetPenSize(1);
+}
+void Pane::UpdateActivityAppearance() {
+  const bool highlighted = active && !simple;
+  list->SetActive(highlighted);
+  grid->SetActive(highlighted);
+  auto text = edit->TextView();
+  const auto background = Lister::PanelBlend(ui_color(B_DOCUMENT_BACKGROUND_COLOR),
+      ui_color(B_KEYBOARD_NAVIGATION_COLOR), highlighted ? 0.075f : 0.f);
+  if (text->ViewColor() != background) {
+    text->SetViewColor(background);
+    text->SetLowColor(background);
+    text->Invalidate();
+  }
+  edit->SetToolTip(simple ? "Folder path" : active ? "Active file panel" : "Inactive file panel");
+}
 void Pane::SetSource(bool source) {
+  if (active == source) return;
   active = source;
-  BString label(simple ? "Files" : id == 0 ? "Left panel" : "Right panel");
-  if (source && !simple)
-    label << " (active)";
-  role->SetText(label);
-  role->SetHighUIColor(B_PANEL_TEXT_COLOR);
-  role->SetFont(source ? be_bold_font : be_plain_font);
+  UpdateActivityAppearance();
+  activityTimer.reset();
+  ++activitySerial;
+  if (!simple && Window()) {
+    activityFrom = activityLevel;
+    activityStarted = system_time();
+    activitySteps = 0;
+    BMessage frame(kActivityFrame);
+    frame.AddInt64("serial", activitySerial);
+    activityTimer.reset(new BMessageRunner(BMessenger(this), &frame, 25000, 6));
+    if (activityTimer->InitCheck() == B_OK) return;
+    activityTimer.reset();
+  }
+  activityLevel = active ? 1.f : 0.f;
+  InvalidateActivityBorder();
 }
 void Pane::SetDisplayMode(int32 value) {
   mode = std::max(0, std::min(3, value));
@@ -301,7 +341,11 @@ void Pane::SetSimple(bool value) {
   if (visible) tree->ShowPath(path.String());
   display->Menu()->ItemAt(8)->SetMarked(treeVisible);
   display->Menu()->ItemAt(8)->SetEnabled(!simple);
-  SetSource(active);
+  activityTimer.reset();
+  ++activitySerial;
+  activityLevel = active ? 1.f : 0.f;
+  UpdateActivityAppearance();
+  InvalidateActivityBorder();
 }
 void Pane::Apply(const Preferences &p) {
   prefs = p;
@@ -313,6 +357,7 @@ void Pane::Apply(const Preferences &p) {
   list->Apply(p);
   grid->SetFont(&p.font);
   grid->Update();
+  UpdateActivityAppearance();
 }
 void Pane::Navigate(const char *p) {
   if (!scanner)
@@ -504,6 +549,16 @@ void Pane::SendSelection(bool gesture) {
 }
 void Pane::MessageReceived(BMessage *m) {
   switch (m->what) {
+  case kActivityFrame: {
+    if (m->GetInt64("serial", -1) != activitySerial || !activityTimer) break;
+    const bool finished = ++activitySteps >= 6 || system_time() - activityStarted >= 150000;
+    const float fraction = finished ? 1.f
+      : std::min(1.f, float(system_time() - activityStarted) / 150000.f);
+    activityLevel = activityFrom + ((active ? 1.f : 0.f) - activityFrom) * fraction;
+    InvalidateActivityBorder();
+    if (finished) activityTimer.reset();
+    break;
+  }
   case kExpireProgress: {
     std::vector<std::string> expired;
     bool pending = false;
