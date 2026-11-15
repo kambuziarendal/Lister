@@ -208,6 +208,10 @@ Arne trenger i hverdagen.
 - Tracker-erstatning krever egen studie av BFilePanel/libtracker, skrivebord,
   volumer, MIME, åpne-med, Trash, Deskbar og recovery. Sameksistens er standard.
 - Plan 9 holdes mulig gjennom separerbare begreper og adaptere. Ingen Plan 9-kode nå.
+- [Deila](DEILA-SPEC.md) er et separat, langsiktig prosjekt for kryptert
+  peer-to-peer-deling. Listi kan få en valgfri `deila://`-adapter først etter at
+  Deila fungerer selvstendig. Deila er ikke en Listi-avhengighet, og planen gir
+  ingen fullmakt til implementasjon, nye avhengigheter eller kryptografivalg nå.
 
 ## Retningsprøven
 
