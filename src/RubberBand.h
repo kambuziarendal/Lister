@@ -114,6 +114,9 @@ public:
         BPoint point; uint32 buttons;
         view->GetMouse(&point, &buttons, false);
         Update(point, (buttons & B_PRIMARY_MOUSE_BUTTON) != 0);
+        // Drop overdue ticks after a slow paint instead of replaying them and
+        // starving input and window messages with consecutive redraws.
+        lastFrame = system_time();
         if (!(buttons & B_PRIMARY_MOUSE_BUTTON)) End(false);
       }
       return B_SKIP_MESSAGE;

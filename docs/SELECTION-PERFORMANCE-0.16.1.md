@@ -28,3 +28,12 @@ Icon, large-icon and thumbnail layouts recalculate their column count at the
 full available width before deciding whether a vertical bar is necessary.
 Commander retains its always-available scroll controls. The grid has explicit
 layout limits so reclaimed space cannot feed back into a larger window minimum.
+
+Detail columns explicitly provide the configured font within each native cell
+paint, avoiding font-state queries after the native widget pops its per-cell
+state. Date widths are normalized to the native cache lookup key; size labels
+use Haiku's system formatter lazily, once per displayed field. Clipped labels
+are refreshed on width/font changes. Native row icons are submitted in a batch
+with one completion barrier before model-owned bitmaps can be replaced; native
+column resize-buffer rendering remains synchronous. Overdue timer ticks are
+skipped after a slow frame, so they cannot monopolize the window message queue.

@@ -4,6 +4,7 @@
 #include "FileDetails.h"
 #include "RubberBand.h"
 #include <Region.h>
+#include <StringForSize.h>
 #include "Pane.h"
 #include "PaneModel.h"
 #include "VirtualFile.h"
@@ -30,9 +31,11 @@ struct FileRow : BRow {
 class NameColumn : public BStringColumn {
 public:
   Preferences prefs;
+  BView *batchTarget = nullptr;
   NameColumn(const Preferences &p)
       : BStringColumn("Name", 260, 80, 1200, B_TRUNCATE_MIDDLE), prefs(p) {}
   void DrawField(BField *f, BRect r, BView *v) override {
+    v->SetFont(&prefs.font);
     auto n = static_cast<NameField *>(f);
     rgb_color old = v->HighColor();
     if (n->entry->parent)
@@ -45,8 +48,11 @@ public:
       if (n->entry->icon) {
         v->SetDrawingMode(B_OP_ALPHA);
         float top = r.top + (r.Height() - 16) / 2;
-        v->DrawBitmap(n->entry->icon.get(), n->entry->icon->Bounds(),
-                      BRect(r.left + 3, top, r.left + 18, top + 15));
+        BRect destination(r.left + 3, top, r.left + 18, top + 15);
+        if (v == batchTarget)
+          v->DrawBitmapAsync(n->entry->icon.get(), n->entry->icon->Bounds(), destination);
+        else
+          v->DrawBitmap(n->entry->icon.get(), n->entry->icon->Bounds(), destination);
         v->SetDrawingMode(B_OP_COPY);
       }
       r.left += 23;
@@ -72,12 +78,55 @@ public:
     return strcasecmp(x->String(), y->String());
   }
 };
+struct DateField : BDateField {
+  BFont formattedFont;
+  bool formatted = false;
+  explicit DateField(time_t *value) : BDateField(value) {}
+};
+class DateColumn : public BDateColumn {
+public:
+  BFont font;
+  explicit DateColumn(const BFont &value) : BDateColumn("Modified", 160, 80, 280), font(value) {}
+  void DrawField(BField *field, BRect rect, BView *view) override {
+    auto date = static_cast<DateField *>(field);
+    view->SetFont(&font);
+    if (!date->formatted || date->formattedFont != font) date->SetWidth(-1);
+    BDateColumn::DrawField(field, rect, view);
+    // Haiku's date column tests the full cell width, but caches the width
+    // minus its text margins. Normalize the key so selection repainting does
+    // not rerun locale formatting for every visible date on every frame.
+    date->SetWidth(rect.Width());
+    date->formattedFont = font;
+    date->formatted = true;
+  }
+};
+struct SizeField : BSizeField {
+  BString label, clipped;
+  BFont formattedFont;
+  float width = -1;
+  bool formatted = false;
+  explicit SizeField(off_t size) : BSizeField(size) {}
+};
 class SizeColumn : public BSizeColumn {
 public:
-  SizeColumn() : BSizeColumn("Size", 85, 50, 200) {}
+  BFont font;
+  explicit SizeColumn(const BFont &value) : BSizeColumn("Size", 85, 50, 200), font(value) {}
   void DrawField(BField *field, BRect rect, BView *view) override {
-    if (static_cast<BSizeField *>(field)->Size() >= 0)
-      BSizeColumn::DrawField(field, rect, view);
+    auto size = static_cast<SizeField *>(field);
+    if (size->Size() < 0) return;
+    if (!size->formatted) {
+      char text[128];
+      size->label = string_for_size(size->Size(), text, sizeof(text));
+      size->formatted = true;
+    }
+    view->SetFont(&font);
+    if (size->width != rect.Width() || size->formattedFont != font) {
+      size->clipped = size->label;
+      view->TruncateString(&size->clipped, B_TRUNCATE_END, std::max(0.f, rect.Width() - 16));
+      size->width = rect.Width();
+      size->formattedFont = font;
+    }
+    DrawString(size->clipped.String(), view, rect);
   }
 };
 
@@ -117,6 +166,8 @@ public:
   Pane *pane;
   PaneModel *model;
   NameColumn *name;
+  SizeColumn *size;
+  DateColumn *date;
   bool syncing = false, simple = false, arranging = false;
   RubberBand *band;
   DetailsList(Pane *p, PaneModel *state, const Preferences &prefs)
@@ -124,9 +175,12 @@ public:
         pane(p), model(state) {
     simple = prefs.simple;
     name = new NameColumn(prefs);
+    name->batchTarget = ScrollView();
     AddColumn(name, 0);
-    AddColumn(new SizeColumn(), 1);
-    AddColumn(new BDateColumn("Modified", 160, 80, 280), 2);
+    size = new SizeColumn(prefs.font);
+    date = new DateColumn(prefs.font);
+    AddColumn(size, 1);
+    AddColumn(date, 2);
     SetSelectionMode(B_MULTIPLE_SELECTION_LIST);
     SetSortColumn(name, false, true);
     SetInvocationMessage(new BMessage(kInvoke));
@@ -223,6 +277,9 @@ public:
     arranging = false;
   }
   void DrawAfterChildren(BRect) override {
+    // One completion barrier for all row icons, before model-owned bitmaps can
+    // be replaced. Native resize-buffer drawing remains synchronous.
+    Sync();
     if (!band->Active()) return;
     auto view = ScrollView();
     BRect clip = ConvertFromScreen(view->ConvertToScreen(view->Bounds()));
@@ -329,6 +386,8 @@ public:
   void Apply(const Preferences &p) override {
     prefs = p;
     list->name->prefs = p;
+    list->size->font = p.font;
+    list->date->font = p.font;
     list->SetFont(&p.font);
     list->SetColumnVisible(1, p.size);
     list->SetColumnVisible(2, p.date);
@@ -360,9 +419,9 @@ public:
         continue;
       auto row = new FileRow(entry, std::max(22.f, prefs.font.Size() + 9));
       row->SetField(new NameField(entry), 0);
-      row->SetField(new BSizeField(entry->directory ? -1 : entry->size), 1);
+      row->SetField(new SizeField(entry->directory ? -1 : entry->size), 1);
       time_t date = entry->modified;
-      row->SetField(new BDateField(&date), 2);
+      row->SetField(new DateField(&date), 2);
       rows.emplace(entry->path, row);
       list->AddRow(row);
     }
