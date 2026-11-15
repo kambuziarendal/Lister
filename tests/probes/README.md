@@ -33,3 +33,8 @@ starting with _. Link -lbe -lshared -ltranslation -lcolumnlistview -ltracker.
 Promote defect reproductions into ordinary assertions only when implementing a
 fix. Do not weaken file guards to make the scaling probe faster. Preserve old
 failure logs and distinguish instrumented timings from uninstrumented UI timings.
+
+The 0.31.0 fixes are exercised by `tests/directory-delivery.cpp`,
+`tests/operation-queue.cpp`, `tests/archive-read-scope.cpp` and
+`tests/archive-move-scaling.cpp` in the ordinary native runner. The historical
+probes above keep their original diagnostic exit meanings.

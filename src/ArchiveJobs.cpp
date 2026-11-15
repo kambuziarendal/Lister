@@ -290,7 +290,8 @@ std::string MemberPath(const std::string &path) {
   return SafeArchivePath(value.c_str());
 }
 void VerifyMovedEntry(const std::string &, const std::string &, const TransferControl &, unsigned depth = 0);
-Result RunArchiveEdit(const Job &job,const Hooks &hooks) {
+Result RunArchiveEdit(const Job &job,const Hooks &hooks,
+                      const std::function<void()> &beforePublish = {}) {
   Result result;
   try {
     Require(!job.destination.empty()&&!job.destinationFolder.empty(),"Archive edit target is missing.");
@@ -396,6 +397,10 @@ Result RunArchiveEdit(const Job &job,const Hooks &hooks) {
         VerifyMovedEntry(child, ChildLocation(root, Leaf(child)), verify);
       check();
     }
+    // Full external tree guards belong at the destructive publication boundary,
+    // not in every decoder progress callback. No callback or I/O that changes
+    // the destination is allowed between this guard and the archive rename.
+    if (beforePublish) beforePublish();
     struct stat original,named;FD originalFd(open(job.destination.c_str(),O_RDONLY|O_NOFOLLOW|O_NONBLOCK));
     Require(originalFd.n>=0&&!fstat(originalFd.n,&original)&&!lstat(job.destination.c_str(),&named)&&Unchanged(original,named),
       "The archive was replaced while it was being edited. Nothing was changed.");
@@ -726,8 +731,15 @@ Result RunArchiveLocalMove(const Job &job, const Hooks &hooks) {
       return true;
     };
     internal.proceed = destinationGuard;
-    TransferControl verify; verify.proceed = destinationGuard;
+    TransferControl verify;
+    // The frozen local tree is checked before and after byte verification and
+    // again immediately before removing the source archive. Rechecking the
+    // whole tree for every read/header makes a move superlinear without making
+    // publication atomic. Archive destinations have cheap fingerprint guards.
+    verify.proceed = localDestination ? hooks.proceed : destinationGuard;
+    destinationGuard();
     for (size_t i=0;i<additions.size();++i) VerifyMovedEntry(additions[i],destinations[i],verify);
+    destinationGuard();
     if (localSource) {
       localSource->Verify(); destinationGuard(); cleanup = true;
       for (const auto &path : job.sources) {
@@ -741,9 +753,14 @@ Result RunArchiveLocalMove(const Job &job, const Hooks &hooks) {
       Guards(job); VerifyArchiveSets(job);
       auto remove = PrepareArchiveEditJob(source.archive,{},job.sources);
       // Bind source and verified destination guards through the final rewrite.
-      internal.proceed = [&] { destinationGuard(); Guards(job); VerifyArchiveSets(job); return true; };
+      internal.proceed = [&] {
+        if (hooks.proceed && !hooks.proceed()) throw Cancelled();
+        Guards(job); VerifyArchiveSets(job); return true;
+      };
       cleanup = true;
-      const auto removed = RunArchiveEdit(remove,internal);
+      const auto removed = RunArchiveEdit(remove,internal,[&] {
+        destinationGuard(); Guards(job); VerifyArchiveSets(job);
+      });
       if (removed.cancelled) throw Cancelled();
       Require(removed.errors.empty() && removed.completed == 1,
         removed.errors.empty() ? "Source cleanup did not complete." : removed.errors.front());
@@ -763,6 +780,7 @@ Result RunArchiveLocalMove(const Job &job, const Hooks &hooks) {
   return result;
 }
 Result RunArchiveMove(const Job &job, const Hooks &hooks) {
+  ArchiveListingScope listingScope;
   Result result; bool copied = false;
   try {
     Guards(job); VerifyArchiveSets(job);

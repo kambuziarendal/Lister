@@ -262,7 +262,7 @@ struct Runner {
     Stage(src, source, temp, Control(src, false));
     auto staged = ChildLocation(ParentLocation(dst), Token() + ".part"),
          backup = ChildLocation(ParentLocation(dst), Token() + ".previous");
-    bool stagedExists = false, backupExists = false, committed = false;
+    bool stagedExists = false, backupExists = false, committed = false, commitAttempted = false;
     try {
       FileEntry check;
       if (StatFile(staged, check, control) || StatFile(backup, check, control))
@@ -275,9 +275,13 @@ struct Runner {
         throw std::runtime_error(
             "Destination changed during transfer; it was left untouched");
       if (exists) {
-        RenameFile(dst, backup, control);
+        // The server may rename successfully and lose the acknowledgement.
+        // Track the recovery name before sending the mutation, not afterward.
         backupExists = true;
+        RenameFile(dst, backup, control);
       }
+      control.Check();
+      commitAttempted = true;
       RenameFile(staged, dst, control);
       stagedExists = false;
       committed = true;
@@ -297,18 +301,22 @@ struct Runner {
         }
       if (backupExists)
         try {
-          FileEntry check;
-          if (!StatFile(dst, check, {})) {
+          FileEntry check, saved;
+          if (!StatFile(backup, saved, {})) {
+            backupExists = false;
+          } else if (Same(target, saved) && !StatFile(dst, check, {})) {
             RenameFile(backup, dst, {});
             backupExists = false;
           }
         } catch (...) {
         }
-      if (backupExists || stagedExists) {
+      if (backupExists || stagedExists || (commitAttempted && !committed)) {
         std::string message = committed ? "New file committed; cleanup failed. "
                                         : "Transfer interrupted. ";
+        if (commitAttempted && !committed)
+          message += "Publication was not acknowledged. Check " + dst + ". ";
         if (backupExists)
-          message += "Original file is preserved at " + backup + ". ";
+          message += "Original file recovery path (verify before use): " + backup + ". ";
         if (stagedExists)
           message += "Temporary transfer may remain at " + staged + ". ";
         try {

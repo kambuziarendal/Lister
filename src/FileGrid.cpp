@@ -151,8 +151,10 @@ public:
   }
   ~GridView() {
     generation->store(-1);
-    if (loader)
-      loader->PostMessage(B_QUIT_REQUESTED);
+    // Join before the owning window/application can destroy the token space.
+    // Reader replies are bounded and never require this window's lock.
+    if (loader && loader->Lock())
+      loader->Quit();
   }
   void AttachedToWindow() override {
     loader = new ThumbnailLoader(BMessenger(this), generation, replies);

@@ -105,8 +105,8 @@ FolderTree::FolderTree()
 }
 FolderTree::~FolderTree() {
   generation->store(-1);
-  if (reader)
-    reader->PostMessage(B_QUIT_REQUESTED);
+  if (reader && reader->Lock())
+    reader->Quit();
   Clear();
 }
 void FolderTree::Clear() {

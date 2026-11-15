@@ -19,10 +19,26 @@ namespace {
 class Scanner : public BLooper {
   BMessenger target;
   std::shared_ptr<std::atomic<int64>> generation;
+  std::shared_ptr<DirectoryScanDelivery> delivery;
+
+  bool Send(BMessage &message, int64 serial) {
+    for (int attempt = 0; attempt < 3 && generation->load() == serial; ++attempt) {
+      status_t status = target.SendMessage(&message, (BHandler *)nullptr, 100000);
+      if (status == B_OK) return true;
+      if (status != B_TIMED_OUT && status != B_WOULD_BLOCK && status != B_INTERRUPTED)
+        break;
+    }
+    return false;
+  }
+  void Complete(BMessage &message, int64 serial) {
+    if (!Send(message, serial) && delivery && generation->load() == serial)
+      delivery->failedSerial.store(serial);
+  }
 
 public:
-  Scanner(BMessenger t, std::shared_ptr<std::atomic<int64>> g)
-      : BLooper("directory reader"), target(t), generation(g) {}
+  Scanner(BMessenger t, std::shared_ptr<std::atomic<int64>> g,
+          std::shared_ptr<DirectoryScanDelivery> d)
+      : BLooper("directory reader"), target(t), generation(g), delivery(d) {}
   void MessageReceived(BMessage *m) override {
     if (m->what != kScan) {
       BLooper::MessageReceived(m);
@@ -41,21 +57,26 @@ public:
         failed.AddInt64("serial", serial);
         failed.AddString("path", path);
         failed.AddString("error", error.what());
-        target.SendMessage(&failed);
+        Complete(failed, serial);
         return;
       }
     }
     BMessage batch(kRows);
     batch.AddInt64("serial", serial);
     int count = 0;
+    bool deliveryFailed = false;
     auto send = [&]() {
-      target.SendMessage(&batch, (BHandler *)nullptr, 500000);
+      if (!Send(batch, serial)) {
+        deliveryFailed = true;
+        return;
+      }
       batch.MakeEmpty();
       batch.what = kRows;
       batch.AddInt64("serial", serial);
       count = 0;
     };
     auto row = [&](const char *full, const char *label, bool parent = false) {
+      if (deliveryFailed) return;
       struct stat st;
       if (lstat(full, &st))
         return;
@@ -134,6 +155,7 @@ public:
         }
         for (auto &entry : entries) {
           control.Check();
+          if (deliveryFailed) break;
           virtualRow(entry);
         }
       } catch (const Lister::Cancelled &) {
@@ -144,7 +166,7 @@ public:
     } else if (path == "@disks") {
       BVolumeRoster roster;
       BVolume volume;
-      while (generation->load() == serial &&
+      while (!deliveryFailed && generation->load() == serial &&
              roster.GetNextVolume(&volume) == B_OK) {
         BDirectory root;
         BEntry e;
@@ -172,7 +194,7 @@ public:
               parent = "/";
             row(parent.c_str(), "..", true);
           }
-          while (generation->load() == serial) {
+          while (!deliveryFailed && generation->load() == serial) {
             errno = 0;
             auto e = readdir(dir);
             if (!e) {
@@ -194,15 +216,18 @@ public:
       }
     }
     if (generation->load() == serial) {
-      if (count)
+      if (count && !deliveryFailed)
         send();
+      if (deliveryFailed)
+        done.AddString("error", "Directory delivery failed. Reload to try again.");
       done.AddString("path", path);
-      target.SendMessage(&done, (BHandler *)nullptr, 500000);
+      Complete(done, serial);
     }
   }
 };
 }
 BLooper *CreateDirectoryScanner(BMessenger target,
-    std::shared_ptr<std::atomic<int64>> generation) {
-  return new Scanner(target, generation);
+    std::shared_ptr<std::atomic<int64>> generation,
+    std::shared_ptr<DirectoryScanDelivery> delivery) {
+  return new Scanner(target, generation, delivery);
 }

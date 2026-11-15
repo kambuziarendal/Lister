@@ -61,7 +61,7 @@ public:
 };
 constexpr uint32 kRememberView = 'grem',
                  kForgetView = 'gfor', kExpireProgress = 'expr',
-                 kToggleTree = 'ttre', kActivityFrame = 'actf';
+                 kToggleTree = 'ttre', kActivityFrame = 'actf', kCheckScanDelivery = 'scdl';
 } // namespace
 namespace {
 class GridScroll : public BScrollView {
@@ -190,9 +190,10 @@ Pane::Pane(int32 number, const Preferences &p)
 }
 Pane::~Pane() {
   generation->store(-1);
+  scanTimer.reset();
   stop_watching(this);
-  if (scanner)
-    scanner->PostMessage(B_QUIT_REQUESTED);
+  if (scanner && scanner->Lock())
+    scanner->Quit();
 }
 void Pane::AttachedToWindow() {
   display->Menu()->SetTargetForItems(this);
@@ -206,7 +207,8 @@ void Pane::AttachedToWindow() {
   auto field = dynamic_cast<BMenuField *>(FindView("go"));
   field->Menu()->SetTargetForItems(this);
   placesMenu->SetTargetForItems(this);
-  scanner = CreateDirectoryScanner(BMessenger(this), generation);
+  scanDelivery = std::make_shared<DirectoryScanDelivery>();
+  scanner = CreateDirectoryScanner(BMessenger(this), generation, scanDelivery);
   scanner->Run();
   Apply(prefs);
   Navigate(path);
@@ -473,7 +475,15 @@ void Pane::StartNavigation(const std::string &request, int target, bool trash) {
   m.AddBool("icons", prefs.icons || mode > 0);
   m.AddInt32("iconSize", mode == 0 ? 16 : 96);
   m.AddBool("trash", trash);
-  scanner->PostMessage(&m);
+  BMessage check(kCheckScanDelivery);
+  check.AddInt64("serial", serial);
+  scanTimer.reset(new BMessageRunner(BMessenger(this), &check, 250000));
+  if (scanTimer->InitCheck() != B_OK || scanner->PostMessage(&m) != B_OK) {
+    BMessage failed(kScanDone);
+    failed.AddInt64("serial", serial);
+    failed.AddString("error", "Cannot start directory reader. Reload to try again.");
+    MessageReceived(&failed);
+  }
 }
 void Pane::Reload() {
   if (scanning) {
@@ -806,8 +816,18 @@ void Pane::MessageReceived(BMessage *m) {
     }
     break;
   }
+  case kCheckScanDelivery: {
+    if (scanning && m->GetInt64("serial", -1) == serial &&
+        scanDelivery->failedSerial.load() == serial) {
+      BMessage failed(kScanDone);
+      failed.AddInt64("serial", serial);
+      failed.AddString("error", "Directory completion was not delivered. Reload to try again.");
+      MessageReceived(&failed);
+    }
+    break;
+  }
   case kRows: {
-    if (m->GetInt64("serial", -1) != serial)
+    if (!scanning || m->GetInt64("serial", -1) != serial)
       break;
     BMessage e;
     for (int i = 0; m->FindMessage("entry", i, &e) == B_OK; i++) {
@@ -842,9 +862,10 @@ void Pane::MessageReceived(BMessage *m) {
     break;
   }
   case kScanDone: {
-    if (m->GetInt64("serial", -1) != serial)
+    if (!scanning || m->GetInt64("serial", -1) != serial)
       break;
     scanning = false;
+    scanTimer.reset();
     path = m->GetString("path", path);
     locationValid = !m->HasString("error");
     UpdatePlaces();
@@ -857,6 +878,7 @@ void Pane::MessageReceived(BMessage *m) {
     tree->ShowPath(path.String());
     const char *error;
     if (m->FindString("error", &error) == B_OK) {
+      ClearRows();
       BString s("Cannot open: ");
       s << error;
       SetStatus(s);

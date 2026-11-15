@@ -216,8 +216,9 @@ ImagePreview::ImagePreview()
 }
 ImagePreview::~ImagePreview() {
   generation->store(-1);
-  if (loader)
-    loader->PostMessage(B_QUIT_REQUESTED);
+  // Cancel first, then join; a posted quit can outlive BApplication teardown.
+  if (loader && loader->Lock())
+    loader->Quit();
   delete bitmap;
 }
 void ImagePreview::AttachedToWindow() {

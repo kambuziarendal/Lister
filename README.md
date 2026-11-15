@@ -2,11 +2,15 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.30.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.31.0**. Published preview: **0.2.0**.
 
 
 We are building Listi primarily because we miss DOpus on Haiku. Useful ideas from
 other file managers support that identity, not replace it.
+
+0.31.0 focuses on stability: recoverable directory delivery, retained queue
+results, bounded archive-read reuse and network recovery after lost replies.
+No new user-facing features are introduced. See [verification and measured limits](docs/STABILITY-0.31.0.md).
 
 0.30.0 adds combinable date, byte-size and extension filters to Find files,
 including saved criteria and advanced/live BFS searches. See

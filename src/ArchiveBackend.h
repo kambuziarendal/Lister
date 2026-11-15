@@ -4,6 +4,17 @@
 #include "FileOperation.h"
 #include "VirtualFile.h"
 namespace Lister {
+// Bounded, worker-local metadata reuse during one archive job. Contents are
+// still decoded from disk; fingerprints and password generations guard hits.
+class ArchiveListingScope {
+public:
+  ArchiveListingScope();
+  ~ArchiveListingScope();
+  ArchiveListingScope(const ArchiveListingScope &) = delete;
+  ArchiveListingScope &operator=(const ArchiveListingScope &) = delete;
+};
+bool ArchiveListingScopeActive();
+void ClearLibarchiveReadCache();
 struct ArchiveBackend {
   const char *package;
   bool (*available)();

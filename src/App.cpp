@@ -691,7 +691,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.30.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.31.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
@@ -1415,20 +1415,24 @@ public:
           p->Reload();
       }
       break;
-    case kJobDone:
-      if (clipboardJobs.erase(m->GetInt64("tag", 0))) {
-        const char *path;
-        for (int32 i = 0; m->FindString("moved", i, &path) == B_OK; ++i)
-          clipboardMoved.emplace_back(path);
-        if (clipboardJobs.empty()) {
-          try { Lister::FinishFilePaste(clipboardPaste, clipboardMoved); }
-          catch (const std::exception &e) { Notice(e.what()); }
-          clipboardPaste = {};
-          clipboardMoved.clear();
+    case kQueueWake:
+      for (auto &done : queue->TakeEvents()) {
+        queue->PresentEvent(done);
+        if (done.what != kJobDone) continue;
+        if (clipboardJobs.erase(done.GetInt64("tag", 0))) {
+          const char *path;
+          for (int32 i = 0; done.FindString("moved", i, &path) == B_OK; ++i)
+            clipboardMoved.emplace_back(path);
+          if (clipboardJobs.empty()) {
+            try { Lister::FinishFilePaste(clipboardPaste, clipboardMoved); }
+            catch (const std::exception &e) { Notice(e.what()); }
+            clipboardPaste = {};
+            clipboardMoved.clear();
+          }
         }
+        for (auto p : panes)
+          p->MessageReceived(&done);
       }
-      for (auto p : panes)
-        p->MessageReceived(m);
       break;
     case kShowJobs:
       queue->Toggle();

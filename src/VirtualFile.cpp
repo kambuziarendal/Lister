@@ -239,12 +239,7 @@ bool StatFile(const std::string &p, FileEntry &e, const TransferControl &c) {
       e.directory = true;
       return true;
     }
-    for (auto &item : ListArchive(ParseLocation(ParentLocation(p)), c))
-      if (item.name == LocationLeaf(p)) {
-        e = item;
-        return true;
-      }
-    return false;
+    return StatArchive(l, e, c);
   }
   if (!l.Local())
     return StatNetwork(l, e, c);

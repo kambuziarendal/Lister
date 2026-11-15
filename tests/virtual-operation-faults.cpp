@@ -13,7 +13,7 @@ struct Remote { std::string data; int64_t modified = 1; };
 std::map<std::string, Remote> files;
 bool failCommit = false, failRollback = false, failPartCleanup = false,
      failBackupCleanup = false, cancelAfterBackup = false, cancelled = false,
-     mutateDestination = false;
+     mutateDestination = false, loseBackupReply = false, loseCommitReply = false;
 const std::string destination = "sftp://fixture/out/input";
 bool suffix(const std::string &path, const char *part) {
   return path.find(part) != std::string::npos;
@@ -25,6 +25,7 @@ Result Run(const Job &, const Hooks &) { throw std::runtime_error("Unexpected lo
 std::vector<FileEntry> ListArchive(const Location &, const TransferControl &) {
   throw std::runtime_error("Unexpected archive dispatch");
 }
+bool StatArchive(const Location &, FileEntry &, const TransferControl &) { throw std::runtime_error("Unexpected archive dispatch"); }
 void ReadArchive(const Location &, const DataSink &, const TransferControl &) {
   throw std::runtime_error("Unexpected archive dispatch");
 }
@@ -76,6 +77,9 @@ void ChangeNetwork(const Location &l, const char *action,
   if (!files.count(source) || files.count(target))
     throw std::runtime_error("rename precondition");
   files[target] = files.at(source); files.erase(source);
+  if ((loseBackupReply && suffix(target, ".previous")) ||
+      (loseCommitReply && suffix(source, ".part")))
+    throw std::runtime_error("reply lost after server rename");
   if (cancelAfterBackup && suffix(target, ".previous")) cancelled = true;
 }
 }
@@ -95,7 +99,7 @@ int main() {
   auto reset = [&] {
     files = {{destination, {"old contents", 1}}}; done = 0;
     failCommit = failRollback = failPartCleanup = failBackupCleanup = false;
-    cancelAfterBackup = cancelled = mutateDestination = false;
+    cancelAfterBackup = cancelled = mutateDestination = loseBackupReply = loseCommitReply = false;
   };
   auto has = [&](const char *part) {
     for (auto &item : files) if (suffix(item.first, part)) return true;
@@ -113,6 +117,17 @@ int main() {
   check(r.completed == 1 && r.errors.empty() && done == 1 &&
         files.size() == 1 && files.at(destination).data == "new contents",
         "successful replacement commits once and removes its backup");
+  reset(); loseBackupReply = true; r = RunVirtual(job, hooks);
+  check(!r.completed && !done && !r.errors.empty() && files.size()==1 &&
+        files.at(destination).data=="old contents",
+        "lost backup rename acknowledgement restores original after server commit");
+  reset(); loseBackupReply = failRollback = true; r = RunVirtual(job, hooks);
+  check(!r.completed && !done && !files.count(destination) && has(".previous") && errorHas(r,".previous"),
+        "lost backup acknowledgement plus recovery failure reports retained original path");
+  reset(); loseCommitReply = true; r = RunVirtual(job, hooks);
+  check(!r.completed && !done && files.at(destination).data=="new contents" &&
+        has(".previous") && errorHas(r,"not acknowledged") && errorHas(r,".previous"),
+        "lost publication acknowledgement never overwrites new bytes with old backup");
   reset(); failCommit = true; r = RunVirtual(job, hooks);
   check(r.completed == 0 && !r.errors.empty() && done == 0 && files.size() == 1 &&
         files.at(destination).data == "old contents",

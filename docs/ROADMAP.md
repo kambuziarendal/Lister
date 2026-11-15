@@ -36,6 +36,14 @@ kartleggingen. Prioritert oppfølging:
    for SMB, FTP og SFTP, med målt avbrudd og gjenoppretting.
 4. Samlet langvarig jobb/UI-belastning og større datasett med målte grenser.
 
+Oppfølgingen er implementert og prøvd i lokal 0.31.0-kandidat:
+[korreksjoner, målinger og avgrensninger](STABILITY-0.31.0.md). Native regresjon,
+reelle protokollbrudd og installert kombinert jobb/UI-last er verifisert.
+Et avslutningskrasj funnet i sluttprøven er rettet med venting på avbrutte
+bakgrunnslesere. Egen regresjon og gjentatt installert avslutning er prøvd.
+Dette er ikke en påstand om atomiske snapshots eller alle server-/WAN-varianter.
+Ingen nye funksjoner er lagt til i denne stabilitetsrunden.
+
 Masseomdøping og tilpassbare handlinger nedenfor beholder plassen i planen, men
 kommer etter stabilitetstrinnene. Søkefiltrene i 0.30.0 er allerede levert lokalt.
 

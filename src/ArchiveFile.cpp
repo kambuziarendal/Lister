@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cctype>
 #include <regex>
+#include <map>
+#include <memory>
 
 namespace Lister {
 std::string SafeArchivePath(const char *raw) {
@@ -105,7 +107,18 @@ std::string OpenArchive(const std::string &path,
     return "";
   return Backend().open(path, control);
 }
-std::vector<FileEntry> ListArchive(const Location &location,
+namespace {
+struct CachedListing {
+  std::string fingerprint;
+  uint64_t passwordGeneration;
+  std::shared_ptr<const std::vector<FileEntry>> entries;
+  size_t bytes;
+};
+thread_local unsigned listingScopes = 0;
+thread_local std::map<std::string, CachedListing> listings;
+thread_local size_t listingBytes = 0;
+constexpr size_t ListingBudget = 8 * 1024 * 1024;
+std::vector<FileEntry> ReadListing(const Location &location,
                                    const TransferControl &control) {
   RejectSplitArchive(location.archive);
   const auto parts = FindArchiveVolumes(location.archive);
@@ -120,6 +133,62 @@ std::vector<FileEntry> ListArchive(const Location &location,
   if (!format.empty() && SevenZipAvailable())
     return SevenZipList(location, control);
   return Backend().list(location, control);
+}
+std::shared_ptr<const std::vector<FileEntry>> Listing(
+    const Location &location, const TransferControl &control) {
+  control.Check();
+  const auto fingerprint = FindArchiveVolumes(location.archive).Fingerprint();
+  const auto passwordGeneration = ArchivePasswordGeneration();
+  const auto key = location.URL();
+  if (listingScopes) {
+    auto found = listings.find(key);
+    if (found != listings.end()) {
+      if (found->second.fingerprint == fingerprint &&
+          found->second.passwordGeneration == passwordGeneration)
+        return found->second.entries;
+      listingBytes -= found->second.bytes;
+      listings.erase(found);
+    }
+  }
+  auto entries = std::make_shared<const std::vector<FileEntry>>(ReadListing(location, control));
+  control.Check();
+  CheckArchivePasswordGeneration(passwordGeneration);
+  if (FindArchiveVolumes(location.archive).Fingerprint() != fingerprint)
+    throw std::runtime_error("Archive changed while listing. Open it again.");
+  if (listingScopes) {
+    size_t bytes = 0;
+    for (const auto &entry : *entries)
+      bytes += sizeof(FileEntry) + entry.name.size() + entry.path.size();
+    if (bytes <= ListingBudget) {
+      if (listings.size() >= 4 || bytes > ListingBudget - listingBytes) {
+        listings.clear(); listingBytes = 0;
+      }
+      listings.emplace(key, CachedListing{fingerprint, passwordGeneration, entries, bytes});
+      listingBytes += bytes;
+    }
+  }
+  return entries;
+}
+} // namespace
+ArchiveListingScope::ArchiveListingScope() { ++listingScopes; }
+bool ArchiveListingScopeActive() { return listingScopes != 0; }
+ArchiveListingScope::~ArchiveListingScope() {
+  if (!--listingScopes) { listings.clear(); listingBytes = 0; ClearLibarchiveReadCache(); }
+}
+std::vector<FileEntry> ListArchive(const Location &location,
+                                 const TransferControl &control) {
+  return *Listing(location, control);
+}
+bool StatArchive(const Location &location, FileEntry &entry,
+                 const TransferControl &control) {
+  auto parent = ParseLocation(ParentLocation(location.URL()));
+  const auto entries = Listing(parent, control);
+  const auto name = LocationLeaf(location.URL());
+  const auto found = std::lower_bound(entries->begin(), entries->end(), name,
+    [](const FileEntry &entry, const std::string &name) { return entry.name < name; });
+  if (found == entries->end() || found->name != name) return false;
+  entry = *found;
+  return true;
 }
 void ReadArchive(const Location &location, const DataSink &sink,
                  const TransferControl &control) {

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 #include "OperationQueue.h"
 #include "ArchivePasswords.h"
+#include "ArchiveBackend.h"
 #include "VirtualFile.h"
 #include <Button.h>
+#include <MessageRunner.h>
 #include <GroupView.h>
 #include <LayoutBuilder.h>
 #include <ScrollView.h>
@@ -95,7 +97,7 @@ class ProgressView : public BView {
   BButton *detailsButton;
   bool expanded = false;
   bool choicesVisible = false;
-  int64 conflictRequest = 0;
+  int64 conflictRequest = 0, activeOperation = -1;
   void ShowChoices(bool show) {
     if (show == choicesVisible)
       return;
@@ -251,6 +253,7 @@ public:
       break;
     case kJobUpdate: {
       if (m->GetBool("start", false)) {
+        activeOperation = m->GetInt64("operation", -1);
         if (file->IsHidden())
           file->Show();
         if (bar->IsHidden())
@@ -262,6 +265,7 @@ public:
         pause->SetLabel("Pause");
         summary->SetText("Working. You can keep browsing.");
       }
+      if (m->GetInt64("operation", -2) != activeOperation) break;
       title->SetText(m->GetString("title", title->Text()));
       file->SetText(m->GetString("path", file->Text()));
       float bytes = float(m->GetInt64("bytes", 0));
@@ -287,7 +291,7 @@ public:
         history->Delete(0, history->TextLength() - 65536);
       history->Select(history->TextLength(), history->TextLength());
       history->ScrollToSelection();
-      if (m->GetBool("idle", false)) {
+      if (!owner->Busy()) {
         title->SetText("Queue finished");
         pause->SetEnabled(false);
         cancelButton->SetEnabled(false);
@@ -299,6 +303,7 @@ public:
       if (m->HasString("error"))
         Expand(true);
       ShowChoices(false);
+      activeOperation = -1;
       break;
     }
     case B_COLORS_UPDATED:
@@ -318,9 +323,14 @@ OperationQueue::OperationQueue(BMessenger m) : main(m) {
 BView *OperationQueue::View() { return view; }
 void OperationQueue::Start() {
   display = BMessenger(view);
+  BMessage poll(kQueueWake);
+  eventTimer.reset(new BMessageRunner(main, &poll, 250000));
+  if (eventTimer->InitCheck() != B_OK)
+    throw std::runtime_error("Cannot start operation result delivery.");
   thread = std::thread([this] { Loop(); });
 }
 OperationQueue::~OperationQueue() {
+  eventTimer.reset();
   {
     std::lock_guard<std::mutex> l(mutex);
     stopping = true;
@@ -382,8 +392,26 @@ void OperationQueue::Cancel() {
     done.AddBool("complete", false);
     done.AddBool("idle", count.load() == 0);
     done.AddString("result", "Cancelled before starting.");
-    main.SendMessage(&done);
+    Publish(done);
   }
+}
+void OperationQueue::Publish(const BMessage &done) {
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    events.push_back(done);
+  }
+  BMessage wake(kQueueWake);
+  main.SendMessage(&wake, (BHandler *)nullptr, 100000);
+}
+std::vector<BMessage> OperationQueue::TakeEvents() {
+  std::lock_guard<std::mutex> lock(mutex);
+  std::vector<BMessage> out;
+  out.swap(events);
+  return out;
+}
+void OperationQueue::PresentEvent(BMessage &done) {
+  // Called on the view's owning window thread, never by the worker.
+  view->MessageReceived(&done);
 }
 bool OperationQueue::Answer(Lister::Decision d, int64 request) {
   {
@@ -415,12 +443,11 @@ Lister::Decision OperationQueue::Ask(const std::string &path) {
   BMessage m(kConflict);
   m.AddInt64("request", request);
   m.AddString("path", path.c_str());
-  status_t sent = display.SendMessage(&m, (BHandler *)nullptr, 500000);
+  Publish(m);
   std::unique_lock<std::mutex> l(mutex);
-  if (sent == B_OK)
-    changed.wait(l, [this] { return answer >= 0 || cancel || stopping; });
+  changed.wait(l, [this] { return answer >= 0 || cancel || stopping; });
   awaitingAnswer = false;
-  return sent != B_OK || cancel || stopping ? Lister::Decision::Abort
+  return cancel || stopping ? Lister::Decision::Abort
                                            : static_cast<Lister::Decision>(answer);
 }
 void OperationQueue::Loop() {
@@ -436,15 +463,18 @@ void OperationQueue::Loop() {
       cancel = false;
       paused = false;
     }
+    Lister::ArchiveListingScope listingScope;
+    const int64 operation = ++operationSerial;
     BString title;
     title << Verb(job.action) << ": " << int32(job.sources.size())
           << " selected entries";
     BMessage start(kJobUpdate);
+    start.AddInt64("operation", operation);
     start.AddString("title", title);
     start.AddString("path", job.sources.empty() ? job.destination.c_str()
                                                 : job.sources[0].c_str());
     start.AddBool("start", true);
-    display.SendMessage(&start);
+    Publish(start);
     uint64_t total = 0;
     if (job.action == Lister::Action::Copy ||
         job.action == Lister::Action::Move || job.action == Lister::Action::Duplicate || job.action == Lister::Action::CreateArchive ||
@@ -452,7 +482,7 @@ void OperationQueue::Loop() {
       for (auto &s : job.sources)
         total += Size(s, [this] { return Proceed(); });
     start.AddInt64("total", std::max<uint64_t>(1, total));
-    display.SendMessage(&start);
+    Publish(start);
     std::map<std::string, uint64_t> fileBytes, fileSizes;
     uint64_t bytes = 0;
     bigtime_t last = 0;
@@ -477,6 +507,7 @@ void OperationQueue::Loop() {
         return;
       last = system_time();
       BMessage m(kJobUpdate);
+      m.AddInt64("operation", operation);
       m.AddString("path", p.c_str());
       m.AddInt64("bytes", bytes);
       display.SendMessage(&m, (BHandler *)nullptr, 500000);
@@ -508,6 +539,7 @@ void OperationQueue::Loop() {
     auto result = Lister::Run(job, hooks);
     count--;
     BMessage done(kJobDone);
+    done.AddInt64("operation", operation);
     done.AddInt64("tag", job.tag);
     if (job.action == Lister::Action::Move || job.action == Lister::Action::Duplicate || job.action == Lister::Action::CreateArchive ||
         job.action == Lister::Action::EditArchive || job.action == Lister::Action::MoveArchive)
@@ -525,7 +557,6 @@ void OperationQueue::Loop() {
     for (auto &e : result.errors)
       done.AddString("error", e.c_str());
     done.AddBool("idle", count.load() == 0);
-    display.SendMessage(&done);
-    main.SendMessage(&done);
+    Publish(done);
   }
 }

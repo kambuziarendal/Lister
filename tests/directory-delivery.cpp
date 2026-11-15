@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: MIT
+#include "DirectoryScanner.h"
+#include "ArchiveJobs.h"
+#include "VirtualFile.h"
+#include "Common.h"
+#include "Pane.h"
+#include <Window.h>
+#include <Application.h>
+#include <Directory.h>
+#include <Entry.h>
+#include <Path.h>
+#include <atomic>
+#include <fstream>
+#include <iostream>
+#include <set>
+#include <sys/stat.h>
+#include <unistd.h>
+using namespace Lister;
+namespace {
+std::atomic<int> rowFailures{0}, doneFailures{0};
+std::atomic<int> rowAttempts{0}, doneAttempts{0};
+std::shared_ptr<std::atomic<int64>> generation;
+bool cancelOnFailure=false;
+}
+extern "C" status_t __real__ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl(const BMessenger*,BMessage*,BHandler*,bigtime_t);
+extern "C" status_t __wrap__ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl(const BMessenger* self,BMessage* message,BHandler* reply,bigtime_t timeout) {
+  auto fail=[&](std::atomic<int>& n) { int old=n.load(); if(old>0) {n.fetch_sub(1);return true;} return false; };
+  if(message->what==kRows) { ++rowAttempts; if(fail(rowFailures)) {if(cancelOnFailure)generation->fetch_add(1);return B_TIMED_OUT;} }
+  if(message->what==kScanDone) { ++doneAttempts; if(fail(doneFailures)) return B_TIMED_OUT; }
+  return __real__ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl(self,message,reply,timeout);
+}
+class Receiver:public BLooper {
+public:
+  sem_id done=create_sem(0,"scan test done");
+  int count=0;std::set<std::string> names;std::string error;
+  Receiver():BLooper("scan test receiver"){}
+  ~Receiver(){delete_sem(done);}
+  void MessageReceived(BMessage *m) override {
+    if(m->what==kRows) { BMessage row;for(int32 i=0;m->FindMessage("entry",i,&row)==B_OK;++i)if(!row.GetBool("parent",false)){++count;names.insert(row.GetString("name",""));} }
+    else if(m->what==kScanDone){error=m->GetString("error","");release_sem(done);}
+    else BLooper::MessageReceived(m);
+  }
+};
+void clean(const std::string &p){BDirectory d(p.c_str());BEntry e;while(d.GetNextEntry(&e,false)==B_OK){struct stat s;e.GetStat(&s);if(S_ISDIR(s.st_mode)){BPath path;e.GetPath(&path);clean(path.Path());}e.Remove();}rmdir(p.c_str());}
+int main() {
+ BApplication app("application/x-vnd.Listi-DirectoryDeliveryTest");
+ char temp[]="/tmp/Listi-delivery-XXXXXX";if(!mkdtemp(temp))return 2;
+ std::string root=temp,folder=root+"/files";mkdir(folder.c_str(),0700);
+ for(int i=0;i<160;++i)std::ofstream(folder+"/file-"+std::to_string(i))<<"payload";
+ auto create=PrepareArchiveJob(false,{folder});create.archiveFormat="zip";SetArchiveDestination(create,root,"fixture");if(Run(create,{}).completed!=1)return 3;
+ auto archive=ChildLocation(OpenArchive(create.destination),"files");
+ int checks=0,failures=0;
+ auto check=[&](bool ok,const std::string &label){++checks;failures+=!ok;std::cout<<(ok?"PASS ":"FAIL ")<<label<<std::endl;};
+ for(auto path:{folder,archive}) for(int mode=0;mode<6;++mode) {
+  auto receiver=new Receiver;receiver->Run();generation=std::make_shared<std::atomic<int64>>(1);
+  auto delivery=std::make_shared<DirectoryScanDelivery>();
+  auto scan=CreateDirectoryScanner(BMessenger(receiver),generation,delivery);scan->Run();
+  rowFailures=mode==1?1:(mode==2||mode==5?100:0);doneFailures=mode==3?1:(mode==4?100:0);
+  rowAttempts=0;doneAttempts=0;cancelOnFailure=mode==5;
+  auto request=[&](int64 serial){BMessage m(kScan);m.AddInt64("serial",serial);m.AddString("path",path.c_str());m.AddBool("icons",false);scan->PostMessage(&m);};
+  request(1);
+  auto status=acquire_sem_etc(receiver->done,1,B_RELATIVE_TIMEOUT,(mode==4||mode==5)?1000000:10000000);
+  receiver->Lock();
+  auto label=std::string(path==folder?"local":"archive")+" mode "+std::to_string(mode);
+  if(mode==4)check(status==B_TIMED_OUT&&delivery->failedSerial==1&&doneAttempts==3,label+" bounded completion failure has out-of-band signal");
+  else if(mode==5)check(status==B_TIMED_OUT&&generation->load()==2&&rowAttempts==1&&doneAttempts==0,label+" stale retry cancelled without completion");
+  else if(mode==2)check(status==B_OK&&!receiver->error.empty()&&rowAttempts==3,label+" exhausted row retries report incomplete");
+  else check(status==B_OK&&receiver->error.empty()&&receiver->count==160&&receiver->names.size()==160,label+" all entries exactly once");
+  receiver->count=0;receiver->names.clear();receiver->error.clear();receiver->Unlock();
+  rowFailures=0;doneFailures=0;cancelOnFailure=false;generation->store(3);request(3);
+  status=acquire_sem_etc(receiver->done,1,B_RELATIVE_TIMEOUT,10000000);
+  receiver->Lock();check(status==B_OK&&receiver->error.empty()&&receiver->count==160&&receiver->names.size()==160,label+" next scan recovers");receiver->Unlock();
+  generation->store(4);if(scan->Lock())scan->Quit();if(receiver->Lock())receiver->Quit();
+ }
+ // Exercise the actual pane's out-of-band completion recovery, not just the
+ // producer. All view changes are made under the owning window lock.
+ auto window=new BWindow(BRect(10,10,810,610),"Directory recovery test",B_TITLED_WINDOW,0);
+ Preferences prefs; prefs.icons=false;
+ auto pane=new Pane(0,prefs);window->AddChild(pane);window->Show();
+ auto ready=[&] {
+   for(int i=0;i<200;++i) {
+     window->Lock();bool done=!pane->IsScanning();window->Unlock();
+     if(done)return true;snooze(50000);
+   }
+   return false;
+ };
+ check(ready(),"native pane initial scan settles");
+ for(bool completion:{false,true}) {
+   window->Lock();rowFailures=completion?0:100;doneFailures=completion?100:0;
+   pane->Navigate(folder.c_str());window->Unlock();
+   check(ready(),completion?"pane exits reading after lost completion":"pane exits reading after lost rows");
+   window->Lock();
+   auto status=dynamic_cast<BStringView*>(pane->FindView("status"));
+   check(status&&std::string(status->Text()).find("Reload")!=std::string::npos,"incomplete pane visibly offers reload");
+   pane->Select(1);check(pane->Selected().empty(),"incomplete entries cannot become Select All input");
+   rowFailures=0;doneFailures=0;pane->Reload();window->Unlock();
+   check(ready(),"native pane reload recovers");
+   window->Lock();pane->Select(1);check(pane->Selected().size()==160,"recovered pane selects all 160 files");window->Unlock();
+ }
+ window->Lock();window->Quit();
+ clean(root);std::cout<<checks<<" checks, "<<failures<<" failures"<<std::endl;return failures?1:0;
+}

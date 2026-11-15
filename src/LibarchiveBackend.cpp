@@ -30,7 +30,7 @@ struct Reader {
   DynamicLibrary &lib = Library();
   struct archive *handle = nullptr;
   int fd = -1;
-  const TransferControl &control;
+  TransferControl control;
   std::exception_ptr failure;
   std::string path, identity;
   uint64_t passwordGeneration = ArchivePasswordGeneration();
@@ -298,33 +298,80 @@ std::vector<FileEntry> LibarchiveList(const Location &location,
     out.push_back(pair.second);
   return out;
 }
+namespace {
+// One open sequential reader per worker/job. Reuse avoids rescanning every
+// preceding header for each file. Out-of-order requests rewind once, never
+// silently miss entries. No reader or callback outlives the job scope.
+thread_local std::unique_ptr<Reader> sequentialReader;
+void VerifyReader(Reader &reader) {
+  struct stat opened, named;
+  reader.control.Check();
+  CheckArchivePasswordGeneration(reader.passwordGeneration);
+  if (fstat(reader.fd, &opened) || lstat(reader.path.c_str(), &named) ||
+      ArchivePasswordIdentity(opened) != reader.identity ||
+      ArchivePasswordIdentity(named) != reader.identity)
+    throw std::runtime_error("Archive changed during reading. Source entries were retained.");
+}
+}
+void ClearLibarchiveReadCache() { sequentialReader.reset(); }
 void LibarchiveRead(const Location &location, const DataSink &sink,
-                 const TransferControl &c) {
-  Reader reader(location.archive, c);
-  std::string wanted = location.path.substr(1);
-  while (auto entry = reader.Next()) {
-    if (EntryName(reader, entry, location) != wanted)
-      continue;
-    if (LIBCALL(reader.lib, archive_entry_filetype)(entry) != AE_IFREG ||
-        LIBCALL(reader.lib, archive_entry_hardlink)(entry))
-      throw std::runtime_error(
-          "Archive links and special entries are not extracted");
-    std::vector<char> data(131072);
+                    const TransferControl &c) {
+  const bool scoped = ArchiveListingScopeActive();
+  std::unique_ptr<Reader> local;
+  auto &slot = scoped ? sequentialReader : local;
+  bool reused = false;
+  try {
+    c.Check();
+    struct stat named;
+    if (lstat(location.archive.c_str(), &named) || !S_ISREG(named.st_mode))
+      throw std::runtime_error("Archive input is unavailable.");
+    // Reuse only formats whose streaming state has been qualified. In
+    // particular XAR's data/TOC cursor cannot safely serve this access pattern.
+    int format = slot ? LIBCALL(slot->lib, archive_format)(slot->handle) & ARCHIVE_FORMAT_BASE_MASK : 0;
+    bool sequential = format == ARCHIVE_FORMAT_ZIP || format == ARCHIVE_FORMAT_TAR || format == ARCHIVE_FORMAT_CPIO;
+    if (slot && sequential && slot->path == location.archive &&
+        slot->identity == ArchivePasswordIdentity(named) &&
+        slot->passwordGeneration == ArchivePasswordGeneration()) {
+      slot->control = c;
+      reused = true;
+    } else slot.reset(new Reader(location.archive, c));
     for (;;) {
-      c.Check();
-      la_ssize_t n = LIBCALL(reader.lib, archive_read_data)(reader.handle, data.data(),
-                                                            data.size());
-      reader.Rethrow();
-      if (n < 0)
-        reader.Error();
-      if (!n) {
-        RememberArchivePassword(reader.identity, reader.password, reader.passwordGeneration);
-        return;
+      auto &reader = *slot;
+      VerifyReader(reader);
+      const std::string wanted = location.path.substr(1);
+      while (auto entry = reader.Next()) {
+        if (EntryName(reader, entry, location) != wanted) continue;
+        if (LIBCALL(reader.lib, archive_entry_filetype)(entry) != AE_IFREG ||
+            LIBCALL(reader.lib, archive_entry_hardlink)(entry))
+          throw std::runtime_error("Archive links and special entries are not extracted");
+        std::vector<char> data(131072);
+        for (;;) {
+          c.Check();
+          la_ssize_t n = LIBCALL(reader.lib, archive_read_data)(reader.handle,
+                                                    data.data(), data.size());
+          reader.Rethrow();
+          if (n < 0) reader.Error();
+          if (!n) {
+            VerifyReader(reader);
+            RememberArchivePassword(reader.identity, reader.password, reader.passwordGeneration);
+            // Callback closures often capture a stack frame belonging to the
+            // current transfer. Clear them before retaining the reader.
+            reader.control = {};
+            return;
+          }
+          sink(data.data(), n);
+          c.Tick(n);
+        }
       }
-      sink(data.data(), n);
-      c.Tick(n);
+      VerifyReader(reader);
+      if (!reused) break;
+      slot.reset(new Reader(location.archive, c));
+      reused = false;
     }
+    throw std::runtime_error("Archive entry no longer exists");
+  } catch (...) {
+    slot.reset();
+    throw;
   }
-  throw std::runtime_error("Archive entry no longer exists");
 }
 } // namespace Lister

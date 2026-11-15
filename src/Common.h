@@ -82,6 +82,7 @@ enum : uint32 {
   kFileProgress = 'fprg',
   kFileErrorSelected = 'ferr',
   kJobDone = 'jdon',
+  kQueueWake = 'qwke',
   kPause = 'paus',
   kAbort = 'abor',
   kConflict = 'conf',

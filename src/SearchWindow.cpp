@@ -225,9 +225,10 @@ public:
   }
   ~SearchWindow() {
     generation->fetch_add(1);
-    // Worker owns no window pointers. Let in-flight filesystem I/O finish off
-    // the UI thread; queued quit releases the worker and its shared token.
-    worker->PostMessage(B_QUIT_REQUESTED);
+    // Invalidate in-flight work before joining. A merely posted quit could
+    // destroy the worker's BHandler after BApplication's token space is gone.
+    if (worker->Lock())
+      worker->Quit();
   }
   void MessageReceived(BMessage *m) override {
     switch (m->what) {
