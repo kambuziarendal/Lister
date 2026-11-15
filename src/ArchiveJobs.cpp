@@ -7,6 +7,7 @@
 #include "VirtualFile.h"
 #include <Directory.h>
 #include <Entry.h>
+#include <Node.h>
 #include <Path.h>
 #include <archive.h>
 #include <archive_entry.h>
@@ -17,8 +18,10 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
+#include <cctype>
 #include <memory>
 #include <set>
+#include <fs_attr.h>
 
 namespace Lister {
 namespace {
@@ -110,7 +113,7 @@ struct Stage {
   BDirectory parent, dir;
   Stage(const std::string &folder):parent(folder.c_str()) {
     Require(parent.InitCheck()==B_OK,"Cannot open destination folder.");
-    std::string pattern=Join(folder,".Listi-archive-XXXXXX");
+    std::string pattern=Join(folder,".Listi-archive-stage-XXXXXX");
     std::vector<char> bytes(pattern.begin(),pattern.end()); bytes.push_back(0);
     char *made=mkdtemp(bytes.data()); Require(made,"Cannot create archive staging folder.");
     Require(dir.SetTo(made)==B_OK,"Cannot open archive staging folder.");
@@ -178,6 +181,142 @@ struct Pack {
     } catch(...) {if(entry)LIBCALL(writer.lib,archive_entry_free)(entry);throw;}
   }
 };
+std::vector<std::string> Children(const std::string &folder) {
+  DIR *raw=opendir(folder.c_str());Require(raw,"Cannot list archive staging folder.");
+  std::unique_ptr<DIR,int(*)(DIR*)> dir(raw,closedir);
+  std::vector<std::string> result;
+  for(;;){errno=0;auto child=readdir(raw);if(!child){Require(!errno,"Cannot finish listing archive staging folder.");break;}
+    if(!strcmp(child->d_name,".")||!strcmp(child->d_name,".."))continue;
+    result.push_back(Join(folder,child->d_name));}
+  std::sort(result.begin(),result.end());return result;
+}
+void RemoveTree(const std::string &path,const Hooks &hooks,unsigned depth=0) {
+  if(hooks.proceed&&!hooks.proceed())throw Cancelled();
+  Require(depth<=64,"Archive edit exceeds the folder depth limit.");
+  struct stat st;Require(!lstat(path.c_str(),&st),"Archive entry selected for removal disappeared.");
+  Require(!S_ISLNK(st.st_mode),"Archive edit staging unexpectedly contains a link.");
+  if(S_ISDIR(st.st_mode))for(const auto &child:Children(path))RemoveTree(child,hooks,depth+1);
+  Require(!(S_ISDIR(st.st_mode)?rmdir(path.c_str()):unlink(path.c_str())),"Cannot remove an entry from archive staging.");
+}
+void CopyMetadata(const std::string &fromPath,const std::string &toPath,const Hooks &hooks) {
+  struct stat st;Require(!stat(fromPath.c_str(),&st),"Cannot inspect archive metadata.");
+  Require(!chmod(toPath.c_str(),st.st_mode&07777),"Cannot preserve archive permissions.");
+  BNode from(fromPath.c_str()),to(toPath.c_str());
+  Require(from.InitCheck()==B_OK&&to.InitCheck()==B_OK,"Cannot open archive metadata.");
+  char name[B_ATTR_NAME_LENGTH];std::vector<char> bytes(65536);status_t status;
+  while((status=from.GetNextAttrName(name))==B_OK){if(hooks.proceed&&!hooks.proceed())throw Cancelled();
+    attr_info info;Require(from.GetAttrInfo(name,&info)==B_OK,"Archive metadata changed during editing.");
+    if(!info.size){Require(to.WriteAttr(name,info.type,0,nullptr,0)==0,"Cannot preserve empty archive metadata.");continue;}
+    off_t at=0;while(at<info.size){auto amount=std::min<off_t>(bytes.size(),info.size-at);
+      auto got=from.ReadAttr(name,info.type,at,bytes.data(),amount);Require(got>0,"Cannot read archive metadata.");
+      Require(to.WriteAttr(name,info.type,at,bytes.data(),got)==got,"Cannot preserve archive metadata.");at+=got;}}
+  Require(status==B_ENTRY_NOT_FOUND,"Cannot enumerate archive metadata.");
+}
+void CreateOutput(int output,const std::string &format,const std::vector<std::string> &sources,
+                  int level,bool encryptNames,const ArchiveSecretPtr &secret,const Hooks &hooks) {
+  if(secret&&format=="7z")SevenZipCreate(output,sources,level,encryptNames,secret,hooks);
+  else {
+    Writer writer;writer.Configure(format,level,secret);
+    writer.Check(LIBCALL(writer.lib,archive_write_open_fd)(writer.a,output));
+    Pack pack{writer,hooks};for(const auto &source:sources)pack.Add(source,Leaf(source));
+    writer.Check(LIBCALL(writer.lib,archive_write_close)(writer.a));pack.Verify();
+  }
+}
+std::string EditFormat(const std::string &path) {
+  const auto parts=FindArchiveVolumes(path);
+  Require(parts.kind==ArchiveVolumes::Single,"Split archives cannot be edited. Extract them, change the files, and create a new archive.");
+  if(SevenZipFormat(path)=="7z")return "7z";
+  FD fd(open(path.c_str(),O_RDONLY|O_NOFOLLOW|O_NONBLOCK));Require(fd.n>=0,"Cannot open archive for editing.");
+  unsigned char magic[4]{};auto got=read(fd.n,magic,sizeof(magic));
+  if(got>=4&&magic[0]=='P'&&magic[1]=='K'&&
+     ((magic[2]==3&&magic[3]==4)||(magic[2]==5&&magic[3]==6)||(magic[2]==7&&magic[3]==8)))return "zip";
+  throw std::runtime_error("Only ZIP and 7z archives can be edited in this version.");
+}
+std::string MemberPath(const std::string &path) {
+  auto value=path;while(!value.empty()&&value.front()=='/')value.erase(value.begin());
+  if(value.empty())return "";
+  return SafeArchivePath(value.c_str());
+}
+Result RunArchiveEdit(const Job &job,const Hooks &hooks) {
+  Result result;
+  try {
+    Require(!job.destination.empty()&&!job.destinationFolder.empty(),"Archive edit target is missing.");
+    Require(!job.sources.empty()||!job.archiveRemove.empty(),"Choose files to add or archive entries to remove.");
+    Guards(job);VerifyArchiveSets(job);
+    const auto format=EditFormat(job.destination);
+    Require(format==job.archiveFormat,"Archive format changed after selection.");
+    const auto passwordGeneration=ArchivePasswordGeneration();
+    Stage stage(job.destinationFolder);const auto work=Join(PathOf(stage.dir),"contents");
+    Require(!mkdir(work.c_str(),0700),"Cannot create archive edit staging folder.");
+    auto check=[&]{if(hooks.proceed&&!hooks.proceed())throw Cancelled();
+      CheckArchivePasswordGeneration(passwordGeneration);Guards(job);VerifyArchiveSets(job);};
+    TransferControl control;control.proceed=[&]{check();return true;};
+    control.progress=[&](uint64_t bytes){if(hooks.progress)hooks.progress(job.destination,bytes);};
+    Hooks internal=hooks;internal.fileDone={};internal.fileFailed={};
+    internal.proceed=[&]{check();return true;};
+    internal.progress=[&](const std::string &,uint64_t bytes){
+      if(hooks.progress)hooks.progress(job.destination,bytes);};
+    check();const auto root=OpenArchive(job.destination,control);Require(!root.empty(),"The selected file is not a supported archive.");
+    auto top=ListFiles(root,control);
+    if(!top.empty()){
+      Job extract;extract.action=Action::Copy;extract.destination=work;
+      for(const auto &entry:top)extract.sources.push_back(entry.path);
+      auto extraction=internal;extraction.conflict={};
+      auto copied=Run(extract,extraction);if(copied.cancelled)throw Cancelled();
+      Require(copied.errors.empty(),copied.errors.empty()?"Archive extraction failed.":copied.errors.front());
+      Require(!copied.skipped,"Archive contains conflicting entries and was not changed.");
+    }
+    for(const auto &member:job.archiveRemove){check();const auto relative=MemberPath(member);
+      Require(!relative.empty(),"The archive root cannot be removed.");
+      const auto target=Join(work,relative);struct stat st;
+      Require(!lstat(target.c_str(),&st),"An archive entry selected for removal no longer exists.");
+      RemoveTree(target,internal);
+    }
+    if(!job.sources.empty()){
+      const auto relative=MemberPath(job.archivePath),target=relative.empty()?work:Join(work,relative);
+      struct stat targetStat;Require(!stat(target.c_str(),&targetStat)&&S_ISDIR(targetStat.st_mode),
+        "The destination folder inside the archive no longer exists.");
+      Job add;add.action=Action::Copy;add.sources=job.sources;add.destination=target;
+      add.destinationFolder=target;add.expectedDestination={int32_t(targetStat.st_dev),int64_t(targetStat.st_ino)};
+      for(const auto &source:job.sources)add.expectedSources[source]=job.expectedSources.at(source);
+      auto adding=internal;
+      adding.conflict=[&](const std::string &destination){
+        if(!hooks.conflict)return Decision::Abort;
+        auto relative=destination.size()>work.size()&&destination.compare(0,work.size(),work)==0
+          ?destination.substr(work.size()):std::string("/")+Leaf(destination);
+        if(relative.empty()||relative.front()!='/')relative="/"+relative;
+        return hooks.conflict(job.destination+" → "+relative);
+      };
+      auto added=Run(add,adding);if(added.cancelled)throw Cancelled();
+      Require(added.errors.empty(),added.errors.empty()?"Could not add files to archive.":added.errors.front());
+      Require(!added.skipped,"Archive edit was cancelled at a name conflict.");
+    }
+    check();const auto outputPath=Join(PathOf(stage.dir),"updated");
+    FD output(open(outputPath.c_str(),O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW,0600));
+    Require(output.n>=0,"Cannot create updated archive output.");
+    auto secret=CachedArchivePassword(job.destination,
+      FindArchiveVolumes(job.destination).Fingerprint());
+    CreateOutput(output.n,format,Children(work),job.archiveLevel,
+      secret&&format=="7z",secret,internal);
+    Require(!fsync(output.n),"Cannot flush updated archive to disk.");
+    CopyMetadata(job.destination,outputPath,internal);
+    Require(!fsync(output.n),"Cannot flush updated archive metadata.");check();
+    struct stat original,named;FD originalFd(open(job.destination.c_str(),O_RDONLY|O_NOFOLLOW|O_NONBLOCK));
+    Require(originalFd.n>=0&&!fstat(originalFd.n,&original)&&!lstat(job.destination.c_str(),&named)&&Unchanged(original,named),
+      "The archive was replaced while it was being edited. Nothing was changed.");
+    Require(!rename(outputPath.c_str(),job.destination.c_str()),"Could not publish the updated archive. The original was left in place.");
+    FD parent(open(job.destinationFolder.c_str(),O_RDONLY));Require(parent.n>=0&&!fsync(parent.n),"Could not flush the updated archive directory.");
+    if(secret)try {struct stat published;
+      if(!lstat(job.destination.c_str(),&published))
+        RememberArchivePassword(ArchivePasswordIdentity(published),secret,passwordGeneration);
+      RememberArchivePassword(FindArchiveVolumes(job.destination).Fingerprint(),secret,passwordGeneration);
+    }catch(...){/* Password caching is optional after the archive is durable. */}
+    result.completed=1;result.completedRoots.push_back({job.destination,job.destination});
+    if(hooks.fileDone)hooks.fileDone(job.destination,job.destination);
+  }catch(const Cancelled &){result.cancelled=true;}
+  catch(const std::exception &e){result.errors.push_back(e.what());}
+  return result;
+}
 }
 std::vector<ArchiveFormat> WritableArchiveFormats() {
   std::vector<ArchiveFormat> result;
@@ -219,6 +358,48 @@ Job PrepareArchiveJob(bool extract,const std::vector<std::string> &sources) {
   }
   return job;
 }
+Job PrepareArchiveEditTarget(const std::string &archive,
+    const std::string &internalFolder) {
+  Require(!archive.empty()&&archive[0]=='/'&&!IsVirtual(archive),"Choose one local ZIP or 7z archive.");
+  Job job;job.action=Action::EditArchive;job.destination=archive;job.archiveFormat=EditFormat(archive);
+  struct stat archiveStat;Require(!lstat(archive.c_str(),&archiveStat)&&S_ISREG(archiveStat.st_mode),"Archive is unavailable.");
+  job.expectedSources[archive]={int32_t(archiveStat.st_dev),int64_t(archiveStat.st_ino)};
+  auto set=FindArchiveVolumes(archive);job.expectedArchiveSets[set.files[0].path]=set.Fingerprint();
+  job.destinationFolder=ParentLocation(archive);job.entryName=Leaf(archive);
+  struct stat parent;Require(!stat(job.destinationFolder.c_str(),&parent)&&S_ISDIR(parent.st_mode),"Archive folder is unavailable.");
+  job.expectedDestination={int32_t(parent.st_dev),int64_t(parent.st_ino)};
+  job.archivePath=MemberPath(internalFolder);
+  return job;
+}
+void SetArchiveEditAdditions(Job &job,const std::vector<std::string> &add) {
+  Require(job.action==Action::EditArchive&&!job.destination.empty(),"Archive edit target is missing.");
+  Require(!add.empty(),"Choose files or folders to add.");
+  VerifyArchiveSets(job);Guards(job);
+  Job updated=job;for(const auto &source:updated.sources)updated.expectedSources.erase(source);
+  updated.sources.clear();
+  std::set<std::string> names;
+  for(const auto &source:add){Require(!IsVirtual(source),"Copy remote or archive entries locally before adding them to an archive.");
+    Require(source!=job.destination,"An archive cannot be added to itself while it is being edited.");
+    struct stat st;Require(!lstat(source.c_str(),&st)&&(S_ISREG(st.st_mode)||S_ISDIR(st.st_mode)),"Only local files and folders can be added.");
+    Require(names.insert(Leaf(source)).second,"Selected additions have duplicate names.");
+    updated.sources.push_back(source);updated.expectedSources[source]={int32_t(st.st_dev),int64_t(st.st_ino)};}
+  job=std::move(updated);
+}
+Job PrepareArchiveEditJob(const std::string &archive,
+    const std::vector<std::string> &add,const std::vector<std::string> &remove,
+    const std::string &internalFolder) {
+  Require(!add.empty()||!remove.empty(),"Choose files to add or archive entries to remove.");
+  Job job=PrepareArchiveEditTarget(archive,internalFolder);
+  if(!add.empty())SetArchiveEditAdditions(job,add);
+  std::set<std::string> removed;
+  for(const auto &source:remove){auto location=ParseLocation(source);
+    Require(location.Archive()&&location.archive==archive&&location.path!="/","Select entries from one archive, not the archive root.");
+    removed.insert(MemberPath(location.path));}
+  for(const auto &path:removed){bool covered=false;for(const auto &kept:job.archiveRemove)
+      if(path.size()>kept.size()&&path.compare(0,kept.size(),kept)==0&&path[kept.size()]=='/'){covered=true;break;}
+    if(!covered)job.archiveRemove.push_back(path);}
+  return job;
+}
 void SetArchiveDestination(Job &job,const std::string &folder,const std::string &name) {
   Require(!folder.empty() && folder[0]=='/' && !IsVirtual(folder),"Choose a local destination folder.");
   Require(!name.empty() && name.size()<B_FILE_NAME_LENGTH && name!="." && name!=".." && name.find_first_of("/\\\r\n")==std::string::npos,
@@ -233,6 +414,7 @@ void SetArchiveDestination(Job &job,const std::string &folder,const std::string 
   job.entryName=name;job.destination=destination;
 }
 Result RunArchiveJob(const Job &job,const Hooks &hooks) {
+  if(job.action==Action::EditArchive)return RunArchiveEdit(job,hooks);
   Result result;
   std::set<std::string> completedPaths;
   Hooks tracked=hooks;
@@ -265,19 +447,8 @@ Result RunArchiveJob(const Job &job,const Hooks &hooks) {
         "The selected archive format does not support password protection.");
       Require(!job.archiveEncryptNames || (secret && job.archiveFormat=="7z"),
         "Only encrypted 7z archives can hide file names.");
-      if(secret && job.archiveFormat=="7z") {
-        SevenZipCreate(output.n,job.sources,job.archiveLevel,
-          job.archiveEncryptNames,secret,tracked);
-      } else {
-        Writer writer;writer.Configure(job.archiveFormat,job.archiveLevel,secret);
-        writer.Check(LIBCALL(writer.lib,archive_write_open_fd)(writer.a,output.n));
-        // Pack verifies every opened node and the complete captured tree. Avoid
-        // re-statting all selected roots on every buffer (quadratic for many files).
-        Pack pack{writer,tracked};
-        for(const auto &source:job.sources)pack.Add(source,Leaf(source));
-        writer.Check(LIBCALL(writer.lib,archive_write_close)(writer.a));
-        pack.Verify();
-      }
+      CreateOutput(output.n,job.archiveFormat,job.sources,job.archiveLevel,
+        job.archiveEncryptNames,secret,tracked);
       Require(!fsync(output.n),"Cannot flush archive to disk.");
       Require(publish.SetTo(&stage.dir,"archive",false)==B_OK,"Archive output disappeared.");
     } else {

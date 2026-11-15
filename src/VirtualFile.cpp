@@ -12,6 +12,9 @@
 #include <unistd.h>
 
 namespace Lister {
+bool IsListiPrivateEntry(const char *name) {
+  return name && !strncmp(name, ".Listi-archive-stage-", 21);
+}
 namespace {
 std::mutex connectionsMutex;
 std::map<std::string, Connection> connections;
@@ -210,7 +213,8 @@ std::vector<FileEntry> ListFiles(const std::string &p,
         break;
       }
       c.Check();
-      if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
+      if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..") ||
+          IsListiPrivateEntry(e->d_name))
         continue;
       auto path = ChildLocation(p, e->d_name);
       struct stat st;

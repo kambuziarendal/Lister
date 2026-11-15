@@ -46,6 +46,8 @@ enum : uint32 {
   kCreateLink = 'link',
   kCreateArchive = 'arcr',
   kExtractArchive = 'arex',
+  kAddArchive = 'arad',
+  kRemoveArchive = 'arrm',
   kCopy = 'copy',
   kMove = 'move',
   kDelete = 'dele',

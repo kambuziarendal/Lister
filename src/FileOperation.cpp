@@ -524,7 +524,8 @@ struct Runner {
 };
 } // namespace
 Result Run(const Job &j, const Hooks &h) {
-  if (j.action == Action::CreateArchive || j.action == Action::ExtractArchive) return RunArchiveJob(j,h);
+  if (j.action == Action::CreateArchive || j.action == Action::ExtractArchive ||
+      j.action == Action::EditArchive) return RunArchiveJob(j,h);
   // Source-only actions must not depend on the location in the other pane.
   const bool usesDestination =
       j.action == Action::Copy || j.action == Action::Move ||

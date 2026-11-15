@@ -26,6 +26,9 @@ BMessage EncodeJob(const Job &job, uint32 what) {
   m.AddInt32("archiveLevel", job.archiveLevel);
   m.AddInt64("archivePasswordToken", job.archivePasswordToken);
   m.AddBool("archiveEncryptNames", job.archiveEncryptNames);
+  m.AddString("archivePath", job.archivePath.c_str());
+  for (const auto &path : job.archiveRemove)
+    m.AddString("archiveRemove", path.c_str());
   m.AddString("entryName", job.entryName.c_str());
   m.AddString("destination", job.destination.c_str());
   m.AddString("destinationFolder", job.destinationFolder.c_str());
@@ -51,12 +54,15 @@ Job DecodeJob(const BMessage &m) {
   job.archiveLevel = m.GetInt32("archiveLevel", 6);
   job.archivePasswordToken = m.GetInt64("archivePasswordToken", 0);
   job.archiveEncryptNames = m.GetBool("archiveEncryptNames", false);
+  job.archivePath = m.GetString("archivePath", "");
   job.entryName = m.GetString("entryName", "");
   job.destination = m.GetString("destination", "");
   job.destinationFolder = m.GetString("destinationFolder", "");
   job.expectedDestination = {m.GetInt32("destinationDevice", -1), m.GetInt64("destinationNode", -1)};
   const char *path;
   for (int32 i = 0; m.FindString("source", i, &path) == B_OK; ++i) job.sources.emplace_back(path);
+  for (int32 i = 0; m.FindString("archiveRemove", i, &path) == B_OK; ++i)
+    job.archiveRemove.emplace_back(path);
   BMessage item;
   for (int32 i = 0; m.FindMessage("identity", i, &item) == B_OK; ++i)
     job.expectedSources[item.GetString("path", "")] = {item.GetInt32("device", -1), item.GetInt64("node", -1)};

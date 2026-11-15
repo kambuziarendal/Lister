@@ -7,11 +7,14 @@
 #include "VirtualFile.h"
 #include <Application.h>
 #include <algorithm>
+#include <cstring>
 #include <Directory.h>
 #include <Entry.h>
 #include <Path.h>
 #include <fstream>
 #include <iostream>
+#include <map>
+#include <Node.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -39,11 +42,15 @@ void *run(void *) {
   write(root+"/bad-settings","broken");invalid=false;try{LoadArchiveSettings(root+"/bad-settings");}catch(...){invalid=true;}
   check(invalid && read(root+"/bad-settings")=="broken","corrupt settings report an error without overwriting the file");
   mkdir((root+"/in").c_str(),0700);mkdir((root+"/out").c_str(),0700);
+  mkdir((root+"/.Listi-archive-stage-visible").c_str(),0700);
+  auto visible=ListFiles(root);check(std::none_of(visible.begin(),visible.end(),
+    [](const auto &entry){return entry.name==".Listi-archive-stage-visible";}),
+    "private archive staging is not exposed as a file entry");
   std::string input=root+"/in",out=root+"/out";
   mkdir((input+"/folder").c_str(),0700);mkdir((input+"/folder/empty").c_str(),0700);
   write(input+"/folder/æ name ; $(no).txt","payload\n");write(input+"/empty","");
   auto formats=WritableArchiveFormats();check(!formats.empty(),"optional system writer available");
-  std::string archive;
+  std::string archive;std::map<std::string,std::string> madeArchives;
   for(const auto &f:formats){
     auto job=PrepareArchiveJob(false,{input+"/folder",input+"/empty"});job.archiveFormat=f.id;
     SetArchiveDestination(job,out,"roundtrip"+f.extension);
@@ -61,7 +68,59 @@ void *run(void *) {
       auto done=Run(variant,{});if(!done.errors.empty())std::cerr<<done.errors.front()<<std::endl;
       check(done.completed==1 && done.errors.empty(),f.id+" compression level "+std::to_string(level));
     }
-    archive=job.destination;
+    archive=job.destination;madeArchives[f.id]=job.destination;
+  }
+  mkdir((input+"/edit").c_str(),0700);mkdir((input+"/edit/replacement").c_str(),0700);
+  write(input+"/edit/replacement/empty","replacement\n");write(input+"/edit/new.txt","new\n");
+  for(const auto &id:{std::string("zip"),std::string("7z")})if(madeArchives.count(id)){
+    const auto original=madeArchives[id];auto rootURL=OpenArchive(original);
+    auto removed=ChildLocation(ChildLocation(rootURL,"folder"),"æ name ; $(no).txt");
+    BNode metadata(original.c_str());const char marker[]="kept";
+    check(metadata.WriteAttr("Listi:edit-test",B_STRING_TYPE,0,marker,sizeof(marker))==sizeof(marker),id+" edit fixture metadata");
+    auto selfTarget=PrepareArchiveEditTarget(original,"/");bool selfRefused=false;
+    try{SetArchiveEditAdditions(selfTarget,{original});}catch(...){selfRefused=true;}
+    check(selfRefused,id+" archive cannot add itself during editing");
+    auto edit=PrepareArchiveEditJob(original,{input+"/edit/replacement/empty",input+"/edit/new.txt"},{removed},"/");
+    edit.archiveLevel=4;auto encoded=DecodeJob(EncodeJob(edit,0));
+    check(encoded.action==Action::EditArchive&&encoded.archiveRemove.size()==1&&encoded.archivePath.empty(),id+" edit snapshot round trip");
+    std::vector<std::string> progressPaths,finishedPaths;
+    std::vector<std::string> conflicts;
+    Hooks replace;replace.conflict=[&](const std::string &path){conflicts.push_back(path);return Decision::Replace;};
+    replace.progress=[&](const std::string &path,uint64_t){progressPaths.push_back(path);};
+    replace.fileDone=[&](const std::string &path,const std::string &){finishedPaths.push_back(path);};
+    auto updated=RunArchiveJob(encoded,replace);if(!updated.errors.empty())std::cerr<<updated.errors.front()<<std::endl;
+    check(updated.completed==1&&updated.errors.empty(),id+" add replace and remove atomically");
+    check(!progressPaths.empty()&&std::all_of(progressPaths.begin(),progressPaths.end(),
+      [&](const auto &path){return path==original;})&&finishedPaths==std::vector<std::string>{original},
+      id+" internal work reports only the archive target");
+    check(conflicts.size()==1&&conflicts[0].find(original+" → /")==0&&
+      conflicts[0].find(".Listi-archive-stage-")==std::string::npos,
+      id+" conflict prompt hides private staging paths");
+    rootURL=OpenArchive(original);FileEntry gone;
+    check(!StatFile(ChildLocation(ChildLocation(rootURL,"folder"),"æ name ; $(no).txt"),gone),id+" removed member absent");
+    check(vread(ChildLocation(rootURL,"empty"))=="replacement\n"&&vread(ChildLocation(rootURL,"new.txt"))=="new\n",id+" replacement and addition exact");
+    BNode preserved(original.c_str());char attr[8]{};
+    check(preserved.ReadAttr("Listi:edit-test",B_STRING_TYPE,0,attr,sizeof(attr))==sizeof(marker)&&!strcmp(attr,marker),id+" archive metadata preserved");
+    auto before=read(original);auto cancelled=PrepareArchiveEditJob(original,{input+"/edit/new.txt"},{},"/");
+    Hooks stop;stop.proceed=[] {return false;};auto stopped=RunArchiveJob(cancelled,stop);
+    check(stopped.cancelled&&read(original)==before,id+" cancelled edit preserves original bytes");
+    write(input+"/edit/replacement/new.txt","before");
+    auto changed=PrepareArchiveEditJob(original,{input+"/edit/replacement/new.txt"},{},"/");
+    bool touched=false;Hooks mutateAdd;mutateAdd.conflict=[&](const std::string &){
+      touched=true;write(input+"/edit/replacement/new.txt","after");return Decision::Replace;};
+    auto refused=RunArchiveJob(changed,mutateAdd);
+    check(touched&&!refused.errors.empty()&&read(original)==before,id+" changed addition preserves original archive");
+    auto frozen=PrepareArchiveEditTarget(original,"/");const auto frozenBytes=read(original);
+    write(original,frozenBytes+"changed while picker was open");bool pickerRefused=false;
+    try{SetArchiveEditAdditions(frozen,{input+"/edit/new.txt"});}catch(...){pickerRefused=true;}
+    check(pickerRefused,id+" picker rejects an archive changed after selection");
+    write(original,frozenBytes);
+    auto single=PrepareArchiveJob(false,{input+"/edit/new.txt"});single.archiveFormat=id;
+    const auto extension=id=="zip"?".zip":".7z";SetArchiveDestination(single,out,"empty-edit-"+id+extension);
+    auto singleMade=RunArchiveJob(single,{});auto singleRoot=OpenArchive(single.destination);
+    auto only=ChildLocation(singleRoot,"new.txt");auto emptyEdit=PrepareArchiveEditJob(single.destination,{},{only},"/");
+    auto emptied=RunArchiveJob(emptyEdit,{});auto emptyRoot=OpenArchive(single.destination);
+    check(singleMade.completed==1&&emptied.completed==1&&ListFiles(emptyRoot).empty(),id+" remove-only edit can produce an empty archive");
   }
   for(const auto &format:formats)if(format.encryption){
     const std::string password="Listi-create-test-Æ";
@@ -91,6 +150,19 @@ void *run(void *) {
     check(extracted.completed==1 && extracted.errors.empty() &&
       read(unpack.destination+"/folder/æ name ; $(no).txt")=="payload\n",
       format.id+" encrypted round trip exact");
+    write(input+"/edit/encrypted-add.txt","private addition\n");
+    auto encryptedEdit=PrepareArchiveEditJob(encrypted.destination,{input+"/edit/encrypted-add.txt"},{},"/");
+    auto encryptedUpdated=RunArchiveJob(encryptedEdit,{});
+    if(!encryptedUpdated.errors.empty())std::cerr<<encryptedUpdated.errors.front()<<std::endl;
+    check(encryptedUpdated.completed==1&&encryptedUpdated.errors.empty(),format.id+" encrypted archive edit");
+    ForgetArchivePasswords();int editPrompts=0;
+    SetArchivePasswordPrompt([&](const std::string &,bool,const TransferControl &){++editPrompts;return secret(password.c_str());});
+    auto editedURL=OpenArchive(encrypted.destination);
+    const auto editedContent=vread(ChildLocation(editedURL,"encrypted-add.txt"));
+    if(editedContent!="private addition\n"||editPrompts!=1)
+      std::cerr<<format.id<<" edited prompt count "<<editPrompts<<", content bytes "<<editedContent.size()<<std::endl;
+    check(editedContent=="private addition\n"&&editPrompts==1,
+      format.id+" edited archive keeps password protection");
     auto missing=PrepareArchiveJob(false,{input+"/empty"});missing.archiveFormat=format.id;
     missing.archivePasswordToken=encrypted.archivePasswordToken;
     SetArchiveDestination(missing,out,"missing-secret-"+format.id+format.extension);

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "FileSearch.h"
+#include "VirtualFile.h"
 #include <UnicodeChar.h>
 #include <Entry.h>
 #include <FindDirectory.h>
@@ -110,7 +111,8 @@ SearchSummary SearchFiles(const SearchRequest &request,
       errno = 0;
       auto item = readdir(dir.get());
       if (!item) { if (errno) ++out.skipped; break; }
-      if (!strcmp(item->d_name, ".") || !strcmp(item->d_name, "..")) continue;
+      if (!strcmp(item->d_name, ".") || !strcmp(item->d_name, "..") ||
+          Lister::IsListiPrivateEntry(item->d_name)) continue;
       if (out.visited >= request.visitLimit) { out.limited = true; break; }
       ++out.visited;
       std::string path = current.path + (current.path == "/" ? "" : "/") + item->d_name;

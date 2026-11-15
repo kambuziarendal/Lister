@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace Lister {
-enum class Action { Copy, Move, Delete, Trash, Restore, MakeDirectory, Rename, Duplicate, Link, CreateArchive, ExtractArchive };
+enum class Action { Copy, Move, Delete, Trash, Restore, MakeDirectory, Rename, Duplicate, Link, CreateArchive, ExtractArchive, EditArchive };
 enum class Decision { Replace, ReplaceAll, Skip, SkipAll, Abort };
 struct NodeIdentity {
   int32_t device = -1;
@@ -33,6 +33,11 @@ struct Job {
   // application restart with this handle, which is intentional.
   uint64_t archivePasswordToken = 0;
   bool archiveEncryptNames = false;
+  // EditArchive uses destination as the local archive, sources as local entries
+  // to add, archivePath as the internal destination folder, and archiveRemove
+  // as normalized member paths without a leading slash.
+  std::string archivePath;
+  std::vector<std::string> archiveRemove;
   std::string destinationFolder; // Captured parent for rename/new-folder questions.
 };
 struct Hooks {

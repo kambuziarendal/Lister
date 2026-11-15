@@ -12,6 +12,13 @@ struct ArchiveFormat {
 };
 std::vector<ArchiveFormat> WritableArchiveFormats();
 Job PrepareArchiveJob(bool extract, const std::vector<std::string> &sources);
+Job PrepareArchiveEditTarget(const std::string &archive,
+    const std::string &internalFolder = "/");
+void SetArchiveEditAdditions(Job &, const std::vector<std::string> &add);
+Job PrepareArchiveEditJob(const std::string &archive,
+    const std::vector<std::string> &add,
+    const std::vector<std::string> &remove,
+    const std::string &internalFolder = "/");
 void SetArchiveDestination(Job &, const std::string &folder, const std::string &name);
 Result RunArchiveJob(const Job &, const Hooks &);
 }

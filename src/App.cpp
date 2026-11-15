@@ -26,6 +26,7 @@
 #include <Button.h>
 #include <Entry.h>
 #include <File.h>
+#include <FilePanel.h>
 #include <FindDirectory.h>
 #include <GridView.h>
 #include <GroupView.h>
@@ -48,13 +49,15 @@
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
+#include <memory>
 #include <set>
 #include <sys/stat.h>
 #include <unistd.h>
 constexpr uint32 kNamedEntryAccepted = 'nacc', kDropAccepted = 'dacc', kConfirm = 'cfir', kViewLoaded = 'vloa',
                  kServiceError = 'serr', kSavePreferences = 'save',
                  kNetwork = 'netw', kOpenSystem = 'osys',
-                 kInlineNotice = 'inot', kInlineCancel = 'ican';
+                 kInlineNotice = 'inot', kInlineCancel = 'ican',
+                 kArchiveAddChosen = 'aadc', kArchiveEditAccepted = 'aeda';
 static void Notice(const char *text) {
   BMessage error(kServiceError);
   error.AddString("error", text);
@@ -335,6 +338,7 @@ class MainWindow : public BWindow {
     actionArea->Close();
     pendingDrop = {};
     pendingNamedEntry = {};
+    pendingArchiveEdit = {};
     ShowBank(prefs.buttons);
     panes[source]->FocusList();
   }
@@ -348,6 +352,9 @@ class MainWindow : public BWindow {
   int source = 0;
   int64 clipboardSerial = 0;
   Lister::Job pendingDrop, pendingNamedEntry;
+  Lister::Job pendingArchiveEdit;
+  std::unique_ptr<BFilePanel> archiveAddPicker;
+  std::string archiveAddTarget, archiveAddFolder;
   BMessenger archiveWindow;
   void ArchiveAction(bool extract) {
     if(actionArea->Pending()){queue->ErrorInfo("Finish or cancel the open question first.");return;}
@@ -361,6 +368,41 @@ class MainWindow : public BWindow {
       }
       archiveWindow=OpenArchiveWindow(job,folder,BMessenger(this));
     }catch(const std::exception &e){Notice(e.what());}
+  }
+  void AddToArchive() {
+    if(actionArea->Pending()){queue->ErrorInfo("Finish or cancel the open question first.");return;}
+    try {
+      const auto folder=panes[source]->Path();auto location=Lister::ParseLocation(folder);
+      if(location.Archive()){archiveAddTarget=location.archive;archiveAddFolder=location.path;}
+      else {
+        const auto selected=panes[source]->Selected();
+        if(selected.size()!=1||Lister::IsVirtual(selected[0]))throw std::runtime_error("Select one local ZIP or 7z archive, or open a folder inside it.");
+        archiveAddTarget=selected[0];archiveAddFolder="/";
+      }
+      struct stat st;
+      if(lstat(archiveAddTarget.c_str(),&st)||!S_ISREG(st.st_mode))
+        throw std::runtime_error("Choose one local ZIP or 7z archive.");
+      pendingArchiveEdit=Lister::PrepareArchiveEditTarget(archiveAddTarget,archiveAddFolder);
+    } catch(const std::exception &e) {Notice(e.what());return;}
+    BMessenger here(this);BMessage chosen(kArchiveAddChosen);
+    archiveAddPicker.reset(new BFilePanel(B_OPEN_PANEL,&here,nullptr,
+      node_flavor(B_FILE_NODE|B_DIRECTORY_NODE),true,&chosen));
+    archiveAddPicker->SetPanelDirectory(Lister::ParentLocation(archiveAddTarget).c_str());
+    archiveAddPicker->Show();
+  }
+  void RemoveFromArchive() {
+    if(actionArea->Pending()){queue->ErrorInfo("Finish or cancel the open question first.");return;}
+    try {
+      const auto selected=panes[source]->Selected();
+      if(selected.empty())throw std::runtime_error("Select entries inside one ZIP or 7z archive.");
+      auto location=Lister::ParseLocation(selected[0]);
+      if(!location.Archive())throw std::runtime_error("Open an archive and select the entries to remove.");
+      pendingArchiveEdit=Lister::PrepareArchiveEditJob(location.archive,{},selected,location.path);
+      BMessage accepted(kArchiveEditAccepted);
+      BString text; text << "Remove " << int32(selected.size()) << " selected entries from this archive?\n\n"
+        << location.archive.c_str() << "\n\nThe archive is rebuilt safely. The original remains unchanged if the job fails.";
+      AskInline(text.String(),"Remove from archive",accepted);
+    }catch(const std::exception &e){Notice(e.what());pendingArchiveEdit={};}
   }
   void NamedEntry(Lister::Action action) {
     if (actionArea->Pending()) {
@@ -576,7 +618,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.22.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.23.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
@@ -618,6 +660,8 @@ public:
     auto archives = new BMenu("Archives");
     archives->AddItem(new BMenuItem("Create archive...",new BMessage(kCreateArchive),'P',B_SHIFT_KEY));
     archives->AddItem(new BMenuItem("Extract to folder...",new BMessage(kExtractArchive),'E',B_SHIFT_KEY));
+    archives->AddItem(new BMenuItem("Add or replace files...",new BMessage(kAddArchive)));
+    archives->AddItem(new BMenuItem("Remove selected entries...",new BMessage(kRemoveArchive)));
     archives->AddSeparatorItem();
     archives->AddItem(new BMenuItem("Forget archive passwords",new BMessage('apfg')));
     files->AddItem(archives);
@@ -1082,6 +1126,19 @@ public:
         options.local = local;
         options.dual = !prefs.SinglePane();
         options.folderLocal = folderLocal;
+        const auto folderLocation=Lister::ParseLocation(folder);
+        options.archiveAdd=folderLocation.Archive()||
+          (selected.size()==1&&local&&!options.directory);
+        options.archiveRemove=!selected.empty();
+        std::string selectedArchive;
+        for(const auto &path:selected){
+          auto selectedLocation=Lister::ParseLocation(path);
+          if(!selectedLocation.Archive()||
+             (!selectedArchive.empty()&&selectedArchive!=selectedLocation.archive)){
+            options.archiveRemove=false;break;
+          }
+          selectedArchive=selectedLocation.archive;
+        }
         options.sort = panes[owner]->Sorting();
         options.view = panes[owner]->CurrentView();
         const auto choice = ShowContextMenu(screen, options);
@@ -1123,6 +1180,34 @@ public:
     }
     case kCreateArchive: ArchiveAction(false); break;
     case kExtractArchive: ArchiveAction(true); break;
+    case kAddArchive: AddToArchive(); break;
+    case kRemoveArchive: RemoveFromArchive(); break;
+    case kArchiveAddChosen: {
+      try {
+        std::vector<std::string> additions;entry_ref ref;BPath path;
+        for(int32 i=0;m->FindRef("refs",i,&ref)==B_OK;++i){
+          if(path.SetTo(&ref)!=B_OK)throw std::runtime_error("A selected file is unavailable.");
+          additions.emplace_back(path.Path());
+        }
+        Lister::SetArchiveEditAdditions(pendingArchiveEdit,additions);
+        BMessage accepted(kArchiveEditAccepted);BString text;
+        text << "Add " << int32(additions.size()) << " selected entries to this archive?\n\n"
+          << archiveAddTarget.c_str();
+        if(archiveAddFolder!="/")text << "\nInside: " << archiveAddFolder.c_str();
+        text << "\n\nSelected:";
+        const int32 shown=std::min<int32>(int32(additions.size()),3);
+        for(int32 i=0;i<shown;++i)text << "\n" << Lister::Leaf(additions[i]).c_str();
+        if(int32(additions.size())>shown)text << "\n…and " << int32(additions.size())-shown << " more";
+        text << "\n\nExisting names will require an explicit Replace or Skip choice.";
+        AskInline(text.String(),"Update archive",accepted);
+      }catch(const std::exception &e){Notice(e.what());pendingArchiveEdit={};}
+      break;
+    }
+    case kArchiveEditAccepted:
+      if(!pendingArchiveEdit.destination.empty()){
+        queue->Enqueue(pendingArchiveEdit);pendingArchiveEdit={};
+      }
+      break;
     case 'apfg': Lister::ForgetArchivePasswords(); break;
     case kArchiveAccepted: queue->Enqueue(Lister::DecodeJob(*m)); break;
     case kOpenWith: {

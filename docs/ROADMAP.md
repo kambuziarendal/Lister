@@ -306,3 +306,12 @@ ZIP AES-256 and 7z AES-256 creation use native library interfaces inside Listi.
 masked confirmation fields to one queued job through a bounded process-local
 token and are never serialized to settings or job messages. Editing existing
 archives, split creation and encrypted RAR creation remain separate work.
+
+## 0.23.0: safe archive editing
+
+Local, single-volume ZIP and 7z archives can be rebuilt transactionally to add,
+replace or remove entries. Source and archive identities are frozen before
+confirmation. The replacement is published atomically only after extraction,
+editing, writing and flushing succeed. Supported ZIP/7z encryption is retained.
+Split, remote, nested and RAR editing remain separate work. See
+ARCHIVES-0.23.0.md.

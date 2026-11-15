@@ -80,6 +80,20 @@ void RememberArchivePassword(const std::string &identity, ArchiveSecretPtr secre
   cache.emplace_front(identity,std::move(secret));
   while(cache.size()>16)cache.pop_back();
 }
+ArchiveSecretPtr CachedArchivePassword(const std::string &path,
+    const std::string &alternateIdentity) {
+  struct stat current;
+  if (lstat(path.c_str(), &current) || !S_ISREG(current.st_mode)) return {};
+  const auto identity = ArchivePasswordIdentity(current);
+  std::lock_guard<std::mutex> lock(mutex);
+  for (auto it = cache.begin(); it != cache.end(); ++it) {
+    if (it->first != identity && it->first != alternateIdentity) continue;
+    auto result = it->second;
+    cache.splice(cache.begin(), cache, it);
+    return result;
+  }
+  return {};
+}
 uint64_t HoldArchiveCreationPassword(ArchiveSecretPtr secret) {
   if (!secret) return 0;
   std::lock_guard<std::mutex> lock(mutex);

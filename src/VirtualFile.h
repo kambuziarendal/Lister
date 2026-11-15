@@ -41,6 +41,7 @@ struct Connection {
 };
 Location ParseLocation(const std::string &);
 bool IsVirtual(const std::string &);
+bool IsListiPrivateEntry(const char *name);
 std::string EncodePath(const std::string &);
 std::string DecodePath(const std::string &);
 std::string ChildLocation(const std::string &, const std::string &);

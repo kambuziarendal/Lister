@@ -80,6 +80,8 @@ void FileActions(BMenu &menu, const ContextMenuOptions &options) {
   auto archives=new BMenu("Archives");
   auto pack=new BMenuItem("Create archive...",new BMessage(kCreateArchive));pack->SetEnabled(local);archives->AddItem(pack);
   auto extract=new BMenuItem("Extract to folder...",new BMessage(kExtractArchive));extract->SetEnabled(!local || (single&&!directory));archives->AddItem(extract);
+  auto update=new BMenuItem("Add or replace files...",new BMessage(kAddArchive));update->SetEnabled(options.archiveAdd);archives->AddItem(update);
+  auto remove=new BMenuItem("Remove selected entries...",new BMessage(kRemoveArchive));remove->SetEnabled(options.archiveRemove);archives->AddItem(remove);
   menu.AddItem(archives);
   menu.AddSeparatorItem();
   add("Properties...", kProperties, single && local);

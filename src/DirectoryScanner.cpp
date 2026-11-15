@@ -180,7 +180,8 @@ public:
                 done.AddString("error", strerror(errno));
               break;
             }
-            if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
+            if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..") ||
+                Lister::IsListiPrivateEntry(e->d_name))
               continue;
             row(Lister::Join(path.String(), e->d_name).c_str(), e->d_name);
           }

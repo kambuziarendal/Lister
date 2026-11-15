@@ -29,6 +29,10 @@ ArchiveSecretPtr GetArchivePassword(const std::string &path,
     const TransferControl &);
 void RememberArchivePassword(const std::string &identity, ArchiveSecretPtr,
     uint64_t generation);
+// Returns a matching in-memory password without prompting. The complete file
+// identity must still match, so a replaced archive never inherits a secret.
+ArchiveSecretPtr CachedArchivePassword(const std::string &path,
+    const std::string &alternateIdentity = {});
 // Creation passwords live only in this process. The queue serializes the token,
 // not the secret bytes. Taking a token removes it from the bounded registry.
 uint64_t HoldArchiveCreationPassword(ArchiveSecretPtr);
