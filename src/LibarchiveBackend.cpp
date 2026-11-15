@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "DynamicLibrary.h"
 #include "ArchiveBackend.h"
+#include "ArchivePasswords.h"
 #include <memory>
 #include <algorithm>
 #include <archive.h>
@@ -30,9 +31,13 @@ struct Reader {
   int fd = -1;
   const TransferControl &control;
   std::exception_ptr failure;
+  std::string path, identity;
+  uint64_t passwordGeneration = ArchivePasswordGeneration();
+  unsigned passwordAttempts = 0;
+  ArchiveSecretPtr password;
   std::vector<char> buffer = std::vector<char>(131072);
   explicit Reader(const std::string &path, const TransferControl &c)
-      : control(c) {
+      : control(c), path(path) {
     if (!lib.Available())
       throw std::runtime_error(
           "Install libarchive from HaikuDepot to browse archives");
@@ -44,6 +49,7 @@ struct Reader {
       close(fd); fd = -1;
       throw std::runtime_error("Archive input must be a regular file");
     }
+    identity = ArchivePasswordIdentity(opened);
     handle = LIBCALL(lib, archive_read_new)();
     if (!handle) {
       close(fd);
@@ -51,6 +57,7 @@ struct Reader {
       throw std::runtime_error("Could not allocate archive reader");
     }
     try {
+      LIBCALL(lib, archive_read_set_passphrase_callback)(handle, this, &Passphrase);
       LIBCALL(lib, archive_read_support_filter_all)(handle);
       // Compressed single files must not be guessed as mtree (ordinary text
       // can look like an mtree manifest). Explicit tar containers still use
@@ -88,6 +95,24 @@ struct Reader {
       LIBCALL(lib, archive_read_free)(handle);
     if (fd >= 0)
       close(fd);
+  }
+  static const char *Passphrase(struct archive *, void *data) {
+    auto &self = *static_cast<Reader *>(data);
+    try {
+      self.control.Check();
+      if (self.passwordAttempts >= 4)
+        throw std::runtime_error("Password not accepted. Reopen the archive to try again.");
+      self.password = GetArchivePassword(self.path, self.identity,
+          self.passwordAttempts++ != 0, self.passwordGeneration, self.control);
+      struct stat current, named;
+      if (fstat(self.fd, &current) || lstat(self.path.c_str(), &named) ||
+          self.identity != ArchivePasswordIdentity(current) ||
+          self.identity != ArchivePasswordIdentity(named))
+        throw std::runtime_error("Archive changed while entering its password. Open it again.");
+      return self.password->Text();
+    } catch (...) {
+      self.failure = std::current_exception();return nullptr;
+    }
   }
   static la_ssize_t Read(struct archive *, void *data, const void **out) {
     auto &self = *static_cast<Reader *>(data);
@@ -133,6 +158,10 @@ struct Reader {
       if (package) error = std::string("This compression needs the optional ") + package +
           " package. Install it from HaikuDepot, then open the archive again in Listi.";
     }
+    if (error.find("encrypt") != std::string::npos ||
+        error.find("Encrypt") != std::string::npos)
+      error += " This encryption is not supported by the installed archive engine. "
+               "Encrypted 7z/RAR and ZIP header encryption need another adapter.";
     throw std::runtime_error(error);
   }
   struct archive_entry *Next() {
@@ -144,6 +173,10 @@ struct Reader {
       return nullptr;
     if (r != ARCHIVE_OK)
       Error();
+    if (LIBCALL(lib, archive_entry_is_encrypted)(entry) &&
+        (LIBCALL(lib, archive_format)(handle) & ARCHIVE_FORMAT_BASE_MASK) != ARCHIVE_FORMAT_ZIP)
+      throw std::runtime_error("Encrypted 7z/RAR is not supported by this archive engine. "
+                               "It needs an additional Listi adapter; no external app was opened.");
     return entry;
   }
   bool CompressedOrArchive() const {
@@ -297,8 +330,10 @@ void LibarchiveRead(const Location &location, const DataSink &sink,
       reader.Rethrow();
       if (n < 0)
         reader.Error();
-      if (!n)
+      if (!n) {
+        RememberArchivePassword(reader.identity, reader.password, reader.passwordGeneration);
         return;
+      }
       sink(data.data(), n);
       c.Tick(n);
     }

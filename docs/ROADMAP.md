@@ -278,3 +278,11 @@ og utpakking til en ny lokal mappe i alle tre oppsett. Opprinnelige arkiver
 og eksisterende mål blir aldri erstattet. Se ARCHIVES-0.18.0.md for grenser.
 Passord, delte arkiver, redigering av eksisterende arkiver og en raskere
 én-gangsleser for store uttrekk står igjen som separate trinn.
+
+## 0.19.0: password-protected ZIP
+
+Native password entry and memory-only identity-bound cache for ZipCrypto and
+WinZip AES-128/256 reading/extraction. Explicit forget and cancel, bounded retry,
+no password persistence. Encrypted 7z/RAR, ZIP header encryption and unusual
+compression combinations require another adapter. Creating encrypted archives,
+split volumes and archive editing remain open. See ARCHIVES-0.19.0.md.

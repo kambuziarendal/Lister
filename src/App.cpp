@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MIT
+#include "ArchivePasswordWindow.h"
+#include "ArchivePasswords.h"
 #include "Common.h"
 #include "FileClipboard.h"
 #include "FileDrop.h"
@@ -185,6 +187,8 @@ public:
         error.AddString("error", text);
         app.SendMessage(&error);
       }
+    } catch (const Lister::Cancelled &) {
+      return;
     } catch (const std::exception &e) {
       BMessage error(kServiceError);
       error.AddString("error", e.what());
@@ -572,7 +576,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.18.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.19.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
@@ -614,6 +618,8 @@ public:
     auto archives = new BMenu("Archives");
     archives->AddItem(new BMenuItem("Create archive...",new BMessage(kCreateArchive),'P',B_SHIFT_KEY));
     archives->AddItem(new BMenuItem("Extract to folder...",new BMessage(kExtractArchive),'E',B_SHIFT_KEY));
+    archives->AddSeparatorItem();
+    archives->AddItem(new BMenuItem("Forget archive passwords",new BMessage('apfg')));
     files->AddItem(archives);
     files->AddItem(new BMenuItem("Properties...", new BMessage(kProperties), 'I', B_SHIFT_KEY));
     files->AddSeparatorItem();
@@ -1117,6 +1123,7 @@ public:
     }
     case kCreateArchive: ArchiveAction(false); break;
     case kExtractArchive: ArchiveAction(true); break;
+    case 'apfg': Lister::ForgetArchivePasswords(); break;
     case kArchiveAccepted: queue->Enqueue(Lister::DecodeJob(*m)); break;
     case kOpenWith: {
       auto selected = panes[source]->Selected();
@@ -1310,10 +1317,12 @@ class App : public BApplication {
 public:
   App() : BApplication(kSignature) {}
   ~App() {
+    Lister::StopArchivePasswords();
     if (services && services->Lock())
       services->Quit();
   }
   void ReadyToRun() override {
+    InstallArchivePasswordWindow();
     Preferences prefs;
     BMessage settings;
     std::string settingsError;

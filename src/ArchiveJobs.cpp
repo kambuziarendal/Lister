@@ -206,6 +206,12 @@ void SetArchiveDestination(Job &job,const std::string &folder,const std::string 
 }
 Result RunArchiveJob(const Job &job,const Hooks &hooks) {
   Result result;
+  std::set<std::string> completedPaths;
+  Hooks tracked=hooks;
+  tracked.progress=[&](const std::string &path,uint64_t bytes){
+    completedPaths.insert(path);
+    if(hooks.progress)hooks.progress(path,bytes);
+  };
   try {
     Require(!job.sources.empty(),"Archive source selection is empty.");
     for(const auto &source:job.sources)Require(job.expectedSources.count(LocalSource(source)),"Archive source identity is missing.");
@@ -230,7 +236,7 @@ Result RunArchiveJob(const Job &job,const Hooks &hooks) {
       writer.Check(LIBCALL(writer.lib,archive_write_open_fd)(writer.a,output.n));
       // Pack verifies every opened node and the complete captured tree. Avoid
       // re-statting all selected roots on every buffer (quadratic for many files).
-      Pack pack{writer,hooks};
+      Pack pack{writer,tracked};
       for(const auto &source:job.sources)pack.Add(source,Leaf(source));
       writer.Check(LIBCALL(writer.lib,archive_write_close)(writer.a));
       pack.Verify();
@@ -246,7 +252,11 @@ Result RunArchiveJob(const Job &job,const Hooks &hooks) {
         selected.clear();for(const auto &entry:ListFiles(root,control))selected.push_back(entry.path);
       }
       Job copy;copy.sources=selected;copy.destination=PathOf(stage.dir);
-      Hooks guarded=hooks;guarded.fileDone={};guarded.fileFailed={};
+      Hooks guarded=tracked;
+      // Defer all member completion notifications until atomic publication.
+      // Otherwise the UI leaves successfully extracted members marked failed.
+      guarded.fileDone=[&](const std::string &path,const std::string &){completedPaths.insert(path);};
+      guarded.fileFailed={};
       guarded.proceed=[&]{check();return true;};
       auto copied=Run(copy,guarded);
       if(copied.cancelled)throw Cancelled();
@@ -262,7 +272,8 @@ Result RunArchiveJob(const Job &job,const Hooks &hooks) {
       "Could not publish the result. The destination may already exist; it was not replaced.");
     if(job.action==Action::ExtractArchive)stage.dir.Unset();
     result.completed=1;
-    for(const auto &source:job.sources)if(hooks.fileDone)hooks.fileDone(source,job.destination);
+    completedPaths.insert(job.sources.begin(),job.sources.end());
+    for(const auto &source:completedPaths)if(hooks.fileDone)hooks.fileDone(source,job.destination);
   }catch(const Cancelled &){result.cancelled=true;}
   catch(const std::exception &e){result.errors.push_back(e.what());}
   return result;
