@@ -13,6 +13,7 @@
 constexpr const char *kSignature = "application/x-vnd.Kambuzi-Lister";
 enum : uint32 {
   kGridMode = 'gmod',
+  kSort = 'sort',
   kWorkspace = 'wksp',
   kContextMenu = 'ctxm',
   kActivate = 'actv',

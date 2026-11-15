@@ -44,6 +44,9 @@ public:
   void SendSelection(bool gesture = false);
   void ContextMenu(const std::string &entry, BPoint screen);
   void ShowStatus(const char *text) { SetStatus(text); }
+  PaneSort Sorting();
+  void Sort(PaneSort);
+  int32 CurrentView() const { return mode; }
   int32 DisplayMode() const { return prefs.paneMode[id]; }
   bool TreeVisible() const { return prefs.paneTree[id]; }
   void FolderModes(const std::map<std::string, int32> &modes) {

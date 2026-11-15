@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include <View.h>
+#include "PaneModel.h"
 class Pane;
 class PaneModel;
 struct Preferences;
 class FileDetails : public BView {
 public:
   using BView::BView;
+  virtual PaneSort Sorting() = 0;
+  virtual void Sort(PaneSort) = 0;
   virtual void SetActive(bool) = 0;
   virtual bool CancelSelectionGesture() = 0;
   virtual void SetSimple(bool) = 0;

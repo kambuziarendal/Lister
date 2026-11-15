@@ -27,15 +27,28 @@ void PaneModel::Filter(const std::string &query) {
         anchor.clear();
     }
   }
-  std::stable_sort(visible.begin(), visible.end(), [](auto a, auto b) {
-    if (a->parent != b->parent)
-      return a->parent;
-    if ((a->kind == 1) != (b->kind == 1))
-      return a->kind == 1;
-    int order = strcasecmp(a->name.c_str(), b->name.c_str());
-    return order ? order < 0 : a->path < b->path;
+  Sort(sorting);
+}
+void PaneModel::Sort(PaneSort value) {
+  sorting = value;
+  if (sorting.column < 0 || sorting.column > 2) sorting.column = 0;
+  std::stable_sort(visible.begin(), visible.end(), [this](auto a, auto b) {
+    int order = 0;
+    if (sorting.column == 1) {
+      const auto x = a->directory || !a->sizeKnown ? -1 : a->size;
+      const auto y = b->directory || !b->sizeKnown ? -1 : b->size;
+      order = (x > y) - (x < y);
+    } else if (sorting.column == 2) {
+      order = (a->modified > b->modified) - (a->modified < b->modified);
+    } else {
+      if (a->parent != b->parent) order = a->parent ? -1 : 1;
+      else if ((a->kind == 1) != (b->kind == 1)) order = a->kind == 1 ? -1 : 1;
+      else order = strcasecmp(a->name.c_str(), b->name.c_str());
+    }
+    return sorting.ascending ? order < 0 : order > 0;
   });
 }
+
 std::vector<std::string> PaneModel::Selected() const {
   std::vector<std::string> result;
   for (auto entry : visible)

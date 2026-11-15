@@ -14,6 +14,7 @@ struct PaneEntry {
   float fraction = 0;
   std::shared_ptr<BBitmap> icon;
 };
+struct PaneSort { int column = 0; bool ascending = true; };
 struct SelectionSummary {
   size_t visible = 0, selected = 0, files = 0, folders = 0, links = 0, unknown = 0;
   uint64_t bytes = 0;
@@ -26,6 +27,8 @@ public:
   void Clear();
   void Add(std::unique_ptr<PaneEntry> entry);
   void Filter(const std::string &query);
+  void Sort(PaneSort value);
+  PaneSort Sorting() const { return sorting; }
   const std::vector<PaneEntry *> &Visible() const { return visible; }
   size_t HiddenCount() const { return entries.size() - visible.size(); }
   bool IsSelected(const std::string &path) const { return selection.count(path); }
@@ -39,6 +42,7 @@ public:
   PaneEntry *Focused() const;
   void Transfer(const std::string &path, int state, float fraction);
 private:
+  PaneSort sorting;
   std::vector<std::unique_ptr<PaneEntry>> entries;
   std::vector<PaneEntry *> visible;
   std::set<std::string> selection;

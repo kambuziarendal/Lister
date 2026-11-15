@@ -273,7 +273,18 @@ void Pane::SetSource(bool source) {
   activityLevel = active ? 1.f : 0.f;
   InvalidateActivityBorder();
 }
+PaneSort Pane::Sorting() {
+  return mode == 0 ? list->Sorting() : entries.Sorting();
+}
+void Pane::Sort(PaneSort value) {
+  CancelSelectionGesture();
+  entries.Sort(value);
+  list->Sort(value);
+  grid->Update();
+  SendSelection();
+}
 void Pane::SetDisplayMode(int32 value) {
+  if (mode == 0) entries.Sort(list->Sorting());
   mode = std::max(0, std::min(3, value));
   cards->CardLayout()->SetVisibleItem(mode == 0 ? 0 : 1);
   grid->SetMode(mode);

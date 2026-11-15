@@ -255,13 +255,13 @@ public:
       if (!ColumnAt(i)->IsVisible()) contentWidth -= ColumnAt(i)->Width();
     float contentHeight = 0;
     for (int32 i = 0; i < CountRows(); ++i) contentHeight += RowAt(i)->Height() + 1;
-    bool showVertical = !simple, showHorizontal = !simple;
-    if (simple) {
+    bool showVertical = !simple, showHorizontal = false;
+    {
       // Adding one scrollbar can make the other necessary. Start without
       // either to avoid retaining mutually unnecessary bars at the boundary.
       for (int i = 0; i < 3; ++i) {
         showHorizontal = contentWidth > fullWidth - (showVertical ? verticalWidth : 0);
-        showVertical = contentHeight > fullHeight - (showHorizontal ? horizontalHeight : 0);
+        showVertical = !simple || contentHeight > fullHeight - (showHorizontal ? horizontalHeight : 0);
       }
     }
     const float extraWidth = showVertical ? 0 : verticalWidth;
@@ -381,6 +381,18 @@ public:
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0).Add(list);
   }
   ~DetailsView() { list->syncing = true; }
+  PaneSort Sorting() override {
+    // SaveState is the native API for inspecting header-selected sort order.
+    BMessage state;
+    list->SaveState(&state);
+    return {state.GetInt32("sortID", 0), state.GetBool("sortascending", true)};
+  }
+  void Sort(PaneSort value) override {
+    BColumn *column = value.column == 1 ? static_cast<BColumn*>(list->size)
+      : value.column == 2 ? static_cast<BColumn*>(list->date) : list->name;
+    list->SetSortColumn(column, false, value.ascending);
+    SyncSelection();
+  }
   bool CancelSelectionGesture() override { return list->band->Escape(); }
   void MakeFocus(bool focus = true) override { list->MakeFocus(focus); }
   void Redraw() override { list->Invalidate(); }

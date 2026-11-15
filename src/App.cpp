@@ -1094,9 +1094,11 @@ public:
         const bool destinationKnown = !stat(destination.c_str(), &before);
         BPoint screen;
         if (m->FindPoint("screen", &screen) != B_OK) break;
-        const auto choice = background ? ShowFolderContextMenu(screen, folderLocal)
+        const auto choice = background ? ShowFolderContextMenu(screen, folderLocal,
+            panes[owner]->Sorting(), panes[owner]->CurrentView())
           : ShowFileContextMenu(screen, selected.size() == 1,
-              m->GetBool("directory", false), local, !prefs.simple, folderLocal);
+              m->GetBool("directory", false), local, !prefs.simple, folderLocal,
+              panes[owner]->Sorting(), panes[owner]->CurrentView());
         const uint32 action = choice.what;
         if (!action) break;
         if (source != owner || selected != panes[owner]->Selected() ||
@@ -1107,6 +1109,13 @@ public:
           if (folderLocal && (stat(folder.c_str(), &folderAfter) ||
               folderBefore.st_dev != folderAfter.st_dev || folderBefore.st_ino != folderAfter.st_ino))
             throw std::runtime_error("The folder changed. Open the menu again.");
+          if (action == kSort) { panes[owner]->Sort({choice.value, choice.ascending}); break; }
+          if (action == kGridMode) {
+            BMessage command(kGridMode);
+            command.AddInt32("mode", choice.value);
+            panes[owner]->MessageReceived(&command);
+            break;
+          }
           if (action == kProperties) { OpenFileProperties(folder); break; }
           if (action == kRefresh) { panes[owner]->Reload(); break; }
         } else if (local) {
