@@ -294,3 +294,11 @@ p7zip. 0.21.0 adds numbered 7z, modern RAR and old RAR volume sets, with the sam
 password workflow and atomic whole-archive publication. See ARCHIVES-0.21.0.md.
 Next: encrypted ZIP/7z creation, editing existing archives, then Workbench.
 Split ZIP, split creation and remote/nested archive materialization remain open.
+
+## 0.22.0: encrypted archive creation
+
+ZIP AES-256 and 7z AES-256 creation use native library interfaces inside Listi.
+7z can additionally encrypt member names. Creation passwords are passed from the
+masked confirmation fields to one queued job through a bounded process-local
+token and are never serialized to settings or job messages. Editing existing
+archives, split creation and encrypted RAR creation remain separate work.

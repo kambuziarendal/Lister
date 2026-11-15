@@ -24,6 +24,8 @@ BMessage EncodeJob(const Job &job, uint32 what) {
   m.AddInt32("action", int(job.action));
   m.AddString("archiveFormat", job.archiveFormat.c_str());
   m.AddInt32("archiveLevel", job.archiveLevel);
+  m.AddInt64("archivePasswordToken", job.archivePasswordToken);
+  m.AddBool("archiveEncryptNames", job.archiveEncryptNames);
   m.AddString("entryName", job.entryName.c_str());
   m.AddString("destination", job.destination.c_str());
   m.AddString("destinationFolder", job.destinationFolder.c_str());
@@ -47,6 +49,8 @@ Job DecodeJob(const BMessage &m) {
   job.action = static_cast<Action>(m.GetInt32("action", 0));
   job.archiveFormat = m.GetString("archiveFormat", "zip");
   job.archiveLevel = m.GetInt32("archiveLevel", 6);
+  job.archivePasswordToken = m.GetInt64("archivePasswordToken", 0);
+  job.archiveEncryptNames = m.GetBool("archiveEncryptNames", false);
   job.entryName = m.GetString("entryName", "");
   job.destination = m.GetString("destination", "");
   job.destinationFolder = m.GetString("destinationFolder", "");

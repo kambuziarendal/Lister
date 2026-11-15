@@ -37,9 +37,16 @@ struct Writer {
     const char *error=LIBCALL(lib, archive_error_string)(a);
     throw std::runtime_error(error ? error : "Archive writing failed.");
   }
-  void Configure(const std::string &format, int level) {
+  void Configure(const std::string &format, int level,
+                 const ArchiveSecretPtr &secret = {}) {
     Require(level>=0 && level<=9, "Invalid compression level.");
-    if(format=="zip") Check(LIBCALL(lib, archive_write_set_format_zip)(a));
+    if(format=="zip") {
+      Check(LIBCALL(lib, archive_write_set_format_zip)(a));
+      if(secret) {
+        Check(LIBCALL(lib, archive_write_set_passphrase)(a,secret->Text()));
+        Check(LIBCALL(lib, archive_write_set_options)(a,"zip:encryption=aes256"));
+      }
+    }
     else if(format=="7z") Check(LIBCALL(lib, archive_write_set_format_7zip)(a));
     else {
       Require(format=="tar" || format=="tgz" || format=="txz", "Unknown archive format.");
@@ -178,7 +185,17 @@ std::vector<ArchiveFormat> WritableArchiveFormats() {
     Writer w;w.Configure(f.id,6);
     FD fd(open("/dev/null",O_WRONLY));Require(fd.n>=0,"Cannot probe writer.");
     w.Check(LIBCALL(w.lib,archive_write_open_fd)(w.a,fd.n));
-    w.Check(LIBCALL(w.lib,archive_write_close)(w.a));result.push_back(f);
+    w.Check(LIBCALL(w.lib,archive_write_close)(w.a));
+    auto available=f;
+    if(f.id=="zip") {
+      auto probe=std::make_shared<ArchiveSecret>("Listi format probe");
+      Writer encrypted;encrypted.Configure(f.id,6,probe);
+      available.encryption=true;
+    } else if(f.id=="7z" && SevenZipCanCreate()) {
+      available.encryption=true;
+      available.encryptedNames=true;
+    }
+    result.push_back(available);
   }catch(const std::exception &){}
   return result;
 }
@@ -243,14 +260,24 @@ Result RunArchiveJob(const Job &job,const Hooks &hooks) {
     if(job.action==Action::CreateArchive) {
       auto path=Join(PathOf(stage.dir),"archive");
       FD output(open(path.c_str(),O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW,0600));Require(output.n>=0,"Cannot create archive output.");
-      Writer writer;writer.Configure(job.archiveFormat,job.archiveLevel);
-      writer.Check(LIBCALL(writer.lib,archive_write_open_fd)(writer.a,output.n));
-      // Pack verifies every opened node and the complete captured tree. Avoid
-      // re-statting all selected roots on every buffer (quadratic for many files).
-      Pack pack{writer,tracked};
-      for(const auto &source:job.sources)pack.Add(source,Leaf(source));
-      writer.Check(LIBCALL(writer.lib,archive_write_close)(writer.a));
-      pack.Verify();
+      auto secret=TakeArchiveCreationPassword(job.archivePasswordToken);
+      Require(!secret || job.archiveFormat=="zip" || job.archiveFormat=="7z",
+        "The selected archive format does not support password protection.");
+      Require(!job.archiveEncryptNames || (secret && job.archiveFormat=="7z"),
+        "Only encrypted 7z archives can hide file names.");
+      if(secret && job.archiveFormat=="7z") {
+        SevenZipCreate(output.n,job.sources,job.archiveLevel,
+          job.archiveEncryptNames,secret,tracked);
+      } else {
+        Writer writer;writer.Configure(job.archiveFormat,job.archiveLevel,secret);
+        writer.Check(LIBCALL(writer.lib,archive_write_open_fd)(writer.a,output.n));
+        // Pack verifies every opened node and the complete captured tree. Avoid
+        // re-statting all selected roots on every buffer (quadratic for many files).
+        Pack pack{writer,tracked};
+        for(const auto &source:job.sources)pack.Add(source,Leaf(source));
+        writer.Check(LIBCALL(writer.lib,archive_write_close)(writer.a));
+        pack.Verify();
+      }
       Require(!fsync(output.n),"Cannot flush archive to disk.");
       Require(publish.SetTo(&stage.dir,"archive",false)==B_OK,"Archive output disappeared.");
     } else {

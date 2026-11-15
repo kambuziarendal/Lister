@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "OperationQueue.h"
+#include "ArchivePasswords.h"
 #include "VirtualFile.h"
 #include <Button.h>
 #include <GroupView.h>
@@ -355,17 +356,22 @@ void OperationQueue::Pause() {
 }
 void OperationQueue::Cancel() {
   std::vector<int64> discardedTags;
+  std::vector<uint64_t> discardedPasswords;
   {
     std::lock_guard<std::mutex> l(mutex);
     cancel = true;
     paused = false;
-    for (const auto &job : jobs)
+    for (const auto &job : jobs) {
       if (job.tag) discardedTags.push_back(job.tag);
+      if (job.archivePasswordToken) discardedPasswords.push_back(job.archivePasswordToken);
+    }
     count -= jobs.size();
     jobs.clear();
     answer = int(Lister::Decision::Abort);
   }
   changed.notify_all();
+  for (auto token : discardedPasswords)
+    Lister::DiscardArchiveCreationPassword(token);
   // Queued jobs never reach Loop(), but their clipboard leases still need a
   // terminal result. Send outside the mutex and do not dismiss active choices.
   for (int64 tag : discardedTags) {

@@ -29,4 +29,9 @@ ArchiveSecretPtr GetArchivePassword(const std::string &path,
     const TransferControl &);
 void RememberArchivePassword(const std::string &identity, ArchiveSecretPtr,
     uint64_t generation);
+// Creation passwords live only in this process. The queue serializes the token,
+// not the secret bytes. Taking a token removes it from the bounded registry.
+uint64_t HoldArchiveCreationPassword(ArchiveSecretPtr);
+ArchiveSecretPtr TakeArchiveCreationPassword(uint64_t);
+void DiscardArchiveCreationPassword(uint64_t);
 } // namespace Lister

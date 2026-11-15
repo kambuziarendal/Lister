@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstring>
 #include <list>
+#include <map>
 #include <mutex>
 namespace Lister {
 ArchiveSecret::ArchiveSecret(const char *text) {
@@ -21,15 +22,17 @@ ArchivePasswordPrompt prompt;
 uint64_t generation = 0;
 bool stopping = false;
 std::list<std::pair<std::string, ArchiveSecretPtr>> cache;
+std::map<uint64_t, ArchiveSecretPtr> creation;
+uint64_t nextCreationToken = 1;
 }
 void SetArchivePasswordPrompt(ArchivePasswordPrompt fn) {
   std::lock_guard<std::mutex> lock(mutex);prompt = std::move(fn);stopping = false;
 }
 void ForgetArchivePasswords() {
-  std::lock_guard<std::mutex> lock(mutex);cache.clear();++generation;
+  std::lock_guard<std::mutex> lock(mutex);cache.clear();creation.clear();++generation;
 }
 void StopArchivePasswords() {
-  std::lock_guard<std::mutex> lock(mutex);stopping = true;cache.clear();++generation;prompt = {};
+  std::lock_guard<std::mutex> lock(mutex);stopping = true;cache.clear();creation.clear();++generation;prompt = {};
 }
 uint64_t ArchivePasswordGeneration() {
   std::lock_guard<std::mutex> lock(mutex);return generation;
@@ -76,5 +79,30 @@ void RememberArchivePassword(const std::string &identity, ArchiveSecretPtr secre
   cache.remove_if([&](const auto &item){return item.first == identity;});
   cache.emplace_front(identity,std::move(secret));
   while(cache.size()>16)cache.pop_back();
+}
+uint64_t HoldArchiveCreationPassword(ArchiveSecretPtr secret) {
+  if (!secret) return 0;
+  std::lock_guard<std::mutex> lock(mutex);
+  if (stopping) throw Cancelled();
+  if (creation.size() >= 16)
+    throw std::runtime_error("Finish or cancel a pending encrypted archive job before queuing another one.");
+  while (!nextCreationToken || creation.count(nextCreationToken)) ++nextCreationToken;
+  const auto token = nextCreationToken++;
+  creation.emplace(token, std::move(secret));
+  return token;
+}
+ArchiveSecretPtr TakeArchiveCreationPassword(uint64_t token) {
+  if (!token) return {};
+  std::lock_guard<std::mutex> lock(mutex);
+  auto found = creation.find(token);
+  if (stopping || found == creation.end())
+    throw Cancelled();
+  auto result = std::move(found->second);
+  creation.erase(found);
+  return result;
+}
+void DiscardArchiveCreationPassword(uint64_t token) {
+  std::lock_guard<std::mutex> lock(mutex);
+  creation.erase(token);
 }
 } // namespace Lister

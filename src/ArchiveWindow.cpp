@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "ArchiveWindow.h"
+#include "ArchivePasswords.h"
 #include "JobSnapshot.h"
 #include "ArchiveSettings.h"
 #include "VirtualFile.h"
@@ -14,13 +15,15 @@
 #include <PopUpMenu.h>
 #include <StringView.h>
 #include <TextControl.h>
+#include <TextView.h>
 #include <Window.h>
 #include <algorithm>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <thread>
 namespace {
-constexpr uint32 kReady='arld',kGo='argo',kBrowse='arbr',kFolder='arfo',kFormat='arfm',kOptions='arop',kShow='arsh',kFavorite='arfv';
+constexpr uint32 kReady='arld',kGo='argo',kBrowse='arbr',kFolder='arfo',kFormat='arfm',kOptions='arop',kShow='arsh',kFavorite='arfv',kProtect='aren';
 struct Loaded {
   std::mutex mutex;
   std::vector<Lister::ArchiveFormat> formats;
@@ -30,10 +33,10 @@ struct Loaded {
 std::string SettingsPath(){BPath p;find_directory(B_USER_SETTINGS_DIRECTORY,&p);p.Append("Lister_archive_settings");return p.Path();}
 class ArchiveWindow : public BWindow {
   Lister::Job job;BMessenger target;
-  BTextControl *folder,*name;
+  BTextControl *folder,*name,*password=nullptr,*confirm=nullptr;
   BStringView *status,*formatSummary;
   BMenuField *format,*level;
-  BCheckBox *ask,*favorite,*useDefault;
+  BCheckBox *ask,*favorite,*useDefault,*protect=nullptr,*encryptNames=nullptr;
   BButton *start,*change;
   BGroupView *options;
   std::unique_ptr<BFilePanel> picker;
@@ -43,6 +46,10 @@ class ArchiveWindow : public BWindow {
   std::string formatID="zip",extension;
   bool expanded=true,ready=false;
   bool Extract()const{return job.action==Lister::Action::ExtractArchive;}
+  const Lister::ArchiveFormat *SelectedFormat()const{
+    auto found=std::find_if(formats.begin(),formats.end(),[&](const auto &f){return f.id==formatID;});
+    return found==formats.end()?nullptr:&*found;
+  }
   void Status(const std::string &s){status->SetText(s.c_str());status->SetToolTip(s.c_str());}
   bool Favorite(const std::string &id)const{return settings.GetBool(("favorite:"+id).c_str(),id=="zip"||id=="tgz");}
   void BuildFormats() {
@@ -59,6 +66,8 @@ class ArchiveWindow : public BWindow {
   void SelectFormat(const std::string &id) {
     const auto found=std::find_if(formats.begin(),formats.end(),[&](const auto &f){return f.id==id;});
     if(found==formats.end())return;
+    const bool enableEncryptedNames=protect&&protect->Value()==B_CONTROL_ON&&
+      id=="7z"&&formatID!="7z";
     formatID=id;std::string text=name->Text();
     if(!extension.empty() && text.size()>=extension.size() && text.substr(text.size()-extension.size())==extension)
       text.resize(text.size()-extension.size());
@@ -67,8 +76,22 @@ class ArchiveWindow : public BWindow {
     favorite->SetValue(Favorite(id));
     const int saved=std::max(0,std::min(9,settings.GetInt32(("level:"+id).c_str(),6)));
     for(int i=0;i<level->Menu()->CountItems();++i)level->Menu()->ItemAt(i)->SetMarked(i==saved);
-    level->SetEnabled(found->compression);BuildFormats();
+    level->SetEnabled(found->compression);BuildFormats();UpdateSecurity();
+    if(enableEncryptedNames&&encryptNames->IsEnabled())encryptNames->SetValue(B_CONTROL_ON);
   }
+  void UpdateSecurity(){
+    if(Extract()||!protect)return;
+    const auto selected=SelectedFormat();
+    const bool supported=selected&&selected->encryption;
+    protect->SetEnabled(supported);
+    if(!supported)protect->SetValue(B_CONTROL_OFF);
+    const bool enabled=supported&&protect->Value()==B_CONTROL_ON;
+    password->SetEnabled(enabled);confirm->SetEnabled(enabled);
+    const bool names=enabled&&selected->encryptedNames;
+    encryptNames->SetEnabled(names);
+    if(!names)encryptNames->SetValue(B_CONTROL_OFF);
+  }
+  void ClearSecretInputs(){if(password)password->SetText("");if(confirm)confirm->SetText("");}
   void ShowOptions(bool show){if(expanded!=show){expanded=show;if(show)options->Show();else options->Hide();}change->SetLabel(show?"Hide format options":"Change format...");}
 public:
   ArchiveWindow(const Lister::Job &frozen,const std::string &initial,BMessenger owner)
@@ -105,10 +128,19 @@ public:
       favorite=new BCheckBox("Favorite format",new BMessage(kFavorite));
       useDefault=new BCheckBox("Use this format by default",nullptr);
       ask=new BCheckBox("Ask for a format every time",nullptr);
+      protect=new BCheckBox("Password protect (AES-256)",new BMessage(kProtect));
+      encryptNames=new BCheckBox("Encrypt file names (7z)",nullptr);
+      password=new BTextControl("archive create password","Password:","",nullptr);
+      confirm=new BTextControl("archive confirm password","Confirm password:","",nullptr);
+      password->TextView()->HideTyping(true);confirm->TextView()->HideTyping(true);
+      password->TextView()->SetMaxBytes(1024);confirm->TextView()->SetMaxBytes(1024);
+      password->SetEnabled(false);confirm->SetEnabled(false);encryptNames->SetEnabled(false);
       formatSummary=new BStringView("archive chosen format","Format: checking...");
       change=new BButton("Hide format options",new BMessage(kShow));change->SetEnabled(false);
       options=new BGroupView(B_VERTICAL,8);
-      BLayoutBuilder::Group<>(options).Add(format).Add(level).Add(favorite).Add(useDefault).Add(ask);
+      BLayoutBuilder::Group<>(options).Add(format).Add(level).Add(favorite).Add(useDefault).Add(ask)
+        .Add(protect).Add(encryptNames).Add(password).Add(confirm)
+        .Add(new BStringView("archive password lifetime","Passwords are kept only in memory and are cleared after this window."));
       layout
         .AddGroup(B_HORIZONTAL,8).Add(formatSummary).AddGlue().Add(change).End().Add(options);
     }
@@ -129,6 +161,7 @@ public:
       }).detach();
     }else ready=true;
   }
+  ~ArchiveWindow(){ClearSecretInputs();if(job.archivePasswordToken)Lister::DiscardArchiveCreationPassword(job.archivePasswordToken);}
   void MessageReceived(BMessage *m) override {
     try {
       switch(m->what) {
@@ -148,6 +181,13 @@ public:
         SelectFormat(m->GetString("format",""));break;}
       case kOptions:break;
       case kFavorite:settings.SetBool(("favorite:"+formatID).c_str(),favorite->Value());BuildFormats();break;
+      case kProtect:{
+        const bool turnOn=protect->Value()==B_CONTROL_ON;
+        UpdateSecurity();
+        if(turnOn && formatID=="7z" && encryptNames->IsEnabled())encryptNames->SetValue(B_CONTROL_ON);
+        if(turnOn)password->MakeFocus(true);else ClearSecretInputs();
+        break;
+      }
       case kShow:ShowOptions(!expanded);break;
       case kBrowse:{
         if(!picker){BMessenger here(this);picker.reset(new BFilePanel(B_OPEN_PANEL,&here,nullptr,B_DIRECTORY_NODE,false,new BMessage(kFolder)));}
@@ -156,15 +196,24 @@ public:
       case kFolder:{entry_ref ref;BPath path;if(m->FindRef("refs",&ref)==B_OK && path.SetTo(&ref)==B_OK)folder->SetText(path.Path());break;}
       case kGo:{
         if(!ready)break;
+        Lister::ArchiveSecretPtr secret;
+        if(!Extract()&&protect->Value()==B_CONTROL_ON){
+          if(strcmp(password->Text(),confirm->Text()))throw std::runtime_error("Passwords do not match.");
+          secret=std::make_shared<Lister::ArchiveSecret>(password->Text());
+        }
         Lister::SetArchiveDestination(job,folder->Text(),name->Text());
         if(!Extract()){
           job.archiveFormat=formatID;auto marked=level->Menu()->FindMarked();job.archiveLevel=marked?level->Menu()->IndexOf(marked):6;
+          job.archiveEncryptNames=secret&&encryptNames->Value()==B_CONTROL_ON;
           settings.SetInt32(("level:"+formatID).c_str(),job.archiveLevel);
           settings.SetBool("ask",ask->Value());if(useDefault->Value())settings.SetString("default",formatID.c_str());
           Lister::SaveArchiveSettings(SettingsPath(),settings);
+          job.archivePasswordToken=Lister::HoldArchiveCreationPassword(secret);
+          ClearSecretInputs();
         }
         auto result=Lister::EncodeJob(job,kArchiveAccepted);
-        if(target.SendMessage(&result)!=B_OK){Status("The main window is no longer available. Nothing was queued.");break;}
+        if(target.SendMessage(&result)!=B_OK){Lister::DiscardArchiveCreationPassword(job.archivePasswordToken);job.archivePasswordToken=0;Status("The main window is no longer available. Nothing was queued. Re-enter the password to try again.");break;}
+        job.archivePasswordToken=0;
         ready=false;start->SetEnabled(false);PostMessage(B_QUIT_REQUESTED);break;
       }
       default:BWindow::MessageReceived(m);

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 #include "ArchiveJobs.h"
+#include "ArchivePasswords.h"
 #include "ArchiveSettings.h"
 #include "MessageStore.h"
 #include "JobSnapshot.h"
 #include "VirtualFile.h"
 #include <Application.h>
+#include <algorithm>
 #include <Directory.h>
 #include <Entry.h>
 #include <Path.h>
@@ -18,7 +20,9 @@ int passed=0;
 void check(bool ok,const std::string &name){if(!ok)throw std::runtime_error("FAIL "+name);std::cout<<"PASS "<<++passed<<" "<<name<<std::endl;}
 void write(const std::string &p,const std::string &s){std::ofstream(p)<<s;}
 std::string read(const std::string &p){std::ifstream f(p);return std::string(std::istreambuf_iterator<char>(f),{});}
+std::string vread(const std::string &p){std::string out;ReadFile(p,[&](const char *bytes,size_t size){out.append(bytes,size);});return out;}
 bool exists(const std::string &p){struct stat s;return !lstat(p.c_str(),&s);}
+ArchiveSecretPtr secret(const char *text="Listi-create-test-Æ"){return std::make_shared<ArchiveSecret>(text);}
 void clean(const std::string &p){BDirectory d(p.c_str());BEntry e;while(d.GetNextEntry(&e,false)==B_OK){if(e.IsDirectory()) {BPath path;e.GetPath(&path);clean(path.Path());}e.Remove();}rmdir(p.c_str());}
 void *run(void *) {
  try{
@@ -59,6 +63,61 @@ void *run(void *) {
     }
     archive=job.destination;
   }
+  for(const auto &format:formats)if(format.encryption){
+    const std::string password="Listi-create-test-Æ";
+    auto encrypted=PrepareArchiveJob(false,{input+"/folder",input+"/empty"});
+    encrypted.archiveFormat=format.id;encrypted.archiveLevel=7;
+    encrypted.archiveEncryptNames=format.encryptedNames;
+    encrypted.archivePasswordToken=HoldArchiveCreationPassword(secret(password.c_str()));
+    SetArchiveDestination(encrypted,out,"encrypted-"+format.id+format.extension);
+    auto message=EncodeJob(encrypted,0);std::vector<char> flattened(message.FlattenedSize());
+    check(message.Flatten(flattened.data(),flattened.size())==B_OK &&
+      std::search(flattened.begin(),flattened.end(),password.begin(),password.end())==flattened.end(),
+      format.id+" job snapshot excludes password bytes");
+    encrypted=DecodeJob(message);
+    auto made=RunArchiveJob(encrypted,{});
+    if(!made.errors.empty())std::cerr<<made.errors.front()<<std::endl;
+    check(made.completed==1 && made.errors.empty(),format.id+" AES-256 archive creation");
+    int prompts=0;ForgetArchivePasswords();
+    SetArchivePasswordPrompt([&](const std::string &,bool,const TransferControl &){++prompts;return secret(password.c_str());});
+    auto encryptedURL=OpenArchive(encrypted.destination);
+    auto top=ListFiles(encryptedURL);
+    auto privateEntry=ChildLocation(ChildLocation(encryptedURL,"folder"),"æ name ; $(no).txt");
+    check(top.size()==2 && vread(privateEntry)=="payload\n" && prompts==1,
+      format.id+" encrypted archive requires and accepts password");
+    auto unpack=PrepareArchiveJob(true,{encrypted.destination});
+    SetArchiveDestination(unpack,out,"decrypted-"+format.id);
+    auto extracted=RunArchiveJob(unpack,{});
+    check(extracted.completed==1 && extracted.errors.empty() &&
+      read(unpack.destination+"/folder/æ name ; $(no).txt")=="payload\n",
+      format.id+" encrypted round trip exact");
+    auto missing=PrepareArchiveJob(false,{input+"/empty"});missing.archiveFormat=format.id;
+    missing.archivePasswordToken=encrypted.archivePasswordToken;
+    SetArchiveDestination(missing,out,"missing-secret-"+format.id+format.extension);
+    auto unavailable=RunArchiveJob(missing,{});
+    check(unavailable.cancelled && !exists(missing.destination),format.id+" consumed secret token cannot be reused");
+    auto stopped=PrepareArchiveJob(false,{input+"/folder"});stopped.archiveFormat=format.id;
+    stopped.archivePasswordToken=HoldArchiveCreationPassword(secret(password.c_str()));
+    stopped.archiveEncryptNames=format.encryptedNames;
+    SetArchiveDestination(stopped,out,"cancel-encrypted-"+format.id+format.extension);
+    bool wrote=false;Hooks stopAfterBytes;
+    stopAfterBytes.progress=[&](const std::string &,uint64_t){wrote=true;};
+    stopAfterBytes.proceed=[&]{return !wrote;};
+    auto cancelledArchive=RunArchiveJob(stopped,stopAfterBytes);
+    check(cancelledArchive.cancelled && !exists(stopped.destination),
+      format.id+" encrypted cancel publishes no partial archive");
+    auto changedEncrypted=PrepareArchiveJob(false,{input+"/folder"});changedEncrypted.archiveFormat=format.id;
+    changedEncrypted.archivePasswordToken=HoldArchiveCreationPassword(secret(password.c_str()));
+    changedEncrypted.archiveEncryptNames=format.encryptedNames;
+    SetArchiveDestination(changedEncrypted,out,"changed-encrypted-"+format.id+format.extension);
+    bool edited=false;Hooks editDuringRead;
+    editDuringRead.progress=[&](const std::string &,uint64_t){if(!edited){edited=true;write(input+"/folder/æ name ; $(no).txt","changed");}};
+    auto changedResult=RunArchiveJob(changedEncrypted,editDuringRead);
+    check(!changedResult.errors.empty() && !exists(changedEncrypted.destination),
+      format.id+" encrypted source change publishes no archive");
+    write(input+"/folder/æ name ; $(no).txt","payload\n");
+  }
+  ForgetArchivePasswords();
   auto url=OpenArchive(archive);
   auto subset=PrepareArchiveJob(true,{url+"folder",url+"empty"});SetArchiveDestination(subset,out,"selected-members");
   auto subsetResult=Run(subset,{});

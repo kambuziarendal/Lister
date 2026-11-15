@@ -29,6 +29,10 @@ struct Job {
   bool relativeLink = true;
   std::string archiveFormat = "zip";
   int archiveLevel = 6;
+  // A process-local handle, never the password itself. Jobs cannot survive an
+  // application restart with this handle, which is intentional.
+  uint64_t archivePasswordToken = 0;
+  bool archiveEncryptNames = false;
   std::string destinationFolder; // Captured parent for rename/new-folder questions.
 };
 struct Hooks {

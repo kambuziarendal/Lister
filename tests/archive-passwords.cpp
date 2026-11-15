@@ -66,6 +66,20 @@ int main(){
  for(int i=0;i<17;++i)RememberArchivePassword("key"+std::to_string(i),secret(),generation);
  GetArchivePassword(fixture,"key16",false,generation,{});check(calls==0,"newest cache entry retained");
  GetArchivePassword(fixture,"key0",false,generation,{});check(calls==1,"cache bounded to sixteen archives");
+ auto creation=HoldArchiveCreationPassword(secret("creation-only"));
+ check(creation && std::string(TakeArchiveCreationPassword(creation)->Text())=="creation-only","creation password transferred once");
+ cancelled=false;try{TakeArchiveCreationPassword(creation);}catch(const Cancelled &){cancelled=true;}
+ check(cancelled,"creation password token is single use");
+ creation=HoldArchiveCreationPassword(secret("forget-me"));ForgetArchivePasswords();
+ cancelled=false;try{TakeArchiveCreationPassword(creation);}catch(const Cancelled &){cancelled=true;}
+ check(cancelled,"forget clears pending creation passwords");
+ std::vector<uint64_t> pending;
+ for(int i=0;i<16;++i)pending.push_back(HoldArchiveCreationPassword(secret(("pending-"+std::to_string(i)).c_str())));
+ bool bounded=false;try{HoldArchiveCreationPassword(secret("seventeen"));}catch(const std::exception &){bounded=true;}
+ check(bounded && std::string(TakeArchiveCreationPassword(pending.front())->Text())=="pending-0",
+   "creation registry refuses overflow without evicting queued password");
+ for(size_t i=1;i<pending.size();++i)DiscardArchiveCreationPassword(pending[i]);
+ generation=ArchivePasswordGeneration();
  // A request waiting behind another prompt must still observe cancellation.
  std::atomic<bool> entered{false},release{false};
  SetArchivePasswordPrompt([&](const std::string &,bool,const TransferControl &c){entered=true;while(!release){c.Check();std::this_thread::sleep_for(std::chrono::milliseconds(10));}return secret();});

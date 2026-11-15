@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cerrno>
 #include <cstring>
+#include <dirent.h>
 #include <fcntl.h>
 #include <limits>
 #include <map>
@@ -693,8 +694,384 @@ std::vector<FileEntry> Contents(const std::string &path,
     return entries;
   }
 }
+
+bool Exact(const struct stat &a, const struct stat &b) {
+  return a.st_dev == b.st_dev && a.st_ino == b.st_ino &&
+         a.st_mode == b.st_mode && a.st_size == b.st_size &&
+         a.st_mtim.tv_sec == b.st_mtim.tv_sec &&
+         a.st_mtim.tv_nsec == b.st_mtim.tv_nsec &&
+         a.st_ctim.tv_sec == b.st_ctim.tv_sec &&
+         a.st_ctim.tv_nsec == b.st_ctim.tv_nsec;
+}
+struct WriteItem {
+  std::string path, name;
+  struct stat snapshot {};
+  bool directory = false;
+};
+struct WriteState {
+  std::shared_ptr<Module> engine = Engine();
+  const Hooks &hooks;
+  ArchiveSecretPtr secret;
+  std::vector<WriteItem> items;
+  std::mutex mutex;
+  std::exception_ptr failure;
+  explicit WriteState(const Hooks &h, ArchiveSecretPtr password)
+      : hooks(h), secret(std::move(password)) {
+    Require(engine->lib.Available(),
+            "Install the optional p7zip package from HaikuDepot, then try "
+            "creating the archive again.");
+    Require(secret && secret->Text()[0], "Enter an archive password.");
+  }
+  void Check() {
+    if (hooks.proceed && !hooks.proceed())
+      throw Cancelled();
+  }
+  template <typename F> HRESULT Call(F fn) {
+    try {
+      Check();
+      fn();
+      return S_OK;
+    } catch (...) {
+      std::lock_guard<std::mutex> lock(mutex);
+      if (!failure)
+        failure = std::current_exception();
+      return E_ABORT;
+    }
+  }
+  void Rethrow() {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (failure)
+      std::rethrow_exception(failure);
+  }
+  void Add(const std::string &path, const std::string &name,
+           unsigned depth = 0) {
+    Check();
+    Require(depth <= 64 && items.size() < 200000,
+            "Archive exceeds the folder or entry limit.");
+    Require(!name.empty() && name.find_first_of("\r\n\\") == std::string::npos &&
+                !(depth == 0 && name.size() > 1 && name[1] == ':'),
+            "Unsupported archive entry name.");
+    struct stat before, opened;
+    Require(!lstat(path.c_str(), &before), "Cannot read archive source");
+    Require(S_ISREG(before.st_mode) || S_ISDIR(before.st_mode),
+            "Links and special files are not packed in this version");
+    int fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    if (fd < 0 || fstat(fd, &opened) || !Exact(before, opened)) {
+      if (fd >= 0)
+        close(fd);
+      throw std::runtime_error("Archive source changed before packing");
+    }
+    items.push_back({path, name, before, S_ISDIR(before.st_mode)});
+    if (!S_ISDIR(before.st_mode)) {
+      close(fd);
+      return;
+    }
+    DIR *raw = fdopendir(dup(fd));
+    if (!raw) {
+      close(fd);
+      throw std::runtime_error("Cannot list archive source folder");
+    }
+    std::unique_ptr<DIR, int (*)(DIR *)> dir(raw, closedir);
+    try {
+      for (;;) {
+        errno = 0;
+        auto child = readdir(raw);
+        if (!child) {
+          Require(!errno, "Cannot finish reading archive source folder");
+          break;
+        }
+        if (!strcmp(child->d_name, ".") || !strcmp(child->d_name, ".."))
+          continue;
+        Add(Join(path, child->d_name), Join(name, child->d_name), depth + 1);
+      }
+      close(fd);
+    } catch (...) {
+      close(fd);
+      throw;
+    }
+  }
+  void Verify() {
+    for (const auto &item : items) {
+      Check();
+      struct stat now;
+      Require(!lstat(item.path.c_str(), &now) && Exact(item.snapshot, now),
+              "Archive source changed during packing");
+    }
+  }
+};
+struct WriteInput : ISequentialInStream {
+  WriteState &s;
+  const WriteItem &item;
+  int fd = -1;
+  uint64_t readBytes = 0;
+  WriteInput(WriteState &state, const WriteItem &entry) : s(state), item(entry) {
+    fd = open(item.path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    struct stat opened;
+    if (fd < 0 || fstat(fd, &opened) || !Exact(item.snapshot, opened)) {
+      if (fd >= 0)
+        close(fd);
+      fd = -1;
+      throw std::runtime_error("Archive source changed before packing");
+    }
+  }
+  ~WriteInput() {
+    if (fd >= 0)
+      close(fd);
+  }
+  REFS HRESULT QueryInterface(REFIID id, void **out) override {
+    *out = nullptr;
+    if (!Equal(id, IID_IUnknown) && !Equal(id, IID_ISequentialInStream))
+      return E_NOINTERFACE;
+    *out = static_cast<ISequentialInStream *>(this);
+    AddRef();
+    return S_OK;
+  }
+  HRESULT Read(void *data, UInt32 size, UInt32 *done) override {
+    if (done)
+      *done = 0;
+    return s.Call([&] {
+      ssize_t got;
+      do {
+        got = read(fd, data, size);
+      } while (got < 0 && errno == EINTR);
+      Require(got >= 0, "Cannot read archive source");
+      readBytes += got;
+      Require(readBytes <= uint64_t(item.snapshot.st_size),
+              "Archive source grew during packing");
+      if (!got) {
+        struct stat opened, now;
+        Require(readBytes == uint64_t(item.snapshot.st_size) &&
+                    !fstat(fd, &opened) && Exact(item.snapshot, opened) &&
+                    !lstat(item.path.c_str(), &now) && Exact(item.snapshot, now),
+                "Archive source changed during packing");
+      } else if (s.hooks.progress)
+        s.hooks.progress(item.path, got);
+      if (done)
+        *done = got;
+    });
+  }
+};
+struct WriteOutput : IOutStream {
+  WriteState &s;
+  int fd;
+  uint64_t position = 0;
+  WriteOutput(WriteState &state, int output) : s(state), fd(output) {}
+  REFS HRESULT QueryInterface(REFIID id, void **out) override {
+    *out = nullptr;
+    if (Equal(id, IID_IOutStream))
+      *out = static_cast<IOutStream *>(this);
+    else if (Equal(id, IID_IUnknown) || Equal(id, IID_ISequentialOutStream))
+      *out = static_cast<ISequentialOutStream *>(this);
+    else
+      return E_NOINTERFACE;
+    AddRef();
+    return S_OK;
+  }
+  HRESULT Write(const void *data, UInt32 size, UInt32 *done) override {
+    if (done)
+      *done = 0;
+    return s.Call([&] {
+      const char *p = static_cast<const char *>(data);
+      size_t left = size;
+      while (left) {
+        s.Check();
+        ssize_t n = pwrite(fd, p, left, position);
+        if (n < 0 && errno == EINTR)
+          continue;
+        Require(n > 0, "Cannot write encrypted archive");
+        p += n;
+        left -= n;
+        position += n;
+      }
+      if (done)
+        *done = size;
+    });
+  }
+  HRESULT Seek(Int64 offset, UInt32 origin, UInt64 *result) override {
+    return s.Call([&] {
+      Require(origin <= 2, "Invalid encrypted archive seek");
+      struct stat st;
+      Require(!fstat(fd, &st), "Cannot inspect encrypted archive output");
+      uint64_t base = origin == 0 ? 0 : origin == 1 ? position : st.st_size;
+      Require(offset >= -int64_t(base) && offset <= INT64_MAX - int64_t(base),
+              "Invalid encrypted archive seek");
+      position = base + offset;
+      if (result)
+        *result = position;
+    });
+  }
+  HRESULT SetSize(UInt64 size) override {
+    return s.Call([&] {
+      Require(size <= uint64_t(INT64_MAX) && !ftruncate(fd, size),
+              "Cannot resize encrypted archive output");
+    });
+  }
+};
+struct UpdateCallback : IArchiveUpdateCallback, ICryptoGetTextPassword2 {
+  WriteState &s;
+  explicit UpdateCallback(WriteState &state) : s(state) {}
+  REFS HRESULT QueryInterface(REFIID id, void **out) override {
+    *out = nullptr;
+    if (Equal(id, IID_IUnknown) || Equal(id, IID_IArchiveUpdateCallback))
+      *out = static_cast<IArchiveUpdateCallback *>(this);
+    else if (Equal(id, IID_IProgress))
+      *out = static_cast<IProgress *>(this);
+    else if (Equal(id, IID_ICryptoGetTextPassword2))
+      *out = static_cast<ICryptoGetTextPassword2 *>(this);
+    else
+      return E_NOINTERFACE;
+    AddRef();
+    return S_OK;
+  }
+  HRESULT SetTotal(UInt64) override { return s.Call([] {}); }
+  HRESULT SetCompleted(const UInt64 *) override { return s.Call([] {}); }
+  HRESULT GetUpdateItemInfo(UInt32 index, Int32 *newData, Int32 *newProps,
+                            UInt32 *indexInArchive) override {
+    return s.Call([&] {
+      Require(index < s.items.size(), "Invalid archive item");
+      if (newData)
+        *newData = 1;
+      if (newProps)
+        *newProps = 1;
+      if (indexInArchive)
+        *indexInArchive = UInt32(-1);
+    });
+  }
+  HRESULT GetProperty(UInt32 index, PROPID property,
+                      PROPVARIANT *value) override {
+    memset(value, 0, sizeof(*value));
+    return s.Call([&] {
+      Require(index < s.items.size(), "Invalid archive item");
+      const auto &item = s.items[index];
+      if (property == kpidPath) {
+        auto path = Wide(item.name.c_str());
+        value->vt = VT_BSTR;
+        value->bstrVal = s.engine->lib.Function<decltype(&SysAllocStringLen)>(
+            "SysAllocStringLen")(path.data(), path.size());
+        Require(value->bstrVal, "Cannot allocate archive entry name");
+      } else if (property == kpidIsDir) {
+        value->vt = VT_BOOL;
+        value->boolVal = item.directory ? VARIANT_TRUE : VARIANT_FALSE;
+      } else if (property == kpidSize) {
+        value->vt = VT_UI8;
+        value->uhVal.QuadPart = item.directory ? 0 : item.snapshot.st_size;
+      } else if (property == kpidAttrib) {
+        value->vt = VT_UI4;
+        value->ulVal = (UInt32(item.snapshot.st_mode) << 16) | 0x8000;
+      } else if (property == kpidMTime) {
+        const uint64_t ticks =
+            (uint64_t(item.snapshot.st_mtim.tv_sec) + 11644473600ULL) *
+                10000000ULL +
+            item.snapshot.st_mtim.tv_nsec / 100;
+        value->vt = VT_FILETIME;
+        value->filetime.dwLowDateTime = UInt32(ticks);
+        value->filetime.dwHighDateTime = UInt32(ticks >> 32);
+      }
+    });
+  }
+  HRESULT GetStream(UInt32 index, ISequentialInStream **stream) override {
+    *stream = nullptr;
+    return s.Call([&] {
+      Require(index < s.items.size(), "Invalid archive item");
+      if (!s.items[index].directory)
+        *stream = new WriteInput(s, s.items[index]);
+    });
+  }
+  HRESULT SetOperationResult(Int32 result) override {
+    return s.Call([&] {
+      Require(result == NArchive::NExtract::NOperationResult::kOK,
+              "p7zip could not add an archive item");
+    });
+  }
+  HRESULT CryptoGetTextPassword2(Int32 *defined, BSTR *password) override {
+    if (defined)
+      *defined = 0;
+    if (password)
+      *password = nullptr;
+    return s.Call([&] {
+      Require(defined && password && s.secret, "Archive password is missing");
+      auto text = Wide(s.secret->Text());
+      *password = s.engine->lib.Function<decltype(&SysAllocStringLen)>(
+          "SysAllocStringLen")(text.data(), text.size());
+      volatile wchar_t *wipe = text.data();
+      for (size_t i = 0; i < text.size(); ++i)
+        wipe[i] = 0;
+      Require(*password, "Cannot allocate archive password");
+      *defined = 1;
+    });
+  }
+};
 } // namespace
 bool SevenZipAvailable() { return Engine()->lib.Available(); }
+bool SevenZipCanCreate() {
+  try {
+    auto engine = Engine();
+    if (!engine->lib.Available() || !engine->formats.count("7z"))
+      return false;
+    IOutArchive *archive = nullptr;
+    auto result = engine->lib.Function<CreateFn>("CreateObject")(
+        &engine->formats.at("7z"), &IID_IOutArchive,
+        reinterpret_cast<void **>(&archive));
+    const bool available = result == S_OK && archive;
+    if (archive)
+      archive->Release();
+    return available;
+  } catch (...) {
+    return false;
+  }
+}
+void SevenZipCreate(int outputFd, const std::vector<std::string> &sources,
+                    int level, bool encryptNames, ArchiveSecretPtr secret,
+                    const Hooks &hooks) {
+  Require(outputFd >= 0 && level >= 0 && level <= 9,
+          "Invalid encrypted 7z archive settings");
+  WriteState state(hooks, std::move(secret));
+  Require(state.engine->formats.count("7z"),
+          "The installed p7zip module cannot create 7z archives");
+  for (const auto &source : sources)
+    state.Add(source, LocationLeaf(source));
+  state.Verify();
+  IOutArchive *archive = nullptr;
+  ISetProperties *properties = nullptr;
+  auto output = new WriteOutput(state, outputFd);
+  auto callback = new UpdateCallback(state);
+  try {
+    Require(state.engine->lib.Function<CreateFn>("CreateObject")(
+                &state.engine->formats.at("7z"), &IID_IOutArchive,
+                reinterpret_cast<void **>(&archive)) == S_OK &&
+                archive,
+            "Cannot create encrypted 7z writer");
+    Require(archive->QueryInterface(IID_ISetProperties,
+                                    reinterpret_cast<void **>(&properties)) ==
+                    S_OK &&
+                properties,
+            "The installed p7zip module cannot configure 7z encryption");
+    const wchar_t *names[] = {L"x", L"he"};
+    PROPVARIANT values[2]{};
+    values[0].vt = VT_UI4;
+    values[0].ulVal = level;
+    values[1].vt = VT_BOOL;
+    values[1].boolVal = encryptNames ? VARIANT_TRUE : VARIANT_FALSE;
+    Require(properties->SetProperties(names, values, 2) == S_OK,
+            "Cannot configure encrypted 7z writer");
+    auto result = archive->UpdateItems(output, state.items.size(), callback);
+    state.Rethrow();
+    Require(result == S_OK, "Cannot finish encrypted 7z archive");
+    state.Verify();
+    properties->Release();
+    archive->Release();
+    callback->Release();
+    output->Release();
+  } catch (...) {
+    if (properties)
+      properties->Release();
+    if (archive)
+      archive->Release();
+    callback->Release();
+    output->Release();
+    throw;
+  }
+}
 std::string SevenZipFormat(const std::string &path) {
   int fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   if (fd < 0)
