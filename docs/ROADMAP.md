@@ -315,3 +315,25 @@ confirmation. The replacement is published atomically only after extraction,
 editing, writing and flushing succeed. Supported ZIP/7z encryption is retained.
 Split, remote, nested and RAR editing remain separate work. See
 ARCHIVES-0.23.0.md.
+
+## Long-term portability direction
+
+Listi remains a native Haiku application. Portability is developed gradually,
+without replacing the BeAPI interface or holding Deila's peer trials back until
+a complete Listi port exists.
+
+- Extract a portable `listi-core` from already tested file-operation, archive,
+  provider and identity-guard logic. The core must not include BeAPI or Tracker
+  types.
+- Keep Haiku-specific UI, BFS attributes, Tracker clipboard, Trash, launch and
+  file-type integration behind adapters.
+- Prove the core first on Linux and BSD, then add Windows and macOS adapters for
+  their different path, metadata, clipboard, Trash and application-launch
+  semantics.
+- Preserve a native UI per platform unless measured maintenance cost justifies
+  a shared shell. Do not introduce Electron merely to obtain portability.
+- Use the separate standalone Deila browser to test cross-platform peer sharing
+  before optional `deila://` integration or a full Listi port.
+
+Porting claims require native package, filesystem and UI tests on each target;
+successful compilation alone is not acceptance.

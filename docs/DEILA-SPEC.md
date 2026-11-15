@@ -1,6 +1,6 @@
 # Deila: staged product plan and threat model
 
-Status: long-term planning draft v0.2, reviewed 15 November 2026.
+Status: long-term planning draft v0.3, reviewed 15 November 2026.
 No implementation, dependency, protocol or cryptographic format is approved by
 this document.
 
@@ -18,7 +18,8 @@ all content, and fetches only the files or ranges they use.
 
 The long-term product may support public links and private groups. The first
 implementation target is deliberately narrower: one publisher, one secret link,
-one read-only drive and command-line clients.
+one read-only drive and a small standalone file browser backed by command-line
+tools for testing and recovery.
 
 ## 2. Fixed product boundaries
 
@@ -26,7 +27,8 @@ one read-only drive and command-line clients.
 - Deila is cross-platform. Targets are Linux, Windows, macOS, BSD and Haiku.
 - No central service is required. An optional always-on seed may improve
   availability, but must not become a control plane or mandatory dependency.
-- The core is usable independently through a CLI before any Listi integration.
+- The core is usable through both a small standalone file browser and a CLI
+  before any Listi integration.
 - Recipients are told that peers can see their IP addresses. Deila does not
   promise anonymity or traffic-analysis resistance.
 - Shares are read-only to recipients in the first stages. Multi-writer editing
@@ -49,21 +51,27 @@ No product code or persistent format is created in this stage.
    foreign-function boundary.
 5. Review all proposed cryptographic constructions before accepting a format.
 
-### Stage B: narrow MVP
+### Stage B: narrow multi-peer MVP
 
 - One publisher and one immutable read-only drive version.
 - Secret-link access only. No public discovery, groups or mutable roster.
-- CLI publish, inspect, list, fetch and verify commands.
+- A small standalone file browser can publish a local folder, open a secret
+  link, browse directories lazily, fetch or open a file on demand and show peer
+  and seed status.
+- CLI publish, inspect, list, fetch and verify commands use the same core and
+  remain the deterministic test and recovery interface.
 - Small encrypted per-directory manifests for lazy listing.
 - Ranged and streaming fetch of a selected file.
 - Local bounded cache with explicit size limit and clear-cache command.
 - Exact test vectors, hostile-input tests and reproducible cross-platform
   fixtures.
-- No Listi integration, standalone browser or virtual filesystem yet.
+- No Listi integration or virtual filesystem yet.
 
-The MVP is successful only when a fresh recipient can open a secret link, list a
-directory quickly, stream part of a large file, resume after interruption and
-verify exact bytes without downloading the complete drive.
+The MVP is successful only when at least three real peers across more than one
+operating system can publish or open a secret link, list a directory quickly,
+stream part of a large file, resume after interruption and verify exact bytes
+without downloading the complete drive. The test includes direct peers and an
+optional seed, while proving that the seed is not required for correctness.
 
 ### Stage C: reliable private sharing
 
@@ -72,7 +80,8 @@ verify exact bytes without downloading the complete drive.
 - Optional always-on seed with bandwidth, disk and retention limits.
 - Publisher key backup, documented recovery and secure device migration.
 - Signed application updates and a documented compromise/revocation procedure.
-- Minimal standalone browser after the CLI and format are stable.
+- Refine the standalone browser after the multi-peer format and transfer flow
+  are stable.
 
 ### Stage D: groups
 
@@ -164,7 +173,12 @@ requires an ADR, test vectors and external review before a stable format.
   roster.
 - `deilad`: networking, cache, seeding and a local authenticated API through a
   Unix socket, named pipe or authenticated loopback endpoint.
-- Clients: CLI first, standalone browser later, optional Listi provider last.
+- Clients: a CLI and small standalone browser share the first usable core;
+  optional Listi provider remains last.
+- First UI candidate: a local authenticated web interface served by `deilad`
+  and opened in the system browser. This avoids Electron and a large portable
+  GUI dependency. A native shell remains possible after the spike proves what
+  Haiku and the other target systems need.
 - Directory tree: small independently encrypted per-directory manifests to keep
   listing lazy and bounded.
 - Root: a small mutable signed pointer only after the underlying transport's
@@ -206,7 +220,9 @@ Decided:
 
 - Deila is long-term work and remains separate from Listi.
 - Listi integration is optional and last, not an early architecture driver.
-- The first MVP is secret-link, single-publisher, read-only and CLI-first.
+- The first MVP is secret-link, single-publisher and read-only, with a small
+  standalone file browser for real multi-peer use and a CLI underneath for
+  deterministic testing and recovery.
 - Groups and public mode are later stages.
 - Transport evidence comes before language selection.
 - C++ is the preferred baseline because Listi is native C++ and the leading
