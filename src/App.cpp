@@ -8,6 +8,7 @@
 #include "NamedEntry.h"
 #include "JobSnapshot.h"
 #include "ArchiveWindow.h"
+#include "ArchiveEditor.h"
 #include "MessageStore.h"
 #include "PropertiesWindow.h"
 #include "OpenWith.h"
@@ -53,6 +54,7 @@
 #include <set>
 #include <sys/stat.h>
 #include <unistd.h>
+constexpr uint32 kResumeArchiveEdits = 'ared';
 constexpr uint32 kNamedEntryAccepted = 'nacc', kDropAccepted = 'dacc', kConfirm = 'cfir', kViewLoaded = 'vloa',
                  kServiceError = 'serr', kSavePreferences = 'save',
                  kNetwork = 'netw', kOpenSystem = 'osys',
@@ -666,6 +668,10 @@ class MainWindow : public BWindow {
       Notice("Select exactly one file.");
       return;
     }
+    if (action == kEdit && Lister::ParseLocation(selected[0]).Archive()) {
+      OpenArchiveEditor(selected[0], prefs.editor.String());
+      return;
+    }
     BMessage m(kOpenPaths);
     m.AddString("path", selected[0].c_str());
     m.AddString("mode", action == kView ? "view" : "edit");
@@ -677,7 +683,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.26.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.27.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
@@ -719,6 +725,7 @@ public:
     auto archives = new BMenu("Archives");
     archives->AddItem(new BMenuItem("Create archive...",new BMessage(kCreateArchive),'P',B_SHIFT_KEY));
     archives->AddItem(new BMenuItem("Extract to folder...",new BMessage(kExtractArchive),'E',B_SHIFT_KEY));
+    archives->AddItem(new BMenuItem("Resume archive edits...", new BMessage(kResumeArchiveEdits)));
     archives->AddItem(new BMenuItem("Add or replace files...",new BMessage(kAddArchive)));
     archives->AddItem(new BMenuItem("Remove selected entries...",new BMessage(kRemoveArchive)));
     archives->AddSeparatorItem();
@@ -893,7 +900,7 @@ public:
   }
   ~MainWindow() { delete queue; }
   bool QuitRequested() override {
-    if (!FilePropertiesAllowQuit() || !OpenWithAllowQuit()) return false;
+    if (!FilePropertiesAllowQuit() || !OpenWithAllowQuit() || !ArchiveEditorsAllowQuit()) return false;
     if (placesSaving || searchesSaving) {
       Notice("Saved places or searches are still being written. Please try quitting again shortly.");
       return false;
@@ -1284,6 +1291,7 @@ public:
       break;
     case 'apfg': Lister::ForgetArchivePasswords(); break;
     case kArchiveAccepted: queue->Enqueue(Lister::DecodeJob(*m)); break;
+    case kResumeArchiveEdits: ResumeArchiveEditors(prefs.editor.String()); break;
     case kOpenWith: {
       auto selected = panes[source]->Selected();
       if (selected.size() != 1) Notice("Select one local file for Open with.");
@@ -1520,7 +1528,7 @@ public:
     }
   }
   bool QuitRequested() override {
-    return FilePropertiesAllowQuit() && OpenWithAllowQuit() && BApplication::QuitRequested();
+    return FilePropertiesAllowQuit() && OpenWithAllowQuit() && ArchiveEditorsAllowQuit() && BApplication::QuitRequested();
   }
   void MessageReceived(BMessage *m) override {
     if (m->what == kPlacesSaved || m->what == kSearchesSaved) {

@@ -65,7 +65,7 @@ void FileActions(BMenu &menu, const ContextMenuOptions &options) {
   if (!directory) {
     add("Open with...", kOpenWith, single && local);
     add("View", kView, single);
-    add("Edit", kEdit, single && local);
+    add("Edit", kEdit, single && (local || options.archiveRemove));
   }
   menu.AddSeparatorItem();
   add("Copy", kClipboardCopy, local || options.archiveRemove);

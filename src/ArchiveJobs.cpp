@@ -20,6 +20,9 @@
 #include <cstring>
 #include <cctype>
 #include <memory>
+#include <mutex>
+#include <thread>
+#include <chrono>
 #include <set>
 #include <fs_attr.h>
 
@@ -285,6 +288,7 @@ std::string MemberPath(const std::string &path) {
   if(value.empty())return "";
   return SafeArchivePath(value.c_str());
 }
+void VerifyMovedEntry(const std::string &, const std::string &, const TransferControl &, unsigned depth = 0);
 Result RunArchiveEdit(const Job &job,const Hooks &hooks) {
   Result result;
   try {
@@ -376,6 +380,21 @@ Result RunArchiveEdit(const Job &job,const Hooks &hooks) {
     Require(!fsync(output.n),"Cannot flush updated archive to disk.");
     CopyMetadata(job.destination,outputPath,internal);
     Require(!fsync(output.n),"Cannot flush updated archive metadata.");check();
+    if (job.archiveVerifyOutput) {
+      if (secret) {
+        struct stat st; Require(!lstat(outputPath.c_str(), &st), "Updated archive disappeared before verification.");
+        RememberArchivePassword(ArchivePasswordIdentity(st), secret, passwordGeneration);
+        RememberArchivePassword(FindArchiveVolumes(outputPath).Fingerprint(), secret, passwordGeneration);
+      }
+      TransferControl verify; verify.proceed = internal.proceed;
+      const auto root = OpenArchive(outputPath, verify);
+      Require(!root.empty(), "Updated archive could not be reopened. Original archive was retained.");
+      const auto children = Children(work);
+      Require(ListFiles(root, verify).size() == children.size(), "Updated archive has a different member set. Original archive was retained.");
+      for (const auto &child : children)
+        VerifyMovedEntry(child, ChildLocation(root, Leaf(child)), verify);
+      check();
+    }
     struct stat original,named;FD originalFd(open(job.destination.c_str(),O_RDONLY|O_NOFOLLOW|O_NONBLOCK));
     Require(originalFd.n>=0&&!fstat(originalFd.n,&original)&&!lstat(job.destination.c_str(),&named)&&Unchanged(original,named),
       "The archive was replaced while it was being edited. Nothing was changed.");
@@ -585,7 +604,7 @@ namespace {
 // Compare the durable destination's decoded bytes with the private source
 // snapshot. A directory merge may retain additional destination entries.
 void VerifyMovedEntry(const std::string &local, const std::string &destination,
-                      const TransferControl &control, unsigned depth = 0) {
+                      const TransferControl &control, unsigned depth) {
   control.Check(); Require(depth <= 64, "Move verification exceeds the folder depth limit.");
   struct stat st; FileEntry target;
   Require(!lstat(local.c_str(), &st) && !S_ISLNK(st.st_mode) &&
@@ -702,6 +721,16 @@ void SetArchiveDestination(Job &job,const std::string &folder,const std::string 
   job.entryName=name;job.destination=destination;
 }
 Result RunArchiveJob(const Job &job,const Hooks &hooks) {
+  // Editor workers and the operation queue must not publish competing edits.
+  // Waiting remains cancellable; external processes are covered by fingerprints.
+  static std::recursive_mutex edits;
+  std::unique_lock<std::recursive_mutex> ownership(edits, std::defer_lock);
+  if (job.action == Action::EditArchive || job.action == Action::MoveArchive) {
+    while (!ownership.try_lock()) {
+      if (hooks.proceed && !hooks.proceed()) { Result result; result.cancelled = true; return result; }
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+  }
   if(job.action==Action::MoveArchive)return RunArchiveMove(job,hooks);
   if(job.action==Action::EditArchive)return RunArchiveEdit(job,hooks);
   Result result;
