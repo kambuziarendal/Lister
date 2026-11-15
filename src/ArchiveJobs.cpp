@@ -4,6 +4,7 @@
 #include "ArchiveVolumes.h"
 #include "DynamicLibrary.h"
 #include "JobSnapshot.h"
+#include "LocalMoveTree.h"
 #include "VirtualFile.h"
 #include <Directory.h>
 #include <Entry.h>
@@ -567,8 +568,44 @@ Job PrepareArchiveMove(const Job &transfer) {
   Guards(transfer); VerifyArchiveSets(transfer);
   const auto target = ParseLocation(transfer.destination);
   const auto source = ParseLocation(transfer.sources.front());
+  if (source.Local() != target.Local() && (source.Archive() || target.Archive())) {
+    Require((source.Local() && target.Archive()) || (source.Archive() && target.Local()),
+      "Move between a local folder and one writable local archive.");
+    const auto archive = source.Archive() ? source.archive : target.archive;
+    auto edit = PrepareArchiveEditTarget(archive, target.Archive() ? target.path : "");
+    Job move = transfer; move.action = Action::MoveArchive;
+    std::set<std::string> names;
+    auto canonical = [](const std::string &path) {
+      char *resolved = realpath(path.c_str(), nullptr);
+      std::string result = resolved ? resolved : ""; free(resolved);
+      Require(!result.empty(), "Cannot resolve local move path: " + path);
+      return result;
+    };
+    const auto container = canonical(archive);
+    const auto localTarget = target.Local() ? canonical(transfer.destination) : std::string();
+    for (const auto &path : transfer.sources) {
+      const auto location = ParseLocation(path);
+      Require(location.Archive() == source.Archive() &&
+        (source.Archive() ? location.archive == source.archive && !MemberPath(location.path).empty() : location.Local()),
+        "Choose local entries or entries from one archive, not a mixed selection.");
+      Require(!LocationLeaf(path).empty() && names.insert(LocationLeaf(path)).second,
+        "Selected entries have duplicate or empty names.");
+      auto local = source.Local() ? canonical(path) : ChildLocation(localTarget, LocationLeaf(path));
+      Require(local != container && container.compare(0,local.size()+1,local+"/") != 0,
+        "A move cannot replace or contain its own archive.");
+    }
+    for (const auto &path : transfer.sources)
+      for (const auto &other : transfer.sources)
+        Require(path == other || other.compare(0,path.size()+1,path+"/") != 0,
+          "Select either a folder or its contents, not both.");
+    FreezeLocalJob(move, target.Local() ? transfer.destination : edit.destinationFolder);
+    move.expectedSources.insert(edit.expectedSources.begin(),edit.expectedSources.end());
+    move.expectedArchiveSets = edit.expectedArchiveSets;
+    Guards(transfer); VerifyArchiveSets(transfer);
+    return move;
+  }
   Require(source.Archive() && target.Archive(),
-    "Archive Cut/Move currently requires a writable local archive at both ends. Use Copy for local folders.");
+    "Archive Cut/Move requires a local writable archive at one or both ends.");
   auto from = PrepareArchiveEditTarget(source.archive);
   auto to = PrepareArchiveEditTarget(target.archive, target.path);
   const auto a = from.expectedSources.at(source.archive), b = to.expectedSources.at(target.archive);
@@ -635,6 +672,96 @@ void VerifyMovedEntry(const std::string &local, const std::string &destination,
   }, control);
   Require(total == st.st_size, "Destination verification was incomplete. Source entries were retained.");
 }
+Result RunArchiveLocalMove(const Job &job, const Hooks &hooks) {
+  Result result; bool copied = false, cleanup = false;
+  try {
+    const auto source = ParseLocation(job.sources.front());
+    const auto target = ParseLocation(job.destination);
+    Hooks internal = hooks; internal.fileDone = {}; internal.fileFailed = {};
+    internal.proceed = [&] {
+      if (hooks.proceed && !hooks.proceed()) throw Cancelled();
+      Guards(job); VerifyArchiveSets(job); return true;
+    };
+    std::unique_ptr<LocalMoveTree> localSource;
+    if (source.Local()) localSource.reset(new LocalMoveTree(job.sources, internal, true));
+    Stage stage(job.destinationFolder);
+    const auto snapshot = PathOf(stage.dir);
+    Job extract{Action::Copy, job.sources, snapshot}; FreezeLocalJob(extract, snapshot);
+    auto extracted = Run(extract, internal);
+    if (extracted.cancelled) throw Cancelled();
+    Require(extracted.errors.empty() && !extracted.skipped && extracted.completed == int(job.sources.size()),
+      extracted.errors.empty() ? "Could not snapshot the complete selection. Sources retained." : extracted.errors.front());
+    if (localSource) localSource->Verify();
+    std::vector<std::string> additions, destinations;
+    for (const auto &path : job.sources) {
+      additions.push_back(Join(snapshot,LocationLeaf(path)));
+      destinations.push_back(ChildLocation(job.destination,LocationLeaf(path)));
+    }
+    Job published;
+    std::unique_ptr<LocalMoveTree> localDestination;
+    if (target.Archive()) {
+      auto add = PrepareArchiveEditJob(target.archive, additions, {}, target.path);
+      auto written = RunArchiveEdit(add, internal);
+      if (written.cancelled) throw Cancelled();
+      Require(written.errors.empty() && written.completed == 1,
+        written.errors.empty() ? "Destination archive update failed." : written.errors.front());
+      copied = true;
+      published = PrepareArchiveEditTarget(target.archive);
+    } else {
+      // Local directory merges may publish several files. A skipped or failed
+      // file retains every source member; never treat a partial copy as a move.
+      Job copy{Action::Copy, additions, job.destination}; FreezeLocalJob(copy,job.destination);
+      copied = true;
+      auto written = Run(copy, internal);
+      if (written.cancelled) throw Cancelled();
+      Require(written.errors.empty() && !written.skipped && written.completed == int(additions.size()),
+        written.errors.empty() ? "Incomplete destination copy. Source archive retained." : written.errors.front());
+      localDestination.reset(new LocalMoveTree(destinations,internal,false));
+      localDestination->Flush();
+    }
+    auto destinationGuard = [&] {
+      if (hooks.proceed && !hooks.proceed()) throw Cancelled();
+      if (localDestination) localDestination->Verify();
+      else { Guards(published); VerifyArchiveSets(published); }
+      return true;
+    };
+    internal.proceed = destinationGuard;
+    TransferControl verify; verify.proceed = destinationGuard;
+    for (size_t i=0;i<additions.size();++i) VerifyMovedEntry(additions[i],destinations[i],verify);
+    if (localSource) {
+      localSource->Verify(); destinationGuard(); cleanup = true;
+      for (const auto &path : job.sources) {
+        localSource->Remove(path,internal);
+        ++result.completed;
+        const auto destination = ChildLocation(job.destination,LocationLeaf(path));
+        result.completedRoots.emplace_back(path,destination);
+        if (hooks.fileDone) hooks.fileDone(path,destination);
+      }
+    } else {
+      Guards(job); VerifyArchiveSets(job);
+      auto remove = PrepareArchiveEditJob(source.archive,{},job.sources);
+      // Bind source and verified destination guards through the final rewrite.
+      internal.proceed = [&] { destinationGuard(); Guards(job); VerifyArchiveSets(job); return true; };
+      cleanup = true;
+      const auto removed = RunArchiveEdit(remove,internal);
+      if (removed.cancelled) throw Cancelled();
+      Require(removed.errors.empty() && removed.completed == 1,
+        removed.errors.empty() ? "Source cleanup did not complete." : removed.errors.front());
+      for (const auto &path : job.sources) {
+        ++result.completed;
+        const auto destination = ChildLocation(job.destination,LocationLeaf(path));
+        result.completedRoots.emplace_back(path,destination);
+        if (hooks.fileDone) hooks.fileDone(path,destination);
+      }
+    }
+  } catch (const Cancelled &) { result.cancelled = true; }
+    catch (const std::exception &e) { result.errors.push_back(e.what()); }
+  if (copied && (result.cancelled || !result.errors.empty()))
+    result.errors.push_back(cleanup
+      ? "Destination copies were verified, but source cleanup was interrupted. Check both locations; remaining sources were retained."
+      : "Destination copies may remain. Source entries were retained. Check both locations before retrying.");
+  return result;
+}
 Result RunArchiveMove(const Job &job, const Hooks &hooks) {
   Result result; bool copied = false;
   try {
@@ -644,6 +771,7 @@ Result RunArchiveMove(const Job &job, const Hooks &hooks) {
     PrepareArchiveMove(job);
     const auto source = ParseLocation(job.sources.front());
     const auto target = ParseLocation(job.destination);
+    if (source.Local() || target.Local()) return RunArchiveLocalMove(job, hooks);
     Hooks internal = hooks; internal.fileDone = {}; internal.fileFailed = {};
     auto sourceGuard = PrepareArchiveEditJob(source.archive, {}, job.sources);
     auto checkSource = [&] {

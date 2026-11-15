@@ -382,7 +382,7 @@ class MainWindow : public BWindow {
     pendingArchiveEdit = job;
     BString text;
     if (job.action == Lister::Action::MoveArchive) {
-      text << "Move " << int32(job.sources.size()) << " selected archive entries to:\n"
+      text << "Move " << int32(job.sources.size()) << " selected entries to:\n"
            << job.destination.c_str();
       const bool sameArchive = !job.sources.empty() &&
         Lister::ParseLocation(job.sources.front()).archive == Lister::ParseLocation(job.destination).archive;
@@ -390,6 +390,8 @@ class MainWindow : public BWindow {
         ? "\nEntries move within this archive. Existing names are never replaced."
         : "\nSource entries are removed only after the saved destination is verified."
           " If interrupted after copying, both copies may remain. Existing names require a choice.");
+      if (!job.sources.empty() && Lister::ParseLocation(job.sources.front()).Local())
+        text << "\nFiles with links or filesystem attributes must be copied instead, so the original metadata is retained.";
       AskInline(text.String(), "Move entries", BMessage(kArchiveEditAccepted));
       return;
     }
@@ -484,7 +486,7 @@ class MainWindow : public BWindow {
       if (clipboardPaste.jobs.size() == 1 &&
           (clipboardPaste.jobs[0].action == Lister::Action::EditArchive ||
            clipboardPaste.jobs[0].action == Lister::Action::MoveArchive)) {
-        archiveClipboardPending = clipboardPaste.archiveCut;
+        archiveClipboardPending = !clipboardPaste.lease.empty();
         ConfirmArchiveAddition(clipboardPaste.jobs[0]);
         if (!archiveClipboardPending) clipboardPaste = {};
         return;
@@ -634,6 +636,11 @@ class MainWindow : public BWindow {
         catch (const std::exception &e) { Notice(e.what()); }
         return;
       }
+      if (a == Lister::Action::Move && !job.sources.empty() && Lister::ParseLocation(job.sources.front()).Archive()) {
+        try { ConfirmArchiveAddition(Lister::PrepareArchiveMove(job)); }
+        catch (const std::exception &e) { Notice(e.what()); }
+        return;
+      }
       queue->Enqueue(job);
       return;
     }
@@ -684,7 +691,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.28.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.29.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;

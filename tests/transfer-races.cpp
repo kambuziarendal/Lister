@@ -78,10 +78,11 @@ int main(){
  auto paste=PrepareFilePaste(nested,&clipboard);result=Run(paste.jobs.at(0),{});
  check(paste.lease.empty()&&paste.jobs.size()==1&&paste.jobs[0].action==Action::EditArchive&&result.completed==1,"clipboard Copy/Paste adds to open archive without a move lease");
  PutFileClipboard({input+"/pasted.txt"},true,&clipboard);bool refused=false;
- try{PrepareFilePaste(nested,&clipboard);}catch(const std::exception&){refused=true;}
- check(refused&&exists(input+"/pasted.txt"),"cut/paste into archive refuses source removal");
+ paste=PrepareFilePaste(nested,&clipboard);
+ check(!paste.lease.empty()&&paste.jobs.at(0).action==Action::MoveArchive&&exists(input+"/pasted.txt"),"cut/paste prepares verified move without removing source before acceptance");
+ FinishFilePaste(paste,{},&clipboard);
  transfer.action=Action::Move;refused=false;try{PrepareArchiveCopy(transfer);}catch(const std::exception&){refused=true;}
- check(refused&&exists(input+"/new.txt"),"panel move into archive explicitly refuses source removal");
+ check(refused&&exists(input+"/new.txt"),"copy helper refuses a move contract without removing source");
  edit=PrepareArchiveCopy(Job{Action::Copy,{input+"/new.txt"},nested});
  const auto originalArchive=readFile(pack.destination);Hooks cancelEdit;cancelEdit.proceed=[] {return false;};result=Run(edit,cancelEdit);
  check(result.cancelled&&readFile(pack.destination)==originalArchive,"cancelled archive addition retains exact original container");

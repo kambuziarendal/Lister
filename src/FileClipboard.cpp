@@ -231,12 +231,22 @@ ClipboardPaste PrepareFilePaste(const std::string &destination, BClipboard *clip
     ClipboardPaste paste;
     paste.items = ReadFileClipboard(*clipboard->Data());
     Job transfer; transfer.destination = destination;
+    bool cut = false, copy = false;
     for (const auto &item : paste.items) {
-      if (item.cut) throw std::runtime_error("Moving into archives is not supported. Copy the files, then Paste; originals will be kept.");
+      cut |= item.cut; copy |= !item.cut;
       transfer.sources.push_back(item.path);
       transfer.expectedSources.emplace(item.path, item.node);
     }
-    paste.jobs.push_back(PrepareArchiveCopy(transfer));
+    if (cut && copy) throw std::runtime_error("Cut or copy one selection at a time into an archive.");
+    transfer.action = cut ? Action::Move : Action::Copy;
+    paste.jobs.push_back(cut ? PrepareArchiveMove(transfer) : PrepareArchiveCopy(transfer));
+    if (cut) {
+      static std::atomic<int64> serial{0};
+      paste.lease = std::to_string(getpid()) + ":local-archive:" + std::to_string(system_time()) + ":" + std::to_string(++serial);
+      BMessage message(*clipboard->Data());
+      Require(message.AddString(kLease,paste.lease.c_str()), "Reserve local cut clipboard");
+      Commit(clipboard,message);
+    }
     return paste;
   }
   if (destination.empty() || destination[0] != '/')

@@ -105,8 +105,8 @@ int main(){
   auto folder=ChildLocation(s,"folder");Run(PrepareArchiveCopy(Job{Action::Copy,{input+"folder"},s}),{});
   check(rejects([&]{move({folder,ChildLocation(folder,"nested")},d);}),"overlapping selection rejected");
   check(rejects([&]{move({s},d);}),"archive root cannot be moved");
-  check(rejects([&]{move({item},root);}),"archive cut to local folder explicitly refused");
-  check(rejects([&]{move({input+"item"},d);}),"local source not silently deleted by archive move");
+  check(move({item},root).action==Action::MoveArchive,"archive cut to local folder prepares verified move");
+  check(move({input+"item"},d).action==Action::MoveArchive,"local source prepares verified archive move");
   check(rejects([&]{move({folder},ChildLocation(folder,"empty"));}),"same-archive self descendant rejected");
   const auto alias=root+"/alias.zip";link(ParseLocation(s).archive.c_str(),alias.c_str());
   check(rejects([&]{move({item},OpenArchive(alias));}),"hardlinked archive aliases rejected");unlink(alias.c_str());

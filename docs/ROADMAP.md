@@ -12,14 +12,37 @@ arbeidsflyter. Dette gjelder alle støttede arkivformater, ikke bare ZIP og 7z.
 0.25.0 utvider mappehandlingene. 0.26.0 legger til klipp/lim inn og flytting
 mellom skrivbare lokale arkiver med verifisering før kildeopprydding.
 0.27.0 legger til ekstern redigering med verifisert lagring tilbake og private gjenopprettingskopier.
-Full likhet, flytting mellom lokale mapper og arkiver,
-lenker/spesialmetadata, flerpartsarkiver og skrivemotorer for RAR gjenstår. Ikke merk kravet ferdig før disse grensene er løst.
+0.29.0 legger til verifisert flytting mellom lokale mapper og arkiver.
+Full likhet, lenker/spesialmetadata, flerpartsarkiver og skrivemotorer for RAR gjenstår. Ikke merk kravet ferdig før disse grensene er løst.
 **Nytt krav 15. november:** Rekursiv mappe-diff med størrelseskontroll og valgfri SHA-256.
 Kontekstmenyen skal kunne velge alle filer av samme type som den klikkede filen.
 Implementert i lokal kandidat 0.28.0: skrivbeskyttet rekursiv sammenligning med
 størrelse/SHA-256 og valg etter filendelse i det aktive panelet.
 
 Skipta er nytt arbeidsnavn for den planlagte delen tidligere omtalt som Deila.
+
+## Historisk filvisning, besluttet 15. november 2026
+
+Lav prioritet, ikke implementert. Haiku/BFS-funksjoner prioriteres først, etter
+Arnes presisering samme kveld. Tidslinje per panel aktiveres bare når leverandøren
+for den aktuelle plasseringen faktisk kan liste og lese tilgjengelige snapshots.
+Filsystemnavn alene er ikke nok. Haikus BFS har ikke snapshot-støtte; vanlig BFS
+skal derfor ikke vise en tidslinje. Nettverksprotokoll, rettigheter og serverens
+eksponering av historikk må også tas med i kapabilitetskontrollen.
+
+- Velg «Nå» eller et faktisk snapshot. Vis tidspunkt og markører for tilgjengelige
+  versjoner, uten å antyde kontinuerlig historikk mellom snapshots.
+- Historiske paneler er skrivebeskyttet gjennom både grensesnitt og filoperasjoner.
+- Sammenlign historisk panel mot «Nå» med mappe-diff, og tilby kopiering tilbake
+  med vanlig konfliktkontroll. Ingen automatisk tilbakeføring av hele filsystemet.
+- Snapshot-identitet må følge navigering, søk og jobber. Hvis snapshotet forsvinner
+  eller tilgangen trekkes tilbake, stopp tydelig, aldri bytt lydløst til «Nå».
+- Kvalifiser en faktisk leverandør med tilgjengelig/utilgjengelig historikk,
+  slettet snapshot, skrivevern og gjenoppretting før funksjonen regnes som levert.
+
+Datofiltre i søk gjelder dagens filer og er en separat planlagt forbedring.
+Ingen egen backupmotor eller kunstig rekonstruert historikk er besluttet.
+Dette ønsket legges etter pågående arkiv/lokal-flytting, ikke inn i dens kodeomfang.
 
 14. november 2026. Første mål er en god, særpreget filbehandler til daglig bruk.
 Vi leverer små, ferdige arbeidsflyter som samtidig peker mot den større visjonen.

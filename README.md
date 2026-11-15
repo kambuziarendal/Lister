@@ -2,8 +2,12 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.28.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.29.0**. Published preview: **0.2.0**.
 
+
+0.29.0 adds verified Cut/Paste and panel Move between local folders and writable
+archives, in both directions. Full destination read-back precedes source removal;
+unsupported local metadata retains the source. See [archive/local moves](docs/ARCHIVE-LOCAL-MOVE-0.29.0.md).
 
 0.28.0 adds read-only recursive folder comparison with quick byte-size checks or
 SHA-256 content verification. **Listi > Compare folders** starts from the two
