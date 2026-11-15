@@ -23,3 +23,7 @@ filters, bulk rename with preview and collision checks, then configurable action
 on selected files. Preserve ROX's directness without importing an X11 desktop
 replacement or assuming newer code is faster. Snapshot browsing is a separate,
 low-priority capability-gated feature; native Haiku BFS does not offer snapshots.
+
+Owner-approved follow-up: the three useful ideas above are queued explicitly in
+ROADMAP.md. Listi exists primarily because we miss DOpus on Haiku. This review
+does not redirect Listi toward a ROX clone; improve our DOpus-inspired file work.

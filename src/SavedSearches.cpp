@@ -16,8 +16,9 @@ void SavedSearches::Put(SavedSearch item, bool replace) {
       std::any_of(item.name.begin(), item.name.end(), [](unsigned char c) { return c < 32 || c == 127; }))
     throw std::runtime_error("Use a search name of 1 to 80 bytes without control characters.");
   const auto &r = item.request;
+  auto filters = CompileSearchFilters(r.filters);
   if (r.root.empty() || r.root[0] != '/' || r.root.size() >= B_PATH_NAME_LENGTH ||
-      r.root.find('\0') != std::string::npos || r.expression.empty() ||
+      r.root.find('\0') != std::string::npos || (r.expression.empty() && (r.predicate || !filters.active)) ||
       r.expression.size() > 4096 || r.expression.find('\0') != std::string::npos ||
       (item.live && !r.predicate))
     throw std::runtime_error("Use a local folder and valid search criteria. Live results require BFS.");
@@ -35,7 +36,7 @@ void SavedSearches::Remove(const std::string &name) {
   items.erase(found);
 }
 BMessage SavedSearches::Message() const {
-  BMessage result; result.AddInt32("version", 1);
+  BMessage result; result.AddInt32("version", 2);
   for (const auto &item : items) {
     BMessage entry;
     entry.AddString("name", item.name.c_str());
@@ -43,12 +44,13 @@ BMessage SavedSearches::Message() const {
     entry.AddString("expression", item.request.expression.c_str());
     entry.AddBool("predicate", item.request.predicate);
     entry.AddBool("trash", item.request.includeTrash); entry.AddBool("live", item.live);
+    WriteSearchFilters(entry, item.request.filters);
     result.AddMessage("search", &entry);
   }
   return result;
 }
 SavedSearches SavedSearches::FromMessage(const BMessage &m) {
-  if (m.GetInt32("version", 0) != 1) throw std::runtime_error("Unsupported saved-search format.");
+  if (m.GetInt32("version", 0) != 1 && m.GetInt32("version", 0) != 2) throw std::runtime_error("Unsupported saved-search format.");
   type_code type; int32 count = 0;
   if (m.GetInfo("search", &type, &count) == B_OK && (type != B_MESSAGE_TYPE || count > int32(Limit)))
     throw std::runtime_error("Invalid saved-search list.");
@@ -64,6 +66,9 @@ SavedSearches SavedSearches::FromMessage(const BMessage &m) {
     item.request.root = entry.GetString("root", "");
     item.request.expression = entry.GetString("expression", "");
     item.request.predicate = predicate; item.request.includeTrash = trash; item.live = live;
+    if (m.GetInt32("version", 0) == 2 && !entry.HasMessage("filters"))
+      throw std::runtime_error("Missing saved file filters.");
+    item.request.filters = ReadSearchFilters(entry);
     result.Put(item, false);
   }
   return result;

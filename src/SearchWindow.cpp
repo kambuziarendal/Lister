@@ -21,10 +21,11 @@
 #include <TextView.h>
 #include <Window.h>
 #include <memory>
+#include <stdexcept>
 namespace {
 using namespace Lister;
 constexpr uint32 kStart = 'ssrt', kStop = 'sstp', kHit = 'shit',
-                 kFinished = 'sfin', kSave = 'sqsv', kForget = 'sqfg', kLoad = 'sqld', kName = 'sqnm', kPicked = 'spik', kShow = 'sshw', kMode = 'smod';
+                 kFinished = 'sfin', kSave = 'sqsv', kForget = 'sqfg', kLoad = 'sqld', kName = 'sqnm', kPicked = 'spik', kShow = 'sshw', kMode = 'smod', kClearFilters = 'sclr';
 struct HitRow : BRow {
   Lister::SearchHit hit;
   explicit HitRow(const Lister::SearchHit &value) : BRow(24), hit(value) {
@@ -51,6 +52,9 @@ class SearchWindow : public BWindow {
   BMessenger owner;
   int32 pane;
   BTextControl *root, *expression, *name;
+  BTextControl *extension, *minimum, *maximum, *fromDate, *throughDate;
+  BCheckBox *createdDate;
+  BButton *clearFilters;
   BPopUpMenu *savedMenu;
   BMenuField *savedField;
   BButton *save, *forget;
@@ -81,7 +85,26 @@ class SearchWindow : public BWindow {
     start->SetEnabled(!busy); stop->SetEnabled(busy);
     root->SetEnabled(!busy); expression->SetEnabled(!busy);
     predicate->SetEnabled(!busy); trash->SetEnabled(!busy);
+    for (auto field : {extension, minimum, maximum, fromDate, throughDate}) field->SetEnabled(!busy);
+    createdDate->SetEnabled(!busy); clearFilters->SetEnabled(!busy);
     live->SetEnabled(!busy && predicate->Value() == B_CONTROL_ON);
+  }
+  SearchFilters Filters() const {
+    return {extension->Text(), minimum->Text(), maximum->Text(), fromDate->Text(),
+        throughDate->Text(), createdDate->Value() == B_CONTROL_ON};
+  }
+  void Filters(const SearchFilters &f) {
+    extension->SetText(f.extension.c_str()); minimum->SetText(f.minimumSize.c_str());
+    maximum->SetText(f.maximumSize.c_str()); fromDate->SetText(f.fromDate.c_str());
+    throughDate->SetText(f.throughDate.c_str()); createdDate->SetValue(f.created);
+  }
+  bool AddFilters(BMessage &message) {
+    try {
+      auto f = Filters(); CompileSearchFilters(f);
+      if (!expression->Text()[0] && (predicate->Value() == B_CONTROL_ON || !f.Active()))
+        throw std::runtime_error("Enter a name, at least one file filter, or a BFS formula.");
+      WriteSearchFilters(message, f); return true;
+    } catch (const std::exception &e) { Status(e.what()); return false; }
   }
   void StoreControls() {
     save->SetEnabled(writable && !saving);
@@ -142,7 +165,7 @@ class SearchWindow : public BWindow {
   }
 public:
   SearchWindow(BMessenger target, int32 which, const char *path, const BMessage &store)
-      : BWindow(BRect(90, 90, 950, 640), "Listi: Find files", B_TITLED_WINDOW,
+      : BWindow(BRect(90, 90, 1000, 720), "Listi: Find files", B_TITLED_WINDOW,
                 B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS), owner(target), pane(which),
         generation(std::make_shared<std::atomic<int64>>(0)) {
     root = new BTextControl("search scope", "Folder:", path, nullptr);
@@ -152,6 +175,21 @@ public:
     predicate = new BCheckBox("bfs formula", "BFS formula", new BMessage(kMode));
     live = new BCheckBox("live results", "Live", nullptr);
     trash = new BCheckBox("include trash", "Include Trash", nullptr);
+    extension = new BTextControl("file extension", "Extension:", "", nullptr);
+    minimum = new BTextControl("minimum size", "Min size:", "", nullptr);
+    maximum = new BTextControl("maximum size", "Max size:", "", nullptr);
+    fromDate = new BTextControl("from date", "From:", "", nullptr);
+    throughDate = new BTextControl("through date", "Through:", "", nullptr);
+    createdDate = new BCheckBox("creation date", "Use creation date", nullptr);
+    clearFilters = new BButton("clear file filters", "Clear filters", new BMessage(kClearFilters));
+    for (auto field : {extension, minimum, maximum, fromDate, throughDate}) {
+      field->TextView()->SetMaxBytes(255);
+      field->SetExplicitMinSize(BSize(180, B_SIZE_UNSET));
+    }
+    extension->SetToolTip("File extension, case-insensitive, e.g. pdf or tar.gz. Not MIME or wildcards.");
+    for (auto field : {minimum, maximum}) field->SetToolTip("Inclusive size: whole bytes or B, KiB, MiB, GiB. Blank means no bound.");
+    for (auto field : {fromDate, throughDate}) field->SetToolTip("YYYY-MM-DD in local time. Both calendar days included. Blank means no bound.");
+    createdDate->SetToolTip("Unchecked: last modification. Checked: native creation time, not metadata-change time.");
     hint = Line("search hint", "Names: literal, case-insensitive. Subfolders on this volume; no link traversal.");
     scope = Line("result scope", which == 0 ? "Show original uses the left panel." : "Show original uses the right panel.");
     status = Line("search status", "Choose a folder and search. Results are a snapshot, not a live query.");
@@ -171,11 +209,14 @@ public:
     BLayoutBuilder::Group<>(this, B_VERTICAL, 8).SetInsets(10)
       .AddGroup(B_HORIZONTAL, 8).Add(savedField).Add(name).Add(save).Add(forget).End()
       .Add(root).Add(expression)
+      .Add(Line("file filters hint", "Optional file filters (regular files only): sizes in B / KiB / MiB / GiB; dates YYYY-MM-DD, local time."))
+      .AddGroup(B_HORIZONTAL, 8).Add(extension).Add(minimum).Add(maximum).End()
+      .AddGroup(B_HORIZONTAL, 8).Add(fromDate).Add(throughDate).Add(createdDate).Add(clearFilters).End()
       .AddGroup(B_HORIZONTAL, 8).Add(predicate).Add(trash).Add(live).AddGlue().Add(start).Add(stop).End()
       .Add(hint).Add(scope).Add(results).Add(selected)
       .AddGroup(B_HORIZONTAL, 8).Add(status).Add(show).End();
     results->SetTarget(this);
-    for (auto field : {root, expression})
+    for (auto field : {root, expression, extension, minimum, maximum, fromDate, throughDate})
       field->TextView()->AddFilter(new Lister::ExplicitSubmit(BMessenger(this), BMessage(kStart)));
     AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(kStop));
     AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
@@ -201,8 +242,8 @@ public:
       if (const auto *item = saved.Find(chosen)) {
         root->SetText(item->request.root.c_str()); expression->SetText(item->request.expression.c_str());
         predicate->SetValue(item->request.predicate); trash->SetValue(item->request.includeTrash);
-        live->SetValue(item->live);
-      } else { expression->SetText(""); predicate->SetValue(0); trash->SetValue(0); live->SetValue(0); }
+        live->SetValue(item->live); Filters(item->request.filters);
+      } else { expression->SetText(""); predicate->SetValue(0); trash->SetValue(0); live->SetValue(0); Filters({}); }
       results->Clear(); show->SetEnabled(false); selected->SetText(""); selected->SetToolTip("");
       scope->SetText(pane == 0 ? "Show original uses the left panel." : "Show original uses the right panel.");
       scope->SetToolTip(scope->Text());
@@ -220,10 +261,14 @@ public:
       edit.AddBool("predicate", predicate->Value() == B_CONTROL_ON);
       edit.AddBool("trash", trash->Value() == B_CONTROL_ON);
       edit.AddBool("live", live->Value() == B_CONTROL_ON);
+      if (m->what == kSave && !AddFilters(edit)) break;
       if (owner.SendMessage(&edit) == B_OK) { saving = true; StoreControls(); }
       else Status("Could not queue saved search. Previous criteria are unchanged.");
       break;
     }
+    case kClearFilters:
+      if (!busy) { Filters({}); Status("File filters cleared. Name or BFS formula is unchanged."); }
+      break;
     case kSearch:
       Activate(); break;
     case kMode: {
@@ -238,10 +283,10 @@ public:
     }
     case kStart: {
       if (busy) break;
-      if (!expression->Text()[0]) { Status("Enter a name fragment or BFS formula."); expression->MakeFocus(); break; }
+      BMessage request(kStart);
+      if (!AddFilters(request)) break;
       ++serial; generation->store(serial); resultRevision = 0; pending.clear();
       results->Clear(); show->SetEnabled(false); selected->SetText(""); selected->SetToolTip("");
-      BMessage request(kStart);
       request.AddInt64("serial", serial); request.AddString("root", root->Text());
       request.AddString("expression", expression->Text());
       request.AddBool("predicate", predicate->Value() == B_CONTROL_ON);
@@ -249,6 +294,17 @@ public:
       request.AddBool("live", live->Value() == B_CONTROL_ON);
       BString description(pane == 0 ? "Left panel | " : "Right panel | ");
       description << root->Text() << " | " << expression->Text();
+      auto filters = Filters();
+      if (filters.Active()) {
+        description << " | Files";
+        if (!filters.extension.empty()) description << " | extension: " << filters.extension.c_str();
+        if (!filters.minimumSize.empty()) description << " | min: " << filters.minimumSize.c_str();
+        if (!filters.maximumSize.empty()) description << " | max: " << filters.maximumSize.c_str();
+        if (!filters.fromDate.empty() || !filters.throughDate.empty()) {
+          description << (filters.created ? " | created: " : " | modified: ");
+          description << filters.fromDate.c_str() << " through " << filters.throughDate.c_str();
+        }
+      }
       scope->SetText(description); scope->SetToolTip(description);
       Busy(true); Status("Searching... Stop keeps only the results received so far.");
       worker->PostMessage(&request); break;

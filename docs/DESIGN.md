@@ -25,6 +25,17 @@ covered, partial, unqualified and missing needs. Deferred needs remain gaps,
 not exclusions from the long-term ambition. This does not authorize public
 publication, paid services or one large rewrite.
 
+## Primary motivation, clarified 15 November 2026
+
+We are building Listi primarily because we miss DOpus on Haiku. Its powerful
+source/destination file work, selection-oriented actions and freedom of use are
+the primary product direction, not incidental inspiration. Improve that model
+with native Haiku capabilities and coherent modern workflows. ROX, Dolphin and
+Tracker supply useful individual ideas or coverage references; none replaces
+this motivation, and none is a UI to copy. Aim to surpass DOpus's limitations
+without trading away its effective file-work character. Claims of superiority
+require measured results and verified workflows, not feature counts.
+
 ## Product direction, 14 November 2026
 
 Listi is a native Haiku working environment for files. DOpus inspires freedom

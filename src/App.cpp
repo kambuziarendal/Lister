@@ -691,7 +691,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.29.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.30.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
@@ -1025,6 +1025,7 @@ public:
         Lister::SavedSearch item;
         item.name = m->GetString("name", ""); item.request.root = m->GetString("root", "");
         item.request.expression = m->GetString("expression", "");
+        item.request.filters = Lister::ReadSearchFilters(*m);
         item.request.predicate = m->GetBool("predicate", false);
         item.request.includeTrash = m->GetBool("trash", false); item.live = m->GetBool("live", false);
         if (m->GetBool("remove", false)) next.Remove(item.name);

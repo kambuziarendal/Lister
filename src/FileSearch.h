@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #pragma once
+#include "SearchFilters.h"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -9,6 +10,7 @@ struct SearchRequest {
   std::string root, expression;
   bool predicate = false, includeTrash = false;
   size_t resultLimit = 5000, visitLimit = 250000;
+  SearchFilters filters;
 };
 struct SearchHit {
   std::string path;

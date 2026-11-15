@@ -2,8 +2,15 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.29.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.30.0**. Published preview: **0.2.0**.
 
+
+We are building Listi primarily because we miss DOpus on Haiku. Useful ideas from
+other file managers support that identity, not replace it.
+
+0.30.0 adds combinable date, byte-size and extension filters to Find files,
+including saved criteria and advanced/live BFS searches. See
+[search filters and limits](docs/SEARCH-FILTERS-0.30.0.md).
 
 0.29.0 adds verified Cut/Paste and panel Move between local folders and writable
 archives, in both directions. Full destination read-back precedes source removal;
@@ -32,7 +39,7 @@ Find files: **Command+Shift+F** opens cancellable recursive local name search
 and native BFS formulas, with optional live updates. Save named criteria and
 reopen them for fresh results. Results show original folders; reveal an original
 in its owning panel before using file actions. See [live and saved search behavior
-and limits](docs/SEARCH-0.8.0.md). Friendly attribute builders, multiple volumes,
+and limits](docs/SEARCH-0.8.0.md). General attribute builders, multiple volumes,
 content search and Tracker query-file interoperability remain open requirements.
 
 Saved work locations: each panel's Go > Places menu can save the current

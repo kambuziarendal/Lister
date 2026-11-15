@@ -18,7 +18,9 @@ Kravlisten må utvides ved runtime-gjennomgang og nye dokumenterte funksjoner.
 Listi-basis: privat 0.5.0, med avgrenset testbevis i NAVIGATION-0.5.0.md og
 ACCEPTANCE-0.4.0.md. D betyr delvis dekning, M betyr mangler egen brukerflyt,
 U betyr tilgjengelig mekanisme, men behovet er ikke tilstrekkelig verifisert.
-Oppdaterte søketrinn er versjonsmerket til 0.8.0, se ACCEPTANCE-0.8.0.md.
+Søketrinnene i 0.8.0 har separat akseptkvittering. 0.30.0 legger til dato-,
+størrelse- og filendelsesfiltre, se SEARCH-FILTERS-0.30.0.md og den nye
+versjonens akseptkvittering for kvalifiseringsstatus.
 Lokal filutklippstavle er kvalifisert i 0.9.0, se ACCEPTANCE-0.9.0.md.
 Egenskaper og typed BFS-attributter er avgrenset i PROPERTIES-0.10.0.md.
 Ingen rad nedenfor påstår full Tracker-likhet. Systemintegrasjon teller først
@@ -40,7 +42,7 @@ når den kan startes fra Listi og hele oppgaven er prøvd.
 | T12 | Vise og redigere typed BFS-attributter | D (0.10) | Åtte lokale datatyper, validering og utkastvern. Systemattributter/binærdata, flere typer og egne People/mail/audio-flyter gjenstår | Attributes |
 | T13 | Velge etter mønster eller regulært uttrykk | M | Fryst utvalg, ugyldig uttrykk, tomt resultat | Tracker |
 | T14 | Vanlige flerutvalg, tastatur og drag | D | Egen liste/grid testet. Alle modifierkombinasjoner | Shortcuts |
-| T15 | BFS-søk på navn, typer, attributter og formler | D (0.7) | Lokalt navnesøk og native BFS-formler som snapshot; attributtbygger gjenstår | Queries |
+| T15 | BFS-søk på navn, typer, attributter og formler | D (0.30) | Lokalt navnesøk, BFS-formler/live og datofilter/størrelse/filendelse; generell attributt-/MIME-bygger gjenstår | Queries |
 | T16 | Velge søkevolumer, mapper og inkludering av Trash | D (0.7) | Én mappe/volumrot og eksplisitt Trash-valg; flervolumvalg gjenstår | Queries |
 | T17 | Levende treff med originale filhandlinger | D (0.8) | Levende BFS med identitetsbevart valg og vis-original i eierpanelet. Filhandlinger går via panelet; større datamengder/providere gjenstår | Queries |
 | T18 | Lagrede søk, søkemaler og gjenåpning/redigering | D (0.8) | Listi-kriterier lagres, redigeres og kjøres på nytt. Tracker query-filer, import/eksport og maler gjenstår | Queries |

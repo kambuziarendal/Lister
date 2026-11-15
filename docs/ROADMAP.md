@@ -21,6 +21,39 @@ størrelse/SHA-256 og valg etter filendelse i det aktive panelet.
 
 Skipta er nytt arbeidsnavn for den planlagte delen tidligere omtalt som Deila.
 
+## Hovedretning og neste trinn, presisert 15. november 2026
+
+Vi lager Listi først og fremst fordi vi savner DOpus på Haiku. DOpus-inspirert
+filarbeid er hovedretningen: tydelig kilde/mål, handlefrihet, tastatur og mus,
+og kraftige handlinger på utvalg. Målet er å videreutvikle dette til en vesentlig
+bedre helhet, ikke å gjenskape alle historiske begrensninger. Bedre respons og
+brukbarhet må underbygges med faktiske prøver, ikke bare flere funksjoner.
+
+ROX, Dolphin og Tracker gir enkeltideer og sammenligningsgrunnlag, ikke en ny
+produktidentitet eller et grensesnitt vi skal kopiere. Se
+[ROX-vurderingen](ROX-COMPARISON-20261115.md). Godkjent rekkefølge etter den
+lokalt kvalifiserte 0.29.0-flyttingen:
+
+1. **Søkefiltre, lokal 0.30.0:** dato, størrelse og filendelse uten krav om BFS-formler.
+   Kombiner med navn og lagrede søk. Bevar avanserte/live BFS-spørringer.
+   Vis hva datoen gjelder; dette er søk i dagens filer, ikke snapshot-historikk.
+   Ugyldige intervaller, datogrenser, lagring og faktisk native brukerflyt er
+   kvalifisert; se [akseptkvitteringen](ACCEPTANCE-0.30.0.md).
+2. **Masseomdøping:** samme Omdøp-handling på markerte filer i kildepanelet.
+   Ett valgt element beholder den enkle flyten; flere får gammelt og foreslått
+   navn side ved side. Søk/erstatt, nummerering, prefiks/suffiks og bevaring av
+   filendelse er første foreslåtte verktøy. Ingen flytting til målpanelet.
+   Frys utvalget før forhåndsvisning. Kontroller
+   kollisjoner, ugyldige navn og endret kildeidentitet. Avbrudd og delvis utføring
+   må være forståelig; ingen universell angre-lovnad.
+3. **Tilpassbare utvalgshandlinger:** eksplisitte handlinger på frosset filutvalg,
+   med native Haiku-programmer/MIME der det passer. Filnavn skal sendes som data,
+   ikke bli shellkode. Provider-begrensninger og mål må være synlige.
+
+Ett kvalifisert trinn om gangen. Vi importerer ikke ROXs skrivebord, paneler,
+AppDir-modell eller X11-avhengigheter. Snapshot-visning beholder lav prioritet.
+Dette endrer ikke publiseringsgrensen eller eksisterende funksjonskrav.
+
 ## Historisk filvisning, besluttet 15. november 2026
 
 Lav prioritet, ikke implementert. Haiku/BFS-funksjoner prioriteres først, etter

@@ -83,6 +83,16 @@ int main() {
   start("name==\"*.live\"", false);
   check(receiver->Await([&] { return receiver->serial == generation && !receiver->live && receiver->error.empty() && receiver->rows.size() == 1; }), "stop and fresh snapshot cannot mix previous query");
   start("name==\"*.live\""); check(count(1), "live search restarts");
+  token->store(++generation);
+  BMessage filtered(kSearchStart); filtered.AddInt64("serial", generation);
+  filtered.AddString("root", scope.c_str()); filtered.AddString("expression", "name==\"*.live\"");
+  filtered.AddBool("predicate", true); filtered.AddBool("live", true);
+  SearchFilters filters; filters.minimumSize = "30"; WriteSearchFilters(filtered, filters);
+  worker->PostMessage(&filtered); check(count(0), "live BFS initial results apply file size filter");
+  std::ofstream(scope + "/same.live", std::ios::app) << std::string(40, 'x');
+  check(count(1), "file grows into filtered live results");
+  write(scope + "/same.live"); check(count(0), "file shrinks out of filtered live results");
+  start("name==\"*.live\""); check(count(1), "clearing filter restores native query results");
   rename(scope.c_str(), (scope + "-old").c_str()); mkdir(scope.c_str(), 0700); write(scope + "/replacement.live");
   check(receiver->Await([&] { return receiver->serial == generation && !receiver->live && !receiver->error.empty() && receiver->rows.empty(); }), "replaced root stops live query instead of binding to new folder");
   start("((invalid"); check(receiver->Await([&] { return receiver->serial == generation && !receiver->live && !receiver->error.empty(); }), "invalid live formula fails without subscription");

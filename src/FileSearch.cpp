@@ -37,12 +37,15 @@ SearchSummary SearchFiles(const SearchRequest &request,
     const std::function<bool()> &proceed,
     const std::function<bool(const SearchHit &)> &deliver, BQuery *liveQuery) {
   SearchSummary out;
+  CompiledSearchFilters filters;
+  try { filters = CompileSearchFilters(request.filters); }
+  catch (const std::exception &e) { out.error = e.what(); return out; }
   auto alive = [&] { if (!proceed()) out.cancelled = true; return !out.cancelled; };
   if (!alive()) return out;
-  if (request.root.empty() || request.root[0] != '/' || request.expression.empty() ||
+  if (request.root.empty() || request.root[0] != '/' || (request.expression.empty() && (request.predicate || !filters.active)) ||
       request.expression.size() > 4096 || request.expression.find('\0') != std::string::npos ||
       request.root.find('\0') != std::string::npos || !request.resultLimit || !request.visitLimit) {
-    out.error = "Choose a local folder and a non-empty search (up to 4096 bytes).";
+    out.error = "Choose a local folder and a name, file filter or BFS formula (up to 4096 bytes).";
     return out;
   }
   char resolved[PATH_MAX];
@@ -66,6 +69,7 @@ SearchSummary SearchFiles(const SearchRequest &request,
   if (excluded(root)) { out.error = "This scope is in Trash. Enable Include Trash to search it."; return out; }
   auto accept = [&](const std::string &path, const struct stat &st) {
     if (!alive()) return false;
+    if (!filters.Matches(path, st)) return true;
     if (out.matched >= request.resultLimit) { out.limited = true; return false; }
     if (!deliver({path, st.st_dev, st.st_ino})) { out.cancelled = true; return false; }
     ++out.matched;
@@ -89,7 +93,7 @@ SearchSummary SearchFiles(const SearchRequest &request,
       ++out.visited;
       BPath path;
       struct stat st;
-      if (entry.GetPath(&path) != B_OK || entry.GetStat(&st) != B_OK) { ++out.skipped; continue; }
+      if (entry.GetPath(&path) != B_OK || lstat(path.Path(), &st) != 0) { ++out.skipped; continue; }
       if (st.st_dev != rootStat.st_dev || !Within(path.Path(), root) ||
           path.Path() == root || excluded(path.Path())) continue;
       if (!accept(path.Path(), st)) break;

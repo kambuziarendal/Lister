@@ -63,6 +63,10 @@ public:
       request = {};
       request.root = m->GetString("root", ""); request.expression = m->GetString("expression", "");
       request.predicate = m->GetBool("predicate", false); request.includeTrash = m->GetBool("trash", false);
+      try { request.filters = ReadSearchFilters(*m); }
+      catch (const std::exception &e) {
+        BMessage failed(kSearchDone); failed.AddString("error", e.what()); Send(failed); return;
+      }
       if (request.predicate && m->GetBool("live", false)) {
         char path[PATH_MAX]; struct stat st;
         if (realpath(request.root.c_str(), path) && !stat(path, &st)) {

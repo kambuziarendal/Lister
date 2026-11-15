@@ -38,7 +38,7 @@ int main() {
   check(saved.Find("bad") && !saved.Find("bad")->request.predicate, "literal snapshot criteria supported");
   saved.Remove("bad"); check(!saved.Find("bad") && saved.Items().size() == 1, "forget removes definition only");
   rejects([&] { saved.Remove("missing"); }, "missing forget refused");
-  BMessage wrong = saved.Message(); wrong.ReplaceInt32("version", 2);
+  BMessage wrong = saved.Message(); wrong.ReplaceInt32("version", 3);
   rejects([&] { SavedSearches::FromMessage(wrong); }, "unknown format preserved by refusal");
   BMessage malformed; malformed.AddInt32("version", 1); malformed.AddString("search", "wrong");
   rejects([&] { SavedSearches::FromMessage(malformed); }, "wrong list type refused");
