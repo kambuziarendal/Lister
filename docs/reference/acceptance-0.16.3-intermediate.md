@@ -1,4 +1,6 @@
-# Listi 0.16.3 acceptance
+# Intermediate Listi 0.16.3 acceptance
+
+Held and not delivered. Superseded by the direct context-selector extension.
 
 Compiled source: ae4c8cf (private, no public push).
 Binary SHA256: ffb0531e069155ab2c90beb6c96a95dcabf9ca33beab7f187abd5e226f2174ef

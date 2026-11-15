@@ -1083,7 +1083,7 @@ public:
       try {
         BMessage snapshot;
         std::exception_ptr fileSnapshotError;
-        if (!background && local) {
+        if (!selected.empty() && local) {
           try { snapshot = Lister::MakeFileSelection(selected); }
           catch (...) { fileSnapshotError = std::current_exception(); }
         }
@@ -1094,11 +1094,16 @@ public:
         const bool destinationKnown = !stat(destination.c_str(), &before);
         BPoint screen;
         if (m->FindPoint("screen", &screen) != B_OK) break;
-        const auto choice = background ? ShowFolderContextMenu(screen, folderLocal,
-            panes[owner]->Sorting(), panes[owner]->CurrentView())
-          : ShowFileContextMenu(screen, selected.size() == 1,
-              m->GetBool("directory", false), local, !prefs.simple, folderLocal,
-              panes[owner]->Sorting(), panes[owner]->CurrentView());
+        ContextMenuOptions options;
+        options.folder = background;
+        options.selected = selected.size();
+        options.directory = m->GetBool("directory", false);
+        options.local = local;
+        options.dual = !prefs.simple;
+        options.folderLocal = folderLocal;
+        options.sort = panes[owner]->Sorting();
+        options.view = panes[owner]->CurrentView();
+        const auto choice = ShowContextMenu(screen, options);
         const uint32 action = choice.what;
         if (!action) break;
         if (source != owner || selected != panes[owner]->Selected() ||

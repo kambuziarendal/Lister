@@ -483,6 +483,13 @@ void Pane::ContextMenu(const std::string &path, BPoint screen) {
     BMessage request(kContextMenu);
     request.AddInt32("pane", id); request.AddPoint("screen", screen);
     request.AddBool("folderContext", true);
+    const auto selected = entries.Selected();
+    if (selected.size() == 1)
+      for (auto entry : entries.Visible())
+        if (entry->path == selected.front()) {
+          request.AddBool("directory", entry->directory);
+          break;
+        }
     Window()->MessageReceived(&request);
     return;
   }
