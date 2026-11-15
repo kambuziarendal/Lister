@@ -19,6 +19,9 @@ Job PrepareArchiveEditJob(const std::string &archive,
     const std::vector<std::string> &add,
     const std::vector<std::string> &remove,
     const std::string &internalFolder = "/");
+Job PrepareArchiveCopy(const Job &transfer);
+Job PrepareArchiveMutation(const Job &transfer);
+void FreezeArchiveTargets(Job &transfer);
 void SetArchiveDestination(Job &, const std::string &folder, const std::string &name);
 Result RunArchiveJob(const Job &, const Hooks &);
 }

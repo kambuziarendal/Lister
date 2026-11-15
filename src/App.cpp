@@ -370,6 +370,18 @@ class MainWindow : public BWindow {
       archiveWindow=OpenArchiveWindow(job,folder,BMessenger(this));
     }catch(const std::exception &e){Notice(e.what());}
   }
+  void ConfirmArchiveAddition(const Lister::Job &job) {
+    pendingArchiveEdit = job;
+    BString text;
+    if (!job.archiveRenames.empty()) text << "Move selected entries inside this archive:\n";
+    else text << "Add " << int32(job.sources.size()) << " selected entries to:\n";
+    text << job.destination.c_str();
+    if (!job.archivePath.empty()) text << "\nInside: /" << job.archivePath.c_str();
+    text << (job.archiveRenames.empty()
+      ? "\nOriginal files are kept. Existing names require a Replace or Skip choice."
+      : "\nEntries move within this archive. Existing names are never replaced.");
+    AskInline(text.String(), "Update archive", BMessage(kArchiveEditAccepted));
+  }
   void AddToArchive() {
     if(actionArea->Pending()){queue->ErrorInfo("Finish or cancel the open question first.");return;}
     try {
@@ -377,12 +389,12 @@ class MainWindow : public BWindow {
       if(location.Archive()){archiveAddTarget=location.archive;archiveAddFolder=location.path;}
       else {
         const auto selected=panes[source]->Selected();
-        if(selected.size()!=1||Lister::IsVirtual(selected[0]))throw std::runtime_error("Select one local ZIP or 7z archive, or open a folder inside it.");
+        if(selected.size()!=1||Lister::IsVirtual(selected[0]))throw std::runtime_error("Select one local writable archive, or open a folder inside it.");
         archiveAddTarget=selected[0];archiveAddFolder="/";
       }
       struct stat st;
       if(lstat(archiveAddTarget.c_str(),&st)||!S_ISREG(st.st_mode))
-        throw std::runtime_error("Choose one local ZIP or 7z archive.");
+        throw std::runtime_error("Choose one local writable archive.");
       pendingArchiveEdit=Lister::PrepareArchiveEditTarget(archiveAddTarget,archiveAddFolder);
     } catch(const std::exception &e) {Notice(e.what());return;}
     BMessenger here(this);BMessage chosen(kArchiveAddChosen);
@@ -395,7 +407,7 @@ class MainWindow : public BWindow {
     if(actionArea->Pending()){queue->ErrorInfo("Finish or cancel the open question first.");return;}
     try {
       const auto selected=panes[source]->Selected();
-      if(selected.empty())throw std::runtime_error("Select entries inside one ZIP or 7z archive.");
+      if(selected.empty())throw std::runtime_error("Select entries inside one writable archive.");
       auto location=Lister::ParseLocation(selected[0]);
       if(!location.Archive())throw std::runtime_error("Open an archive and select the entries to remove.");
       pendingArchiveEdit=Lister::PrepareArchiveEditJob(location.archive,{},selected,location.path);
@@ -448,6 +460,12 @@ class MainWindow : public BWindow {
         return;
       }
       clipboardPaste = Lister::PrepareFilePaste(panes[source]->Path());
+      if (clipboardPaste.jobs.size() == 1 &&
+          clipboardPaste.jobs[0].action == Lister::Action::EditArchive) {
+        ConfirmArchiveAddition(clipboardPaste.jobs[0]);
+        clipboardPaste = {};
+        return;
+      }
       clipboardMoved.clear();
       for (auto job : clipboardPaste.jobs) {
         job.tag = ++clipboardSerial;
@@ -539,6 +557,11 @@ class MainWindow : public BWindow {
       return;
     }
     auto job = Snapshot(a);
+    if ((a == Lister::Action::Trash || a == Lister::Action::Delete) &&
+        !job.sources.empty() && Lister::ParseLocation(job.sources.front()).Archive()) {
+      RemoveFromArchive();
+      return;
+    }
     if (a != Lister::Action::MakeDirectory && job.sources.empty()) {
       Notice("Select one or more files in the active panel first.");
       return;
@@ -559,7 +582,12 @@ class MainWindow : public BWindow {
         Notice("Open a folder first.");
         return;
       }
-      try { Lister::FreezeLocalJob(job, job.destination); }
+      try {
+        Lister::FreezeLocalJob(job, job.destination);
+        Lister::FreezeArchiveTargets(job);
+        if (Lister::ParseLocation(job.destination).Archive())
+          Lister::PrepareArchiveEditTarget(Lister::ParseLocation(job.destination).archive);
+      }
       catch (const std::exception &e) { Notice(e.what()); return; }
       auto message = Lister::EncodeJob(job, kNameAccepted);
       AskInline(
@@ -571,9 +599,18 @@ class MainWindow : public BWindow {
               : "New folder");
       return;
     }
-    try { Lister::FreezeLocalJob(job, (a == Lister::Action::Copy || a == Lister::Action::Move) ? job.destination : ""); }
+    try {
+      Lister::FreezeLocalJob(job, (a == Lister::Action::Copy || a == Lister::Action::Move) ? job.destination : "");
+      Lister::FreezeArchiveTargets(job);
+    }
     catch (const std::exception &e) { Notice(e.what()); return; }
     if (a == Lister::Action::Copy || a == Lister::Action::Move) {
+      if (Lister::ParseLocation(job.destination).Archive()) {
+        try { ConfirmArchiveAddition(a == Lister::Action::Move ?
+          Lister::PrepareArchiveMutation(job) : Lister::PrepareArchiveCopy(job)); }
+        catch (const std::exception &e) { Notice(e.what()); }
+        return;
+      }
       queue->Enqueue(job);
       return;
     }
@@ -620,7 +657,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Lister::SavedPlaces &saved, bool writable,
              const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.24.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.25.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
@@ -1135,6 +1172,7 @@ public:
         options.dual = !prefs.SinglePane();
         options.folderLocal = folderLocal;
         const auto folderLocation=Lister::ParseLocation(folder);
+        options.folderArchive=folderLocation.Archive();
         options.archiveAdd=folderLocation.Archive()||
           (selected.size()==1&&local&&!options.directory);
         options.archiveRemove=!selected.empty();
@@ -1279,6 +1317,8 @@ public:
       try {
         j.destination =
             Lister::ChildLocation(j.destination, m->GetString("name", ""));
+        if (Lister::ParseLocation(j.destination).Archive())
+          j = Lister::PrepareArchiveMutation(j);
       } catch (const std::exception &e) {
         Notice(e.what());
         break;
@@ -1293,20 +1333,27 @@ public:
       }
       try {
         pendingDrop = Lister::PrepareFileDrop(*m, m->GetString("destination", ""));
+        if (pendingDrop.action == Lister::Action::EditArchive) {
+          ConfirmArchiveAddition(pendingDrop);
+          pendingDrop = {};
+          break;
+        }
+        const bool canMove = !Lister::IsVirtual(pendingDrop.destination) &&
+          pendingDrop.expectedSources.size() == pendingDrop.sources.size();
         std::string text = "Drop " + std::to_string(pendingDrop.sources.size()) +
             " item(s) into:\n" + pendingDrop.destination +
-            (pendingDrop.expectedSources.empty()
+            (!canMove
               ? "\nCopy only for network/archive transfers. Originals are kept."
               : "\nCopy keeps originals. Move removes originals after transfer.");
         ShowBank(false);
         actionArea->Ask(text.c_str(), "Copy here", BMessage(kDropAccepted),
-                        nullptr, pendingDrop.expectedSources.empty() ? nullptr : "Move here");
+                        nullptr, canMove ? "Move here" : nullptr);
       } catch (const std::exception &e) { Notice(e.what()); }
       break;
     }
     case kDropAccepted:
       if (!pendingDrop.sources.empty()) {
-        const bool move = m->GetInt32("which", 0) == 2 && !pendingDrop.expectedSources.empty();
+        const bool move = m->GetInt32("which", 0) == 2 && !Lister::IsVirtual(pendingDrop.destination) && pendingDrop.expectedSources.size() == pendingDrop.sources.size();
         pendingDrop.action = move ? Lister::Action::Move : Lister::Action::Copy;
         queue->Enqueue(pendingDrop);
         pendingDrop = {};

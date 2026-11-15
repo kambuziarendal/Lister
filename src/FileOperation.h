@@ -38,6 +38,8 @@ struct Job {
   // as normalized member paths without a leading slash.
   std::string archivePath;
   std::vector<std::string> archiveRemove;
+  std::vector<std::string> archiveFolders;
+  std::map<std::string, std::string> archiveRenames;
   std::string destinationFolder; // Captured parent for rename/new-folder questions.
 };
 struct Hooks {

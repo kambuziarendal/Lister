@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "FileOperation.h"
+#include "ArchiveVolumes.h"
 #include "ArchiveJobs.h"
 #include "NamedEntry.h"
 #include "Trash.h"
@@ -535,10 +536,17 @@ Result Run(const Job &j, const Hooks &h) {
   for (auto &path : j.sources)
     virtualJob = virtualJob || IsVirtual(path);
   if (virtualJob) {
-    if (!j.expectedSources.empty() || j.action == Action::Duplicate || j.action == Action::Link) {
+    if (j.action == Action::Duplicate || j.action == Action::Link) {
       Result result;
       result.errors.push_back("Guarded file clipboard transfers require local entries.");
       return result;
+    }
+    try {
+      for (const auto &entry : j.expectedArchiveSets)
+        if (FindArchiveVolumes(entry.first).Fingerprint() != entry.second)
+          throw std::runtime_error("Archive changed after selection. Select its entries again.");
+    } catch (const std::exception &e) {
+      Result result;result.errors.push_back(e.what());return result;
     }
     return RunVirtual(j, h);
   }

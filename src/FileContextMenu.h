@@ -8,7 +8,7 @@ struct ContextMenuOptions {
   bool folder = false;
   size_t selected = 0;
   bool directory = false, local = false, dual = false, folderLocal = false;
-  bool archiveAdd = false, archiveRemove = false;
+  bool archiveAdd = false, archiveRemove = false, folderArchive = false;
   PaneSort sort;
   int view = 0;
 };

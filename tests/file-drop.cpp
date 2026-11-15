@@ -43,7 +43,8 @@ try{
  job=PrepareFileDrop(MakeFileDrag({f}),b);Write(b+"/æ $' file.txt","target");Hooks mutate;mutate.conflict=[&](const auto&){rename(f.c_str(),(a+"/old2").c_str());Write(f,"third");return Decision::Replace;};result=Run(job,mutate);Check(result.completed==0 && Read(b+"/æ $' file.txt")=="target" && Read(f)=="third","conflict-time source replacement leaves target untouched");
  symlink("missing-target",(a+"/link").c_str());job=PrepareFileDrop(MakeFileDrag({a+"/link"}),b);result=Run(job,{});struct stat st;Check(result.completed==1 && lstat((b+"/link").c_str(),&st)==0 && S_ISLNK(st.st_mode),"broken symlink copied without following it");
  auto remote=MakeFileDrag({"sftp://example.invalid/file"});job=PrepareFileDrop(remote,b);Check(job.sources.size()==1 && job.expectedSources.empty() && job.action==Action::Copy,"virtual provider drop remains copy-only without network access");
- job=PrepareFileDrop(MakeFileDrag({f}),"sftp://example.invalid/folder");Check(job.action==Action::Copy && job.expectedSources.empty(),"local to virtual transfer remains copy-only");
+ job=PrepareFileDrop(MakeFileDrag({f}),"sftp://example.invalid/folder");Check(job.action==Action::Copy && job.expectedSources.count(f)==1,"local to virtual copy captures source identity");
+ job.action=Action::Move;result=Run(job,{});Check(!result.errors.empty()&&!result.completed&&Exists(f),"local to virtual move refuses removal of original");
  Check(Reject([&]{MakeFileDrag({f,"sftp://example.invalid/file"});}),"mixed provider drag rejected");
  printf("%d drop checks passed\n",checks);return 0;
 }catch(const std::exception&e){fprintf(stderr,"%s\n",e.what());return 1;}}

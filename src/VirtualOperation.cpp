@@ -74,13 +74,53 @@ bool Same(const FileEntry &a, const FileEntry &b) {
   return a.directory == b.directory && a.link == b.link && a.size == b.size &&
          a.sizeKnown == b.sizeKnown && a.modified == b.modified;
 }
+std::string TransferIdentity(const std::string &path) {
+  auto location=ParseLocation(path);
+  const unsigned defaultPort=location.scheme=="sftp" ? 22 :
+    location.scheme=="ftp" ? 21 : location.scheme=="ftps" ? 990 :
+    location.scheme=="smb" ? 445 : 0;
+  if(location.port==defaultPort) location.port=0;
+  return location.URL();
+}
+bool SameLocal(const struct stat &a, const struct stat &b) {
+  return a.st_dev == b.st_dev && a.st_ino == b.st_ino &&
+         a.st_mode == b.st_mode && a.st_size == b.st_size &&
+         a.st_mtim.tv_sec == b.st_mtim.tv_sec && a.st_mtim.tv_nsec == b.st_mtim.tv_nsec &&
+         a.st_ctim.tv_sec == b.st_ctim.tv_sec && a.st_ctim.tv_nsec == b.st_ctim.tv_nsec;
+}
 struct Runner {
   const Hooks &hooks;
+  const Job &job;
+  // Preserve each local destination directory across staging, recursive descent
+  // and conflict questions. Contents may change; the directory identity may not.
+  std::map<std::string, NodeIdentity> directories;
+  std::string selectedSource;
+  void Guard() {
+    struct stat st;
+    auto source = job.expectedSources.find(selectedSource);
+    if (source != job.expectedSources.end() &&
+        (lstat(source->first.c_str(), &st) || st.st_dev != source->second.device ||
+         st.st_ino != source->second.inode))
+      throw std::runtime_error("Selected source changed; operation stopped.");
+    for (const auto &item : directories)
+      if (stat(item.first.c_str(), &st) || !S_ISDIR(st.st_mode) ||
+          st.st_dev != item.second.device || st.st_ino != item.second.inode)
+        throw std::runtime_error("Selected destination changed; operation stopped.");
+  }
+  void RememberDirectory(const std::string &path) {
+    if (IsVirtual(path) || directories.count(path)) { Guard(); return; }
+    struct stat st;
+    if (stat(path.c_str(), &st) || !S_ISDIR(st.st_mode))
+      throw std::runtime_error("Destination folder is unavailable.");
+    directories[path] = {int32_t(st.st_dev), int64_t(st.st_ino)};
+    Guard();
+  }
   Result result;
   bool replaceAll = false, skipAll = false;
   size_t visited = 0;
   TransferControl Control(const std::string &p, bool bytes = true) {
-    return {hooks.proceed, [&, p, bytes](uint64_t n) {
+    return {[this] { Guard(); return !hooks.proceed || hooks.proceed(); },
+            [&, p, bytes](uint64_t n) {
               if (hooks.progress)
                 hooks.progress(p, bytes ? n : 0);
             }};
@@ -128,10 +168,22 @@ struct Runner {
   void Copy(const std::string &src, const std::string &dst, int depth = 0) {
     if (depth > 128 || ++visited > 200000)
       throw std::runtime_error("Folder tree exceeds the transfer limit");
+    const auto parent = ParentLocation(dst);
+    struct DirectoryScope {
+      std::map<std::string, NodeIdentity> &entries;
+      std::string parent, destination;
+      bool hadParent, hadDestination;
+      ~DirectoryScope() {
+        if (!hadDestination) entries.erase(destination);
+        if (!hadParent) entries.erase(parent);
+      }
+    } scope{directories, parent, dst, directories.count(parent) != 0,
+            directories.count(dst) != 0};
     auto control = Control(src);
     control.Check();
     if (hooks.progress)
       hooks.progress(src, 0);
+    RememberDirectory(ParentLocation(dst));
     FileEntry source, target;
     if (!StatFile(src, source, control))
       throw std::runtime_error("Source no longer exists");
@@ -147,9 +199,11 @@ struct Runner {
         throw std::runtime_error("Destination is not a folder");
       if (!exists)
         MakeFolder(dst, control);
+      if (!IsVirtual(dst)) RememberDirectory(dst);
       int skippedBefore = result.skipped;
       for (auto &e : ListFiles(src, control))
         Copy(e.path, ChildLocation(dst, e.name), depth + 1);
+      control.Check();
       if (!exists && !IsVirtual(dst)) {
         if (chmod(dst.c_str(), source.permissions & 0777))
           throw std::runtime_error(strerror(errno));
@@ -166,9 +220,19 @@ struct Runner {
     if (exists && target.directory)
       throw std::runtime_error("Destination is a folder");
     if (!IsVirtual(dst)) {
+      struct stat before{};
+      if (exists && lstat(dst.c_str(), &before))
+        throw std::runtime_error("Destination changed before staging.");
       TempFile temp(LocationLeaf(dst));
       Stage(src, source, temp, control);
+      control.Check();
+      struct stat after{};
+      const bool nowExists = lstat(dst.c_str(), &after) == 0;
+      if ((!nowExists && errno != ENOENT) || nowExists != exists ||
+          (exists && !SameLocal(before, after)))
+        throw std::runtime_error("Destination changed during transfer; it was left untouched");
       Hooks local = hooks;
+      local.proceed = control.proceed;
       local.fileDone = {};
       local.fileFailed = {};
       // Local Run has its own cancellation type. Let its proceed callback
@@ -178,7 +242,9 @@ struct Runner {
         try { return Replace(p) ? Decision::Replace : Decision::Skip; }
         catch (const Cancelled &) { return Decision::Abort; }
       };
-      auto done = Run({Action::Copy, {temp.path}, ParentLocation(dst)}, local);
+      Job publish{Action::Copy, {temp.path}, ParentLocation(dst)};
+      publish.expectedDestination = directories.at(publish.destination);
+      auto done = Run(publish, local);
       if (done.cancelled)
         throw Cancelled();
       if (!done.errors.empty())
@@ -188,7 +254,7 @@ struct Runner {
       return;
     }
     if (ParseLocation(dst).Archive())
-      throw std::runtime_error("Archives are read-only. Copy entries to a "
+      throw std::runtime_error("This direct transfer cannot update an archive. Copy entries to a "
                                "regular folder to edit them.");
     if (exists && !Replace(dst))
       return;
@@ -274,8 +340,13 @@ struct Runner {
 };
 } // namespace
 Result RunVirtual(const Job &job, const Hooks &hooks) {
-  Runner runner{hooks, {}};
+  Runner runner{hooks, job};
   try {
+    if (job.expectedDestination.device >= 0) {
+      const auto &folder = job.destinationFolder.empty() ? job.destination : job.destinationFolder;
+      if (!IsVirtual(folder)) runner.directories[folder] = job.expectedDestination;
+    }
+    runner.Guard();
     if (job.action == Action::Trash || job.action == Action::Restore)
       throw std::runtime_error("Trash and Restore are available only on local "
                                "supported volumes. Nothing was deleted.");
@@ -283,7 +354,7 @@ Result RunVirtual(const Job &job, const Hooks &hooks) {
         (job.action == Action::Copy || job.action == Action::Move ||
          job.action == Action::MakeDirectory || job.action == Action::Rename))
       throw std::runtime_error(
-          "Archives are read-only. Choose a regular destination folder.");
+          "Use the archive editing actions to change a writable archive.");
     if (job.action == Action::MakeDirectory) {
       MakeFolder(job.destination, runner.Control(job.destination));
       runner.result.completed = 1;
@@ -291,6 +362,7 @@ Result RunVirtual(const Job &job, const Hooks &hooks) {
     }
     for (auto &source : job.sources) {
       try {
+        runner.selectedSource = source;
         auto control = runner.Control(source);
         int skippedBefore = runner.result.skipped;
         if (LocationLeaf(source).empty())
@@ -300,9 +372,11 @@ Result RunVirtual(const Job &job, const Hooks &hooks) {
         auto dst = (job.action == Action::Rename)
                        ? job.destination
                        : ChildLocation(job.destination, LocationLeaf(source));
+        const auto canonicalSource = TransferIdentity(source);
+        const auto canonicalDestination = TransferIdentity(dst);
         if (job.action == Action::Delete) {
           if (ParseLocation(source).Archive())
-            throw std::runtime_error("Archives are read-only");
+            throw std::runtime_error("Use Delete from archive to remove entries from a writable archive");
           runner.DeleteTree(source);
         } else if (job.action == Action::Move || job.action == Action::Rename) {
           auto from = ParseLocation(source), to = ParseLocation(dst);
@@ -315,15 +389,15 @@ Result RunVirtual(const Job &job, const Hooks &hooks) {
           if (StatFile(dst, target, control))
             throw std::runtime_error(
                 "Rename/move target already exists; it was not replaced");
-          if (dst == source ||
-              dst.compare(0, source.size() + 1, source + "/") == 0)
+          if (canonicalDestination == canonicalSource ||
+              canonicalDestination.compare(0, canonicalSource.size() + 1, canonicalSource + "/") == 0)
             throw std::runtime_error("Cannot move a folder into itself");
           RenameFile(source, dst, control);
           if (hooks.fileDone)
             hooks.fileDone(source, dst);
         } else {
-          if (dst == source ||
-              dst.compare(0, source.size() + 1, source + "/") == 0)
+          if (canonicalDestination == canonicalSource ||
+              canonicalDestination.compare(0, canonicalSource.size() + 1, canonicalSource + "/") == 0)
             throw std::runtime_error(
                 "Cannot copy an entry onto itself or its descendants");
           runner.Copy(source, dst);

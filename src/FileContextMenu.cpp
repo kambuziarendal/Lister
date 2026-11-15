@@ -6,7 +6,7 @@
 #include <Screen.h>
 #include <algorithm>
 namespace {
-void FolderActions(BMenu &menu, bool local, PaneSort sort, int view) {
+void FolderActions(BMenu &menu, bool local, bool archive, PaneSort sort, int view) {
   auto add = [&](const char *label, uint32 what, bool enabled) {
     auto message = new BMessage(what);
     message->AddBool("folderContext", true);
@@ -39,8 +39,8 @@ void FolderActions(BMenu &menu, bool local, PaneSort sort, int view) {
   }
   menu.AddItem(views);
   menu.AddSeparatorItem();
-  add("New folder...", kMkdir, local);
-  add("Paste here", kClipboardPaste, local);
+  add("New folder...", kMkdir, local || archive);
+  add("Paste here", kClipboardPaste, local || archive);
   menu.AddSeparatorItem();
   add("Refresh", kRefresh, true);
   add("Terminal here", kTerminal, local);
@@ -68,15 +68,15 @@ void FileActions(BMenu &menu, const ContextMenuOptions &options) {
     add("Edit", kEdit, single && local);
   }
   menu.AddSeparatorItem();
-  add("Copy", kClipboardCopy, local);
+  add("Copy", kClipboardCopy, local || options.archiveRemove);
   add("Cut", kClipboardCut, local);
   add("Copy to other panel", kCopy, dual);
-  add("Move to other panel", kMove, local && dual);
+  add("Move to other panel", kMove, (local || options.archiveRemove) && dual);
   menu.AddSeparatorItem();
-  add("Rename...", kRename, single && local);
+  add("Rename...", kRename, single && (local || options.archiveRemove));
   add("Duplicate...", kDuplicate, single && local);
   add("Create symbolic link...", kCreateLink, single && local);
-  add("Move to Trash...", kDelete, local);
+  add(options.archiveRemove ? "Delete from archive..." : "Move to Trash...", kDelete, local || options.archiveRemove);
   auto archives=new BMenu("Archives");
   auto pack=new BMenuItem("Create archive...",new BMessage(kCreateArchive));pack->SetEnabled(local);archives->AddItem(pack);
   auto extract=new BMenuItem("Extract to folder...",new BMessage(kExtractArchive));extract->SetEnabled(!local || (single&&!directory));archives->AddItem(extract);
@@ -103,7 +103,7 @@ ContextAction ShowContextMenu(BPoint point, const ContextMenuOptions &options) {
   ContextSelector(files, false, options.selected != 0);
   ContextSelector(folder, true, options.selected != 0);
   FileActions(files, options);
-  FolderActions(folder, options.folderLocal, options.sort, options.view);
+  FolderActions(folder, options.folderLocal, options.folderArchive, options.sort, options.view);
   // Reserve an anchor that fits either menu. Switching context near an edge
   // must not move the selector under the pointer or lose the original owner.
   float fileWidth, fileHeight, folderWidth, folderHeight;

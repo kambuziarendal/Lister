@@ -2,6 +2,7 @@
 #include "FileOperation.h"
 #include "VirtualFile.h"
 #include <algorithm>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sys/stat.h>
@@ -177,11 +178,12 @@ int VirtualTest(const std::string &fixtures, const std::string &hosts) {
   mkfifo(pipe.c_str(), 0600);
   check(rejects([&] { contents(pipe); }),
         "special files rejected without waiting for a writer");
+  const char *configuredHost = getenv("LISTI_TEST_NETWORK_HOST");
+  const std::string host = configuredHost ? configuredHost : "10.0.2.2";
   for (auto protocol : {"smb", "ftp", "sftp"}) {
-    std::string url =
-        std::string(protocol) == "smb"   ? "smb://10.0.2.2:1445/files"
-        : std::string(protocol) == "ftp" ? "ftp://10.0.2.2:2121/"
-                                         : "sftp://10.0.2.2:2222/";
+    std::string url = std::string(protocol) + "://" + host +
+        (std::string(protocol) == "smb" ? ":1445/files" :
+         std::string(protocol) == "ftp" ? ":2121/" : ":2222/");
     Connection auth;
     auth.username = "listitest";
     auth.password = "fixture-only";

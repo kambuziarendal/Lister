@@ -2,7 +2,14 @@
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development candidate: **0.24.0**. Published preview: **0.2.0**.
+replacement. Development candidate: **0.25.0**. Published preview: **0.2.0**.
+
+
+0.25.0 connects ordinary Copy/Paste and drag-and-drop to transactional archive
+editing. Writable archives also support new folders, rename, delete and moves
+within the same archive. See [archive folder behavior and remaining limits](docs/ARCHIVE-FOLDERS-0.25.0.md).
+This is not universal archive filesystem parity; format and engine capabilities
+still matter. The [bughunt notes](docs/BUGHUNT-0.25.0.md) describe safety fixes.
 
 Find files: **Command+Shift+F** opens cancellable recursive local name search
 and native BFS formulas, with optional live updates. Save named criteria and
@@ -56,7 +63,7 @@ Existing targets are never replaced. See [archive workflows and limits](docs/ARC
 starts with both folder trees and the image preview visible, while retaining the
 two-panel command tools. Its tree and preview choices are stored separately from
 Commander. Switching reuses the same panels and preserves paths, selection,
-splitters and running jobs. See [Workbench behavior](docs/WORKSPACES-0.24.0.md),
+splitters and running jobs. See [Workbench behavior](docs/WORKSPACES-0.25.0.md),
 [Explorer behavior](docs/WORKSPACES-0.17.0.md) and
 [code audit findings and limits](docs/AUDIT-0.17.0.md).
 

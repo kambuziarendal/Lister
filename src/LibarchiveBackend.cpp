@@ -12,6 +12,7 @@
 #include <exception>
 #include <fcntl.h>
 #include <map>
+#include <set>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -241,18 +242,34 @@ std::vector<FileEntry> LibarchiveList(const Location &location,
   std::string prefix =
       location.path == "/" ? "" : location.path.substr(1) + "/";
   size_t count = 0;
+  std::set<std::string> explicitPaths, files, parents;
   while (auto entry = reader.Next()) {
     if (++count > 200000)
       throw std::runtime_error("Archive has too many entries for this view");
     auto name = EntryName(reader, entry, location);
-    if (name.empty() || name.compare(0, prefix.size(), prefix) != 0)
-      continue;
+    if (name.empty()) continue;
+    const auto type = LIBCALL(reader.lib, archive_entry_filetype)(entry);
+    if (!explicitPaths.insert(name).second)
+      throw std::runtime_error("Archive contains duplicate entry paths; nothing was extracted");
+    if (type != AE_IFDIR) {
+      if (parents.count(name))
+        throw std::runtime_error("Archive has conflicting file and folder paths");
+      files.insert(name);
+    }
+    size_t separator = 0, depth = 0;
+    while ((separator = name.find('/', separator)) != std::string::npos) {
+      if (++depth > 64) throw std::runtime_error("Archive exceeds the safe folder depth");
+      auto parent = name.substr(0, separator++);
+      if (files.count(parent))
+        throw std::runtime_error("Archive has conflicting file and folder paths");
+      parents.insert(parent);
+    }
+    if (name.compare(0, prefix.size(), prefix) != 0) continue;
     auto rest = name.substr(prefix.size());
     if (rest.empty())
       continue;
     auto slash = rest.find('/');
     std::string leaf = rest.substr(0, slash);
-    auto type = LIBCALL(reader.lib, archive_entry_filetype)(entry);
     auto &item = children[leaf];
     item.name = leaf;
     item.path = ChildLocation(location.URL(), leaf);

@@ -52,19 +52,30 @@ struct Writer {
     }
     else if(format=="7z") Check(LIBCALL(lib, archive_write_set_format_7zip)(a));
     else {
-      Require(format=="tar" || format=="tgz" || format=="txz", "Unknown archive format.");
-      Check(LIBCALL(lib, archive_write_set_format_pax_restricted)(a));
-      if(format=="tgz") Check(LIBCALL(lib, archive_write_add_filter_gzip)(a));
-      if(format=="txz") Check(LIBCALL(lib, archive_write_add_filter_xz)(a));
+      if (format == "cpio") Check(LIBCALL(lib, archive_write_set_format_cpio_newc)(a));
+      else if (format == "xar") Check(LIBCALL(lib, archive_write_set_format_xar)(a));
+      else {
+        Require(format=="tar" || format=="tgz" || format=="txz" || format=="tbz2" ||
+          format=="tlz" || format=="tzst" || format=="tlz4" || format=="tlzip", "Unknown archive format.");
+        Check(LIBCALL(lib, archive_write_set_format_pax_restricted)(a));
+        const char *filter = format=="tgz" ? "gzip" : format=="txz" ? "xz" :
+          format=="tbz2" ? "bzip2" : format=="tlz" ? "lzma" : format=="tzst" ? "zstd" :
+          format=="tlz4" ? "lz4" : format=="tlzip" ? "lzip" : "none";
+        if (format != "tar") Check(LIBCALL(lib, archive_write_add_filter_by_name)(a, filter));
+      }
     }
-    if(format!="tar") {
+    if(format!="tar" && format!="cpio") {
       const std::string option="compression-level="+std::to_string(level);
       Check(LIBCALL(lib, archive_write_set_options)(a,option.c_str()));
     }
   }
 };
 const ArchiveFormat formats[]={{"zip","ZIP",".zip",true},{"7z","7z",".7z",true},
- {"tgz","Tar + gzip",".tar.gz",true},{"txz","Tar + xz",".tar.xz",true},{"tar","Tar (uncompressed)",".tar",false}};
+ {"tgz","Tar + gzip",".tar.gz",true},{"txz","Tar + xz",".tar.xz",true},
+ {"tbz2","Tar + bzip2",".tar.bz2",true},{"tlz","Tar + LZMA",".tar.lzma",true},
+ {"tzst","Tar + Zstandard",".tar.zst",true},{"tlz4","Tar + LZ4",".tar.lz4",true},
+ {"tlzip","Tar + lzip",".tar.lz",true},{"tar","Tar (uncompressed)",".tar",false},
+ {"cpio","CPIO (newc)",".cpio",false},{"xar","XAR",".xar",true}};
 std::string LocalSource(const std::string &path) {
   auto loc=ParseLocation(path);
   Require(loc.Local() || loc.Archive(), "Archive jobs currently require local files or a local archive.");
@@ -230,7 +241,44 @@ std::string EditFormat(const std::string &path) {
   unsigned char magic[4]{};auto got=read(fd.n,magic,sizeof(magic));
   if(got>=4&&magic[0]=='P'&&magic[1]=='K'&&
      ((magic[2]==3&&magic[3]==4)||(magic[2]==5&&magic[3]==6)||(magic[2]==7&&magic[3]==8)))return "zip";
-  throw std::runtime_error("Only ZIP and 7z archives can be edited in this version.");
+  Require(SevenZipFormat(path).empty(),
+    "This archive format has no installed writer. It can be browsed and extracted, but cannot be changed.");
+  DynamicLibrary lib{"libarchive.so", "libarchive.so.13"};
+  Require(lib.Available(), "Install libarchive to edit this archive format.");
+  struct Reader {
+    DynamicLibrary &lib; archive *value;
+    ~Reader() { if (value) LIBCALL(lib, archive_read_free)(value); }
+  } reader{lib, LIBCALL(lib, archive_read_new)()};
+  Require(reader.value, "Cannot inspect archive format.");
+  LIBCALL(lib, archive_read_support_format_all)(reader.value);
+  LIBCALL(lib, archive_read_support_filter_all)(reader.value);
+  Require(lseek(fd.n,0,SEEK_SET)==0 &&
+    LIBCALL(lib, archive_read_open_fd)(reader.value,fd.n,65536)==ARCHIVE_OK,
+    "Cannot inspect this archive for editing.");
+  archive_entry *entry=nullptr;
+  const int status=LIBCALL(lib, archive_read_next_header)(reader.value,&entry);
+  Require(status==ARCHIVE_OK || status==ARCHIVE_EOF, "Archive is damaged or cannot be inspected for editing.");
+  const int detected=LIBCALL(lib, archive_format)(reader.value)&ARCHIVE_FORMAT_BASE_MASK;
+  std::string format=detected==ARCHIVE_FORMAT_TAR ? "tar" :
+    detected==ARCHIVE_FORMAT_CPIO ? "cpio" : detected==ARCHIVE_FORMAT_XAR ? "xar" : "";
+  Require(!format.empty(), "This archive type has no qualified writer in Listi. It can be browsed and extracted; the original is unchanged.");
+  for (int i=0;i<LIBCALL(lib, archive_filter_count)(reader.value);++i) {
+    const int filter=LIBCALL(lib, archive_filter_code)(reader.value,i);
+    if (filter==ARCHIVE_FILTER_NONE) continue;
+    Require(format=="tar", "This archive compression wrapper cannot be preserved when editing.");
+    switch(filter) {
+      case ARCHIVE_FILTER_GZIP: format="tgz"; break;
+      case ARCHIVE_FILTER_BZIP2: format="tbz2"; break;
+      case ARCHIVE_FILTER_XZ: format="txz"; break;
+      case ARCHIVE_FILTER_LZMA: format="tlz"; break;
+      case ARCHIVE_FILTER_ZSTD: format="tzst"; break;
+      case ARCHIVE_FILTER_LZ4: format="tlz4"; break;
+      case ARCHIVE_FILTER_LZIP: format="tlzip"; break;
+      default: throw std::runtime_error("This archive compression wrapper has no qualified writer. The original is unchanged.");
+    }
+  }
+  Writer probe;probe.Configure(format,6);
+  return format;
 }
 std::string MemberPath(const std::string &path) {
   auto value=path;while(!value.empty()&&value.front()=='/')value.erase(value.begin());
@@ -241,7 +289,7 @@ Result RunArchiveEdit(const Job &job,const Hooks &hooks) {
   Result result;
   try {
     Require(!job.destination.empty()&&!job.destinationFolder.empty(),"Archive edit target is missing.");
-    Require(!job.sources.empty()||!job.archiveRemove.empty(),"Choose files to add or archive entries to remove.");
+    Require(!job.sources.empty()||!job.archiveRemove.empty()||!job.archiveFolders.empty()||!job.archiveRenames.empty(),"Choose an archive change first.");
     Guards(job);VerifyArchiveSets(job);
     const auto format=EditFormat(job.destination);
     Require(format==job.archiveFormat,"Archive format changed after selection.");
@@ -272,13 +320,40 @@ Result RunArchiveEdit(const Job &job,const Hooks &hooks) {
       Require(!lstat(target.c_str(),&st),"An archive entry selected for removal no longer exists.");
       RemoveTree(target,internal);
     }
+    for (const auto &path : job.archiveFolders) {
+      check();const auto relative=MemberPath(path);
+      Require(!relative.empty(), "The archive root already exists.");
+      Require(!mkdir(Join(work,relative).c_str(),0755), "Could not create archive folder. The name may already exist.");
+    }
+    for (const auto &change : job.archiveRenames) {
+      check();const auto from=MemberPath(change.first),to=MemberPath(change.second);
+      Require(!from.empty()&&!to.empty()&&to!=from&&to.compare(0,from.size()+1,from+"/")!=0,
+        "An archive entry cannot be moved onto itself or into its contents.");
+      BEntry entry(Join(work,from).c_str(),false);
+      BDirectory parent(ParentLocation(Join(work,to)).c_str());
+      Require(entry.MoveTo(&parent,Leaf(to).c_str(),false)==B_OK,
+        "Could not rename or move the archive entry. Existing entries were not replaced.");
+    }
     if(!job.sources.empty()){
       const auto relative=MemberPath(job.archivePath),target=relative.empty()?work:Join(work,relative);
       struct stat targetStat;Require(!stat(target.c_str(),&targetStat)&&S_ISDIR(targetStat.st_mode),
         "The destination folder inside the archive no longer exists.");
-      Job add;add.action=Action::Copy;add.sources=job.sources;add.destination=target;
+      Job add;add.action=Action::Copy;add.destination=target;
       add.destinationFolder=target;add.expectedDestination={int32_t(targetStat.st_dev),int64_t(targetStat.st_ino)};
-      for(const auto &source:job.sources)add.expectedSources[source]=job.expectedSources.at(source);
+      for(const auto &source:job.sources) {
+        auto location=ParseLocation(source);
+        if(location.Archive()&&location.archive==job.destination) {
+          const auto relative=MemberPath(location.path);
+          Require(!relative.empty(), "An archive cannot be added to itself.");
+          const auto staged=Join(work,relative);struct stat st;
+          Require(!lstat(staged.c_str(),&st), "The source archive entry disappeared.");
+          add.sources.push_back(staged);
+          add.expectedSources[staged]={int32_t(st.st_dev),int64_t(st.st_ino)};
+        } else {
+          add.sources.push_back(source);
+          if(!IsVirtual(source))add.expectedSources[source]=job.expectedSources.at(source);
+        }
+      }
       auto adding=internal;
       adding.conflict=[&](const std::string &destination){
         if(!hooks.conflict)return Decision::Abort;
@@ -360,7 +435,7 @@ Job PrepareArchiveJob(bool extract,const std::vector<std::string> &sources) {
 }
 Job PrepareArchiveEditTarget(const std::string &archive,
     const std::string &internalFolder) {
-  Require(!archive.empty()&&archive[0]=='/'&&!IsVirtual(archive),"Choose one local ZIP or 7z archive.");
+  Require(!archive.empty()&&archive[0]=='/'&&!IsVirtual(archive),"Choose one local writable archive.");
   Job job;job.action=Action::EditArchive;job.destination=archive;job.archiveFormat=EditFormat(archive);
   struct stat archiveStat;Require(!lstat(archive.c_str(),&archiveStat)&&S_ISREG(archiveStat.st_mode),"Archive is unavailable.");
   job.expectedSources[archive]={int32_t(archiveStat.st_dev),int64_t(archiveStat.st_ino)};
@@ -378,11 +453,21 @@ void SetArchiveEditAdditions(Job &job,const std::vector<std::string> &add) {
   Job updated=job;for(const auto &source:updated.sources)updated.expectedSources.erase(source);
   updated.sources.clear();
   std::set<std::string> names;
-  for(const auto &source:add){Require(!IsVirtual(source),"Copy remote or archive entries locally before adding them to an archive.");
+  for(const auto &source:add){
+    const auto location=ParseLocation(source);
+    Require(location.Local()||location.Archive(), "Copy network files to a local folder before adding them to an archive.");
     Require(source!=job.destination,"An archive cannot be added to itself while it is being edited.");
-    struct stat st;Require(!lstat(source.c_str(),&st)&&(S_ISREG(st.st_mode)||S_ISDIR(st.st_mode)),"Only local files and folders can be added.");
-    Require(names.insert(Leaf(source)).second,"Selected additions have duplicate names.");
-    updated.sources.push_back(source);updated.expectedSources[source]={int32_t(st.st_dev),int64_t(st.st_ino)};}
+    const auto physical=location.Archive()?location.archive:source;
+    struct stat st;Require(!lstat(physical.c_str(),&st)&&(S_ISREG(st.st_mode)||(!location.Archive()&&S_ISDIR(st.st_mode))),
+      "Only regular files, folders and archive entries can be added.");
+    Require(!location.Archive()||!MemberPath(location.path).empty(), "Select entries inside an archive, not its root.");
+    Require(names.insert(LocationLeaf(source)).second,"Selected additions have duplicate names.");
+    updated.sources.push_back(source);updated.expectedSources[physical]={int32_t(st.st_dev),int64_t(st.st_ino)};
+    if(location.Archive()) {
+      auto set=FindArchiveVolumes(physical);
+      updated.expectedArchiveSets[set.files.front().path]=set.Fingerprint();
+    }
+  }
   job=std::move(updated);
 }
 Job PrepareArchiveEditJob(const std::string &archive,
@@ -399,6 +484,60 @@ Job PrepareArchiveEditJob(const std::string &archive,
       if(path.size()>kept.size()&&path.compare(0,kept.size(),kept)==0&&path[kept.size()]=='/'){covered=true;break;}
     if(!covered)job.archiveRemove.push_back(path);}
   return job;
+}
+void FreezeArchiveTargets(Job &transfer) {
+  auto capture=[&](const std::string &path) {
+    const auto location=ParseLocation(path);if(!location.Archive())return;
+    const auto set=FindArchiveVolumes(location.archive);
+    transfer.expectedArchiveSets[set.files.front().path]=set.Fingerprint();
+  };
+  capture(transfer.destination);for(const auto &source:transfer.sources)capture(source);
+}
+Job PrepareArchiveMutation(const Job &transfer) {
+  VerifyArchiveSets(transfer);
+  auto location=ParseLocation(transfer.destination);
+  if (transfer.action==Action::Delete || transfer.action==Action::Trash) {
+    Require(!transfer.sources.empty(), "Select archive entries first.");
+    location=ParseLocation(transfer.sources.front());
+    return PrepareArchiveEditJob(location.archive,{},transfer.sources);
+  }
+  Require(location.Archive(), "Choose a destination inside an archive.");
+  auto edit=PrepareArchiveEditTarget(location.archive);
+  if (transfer.action==Action::MakeDirectory) {
+    edit.archiveFolders.push_back(MemberPath(location.path));
+  } else {
+    Require(transfer.action==Action::Rename||transfer.action==Action::Move,
+      "This action cannot change archive entries.");
+    Require(!transfer.sources.empty() && (transfer.action!=Action::Rename||transfer.sources.size()==1),
+      "Choose one archive entry to rename.");
+    for(const auto &path:transfer.sources) {
+      const auto from=ParseLocation(path);
+      Require(from.Archive()&&from.archive==location.archive,
+        "Move between archives or local folders is not supported yet. Use Copy; originals are retained.");
+      const auto to=transfer.action==Action::Rename ? location.path :
+        ParseLocation(ChildLocation(transfer.destination,LocationLeaf(path))).path;
+      const auto source=MemberPath(from.path),destination=MemberPath(to);
+      Require(!source.empty()&&!destination.empty()&&source!=destination&&
+        destination.compare(0,source.size()+1,source+"/")!=0,
+        "An archive entry cannot be moved onto itself or into its contents.");
+      edit.archiveRenames[source]=destination;
+    }
+  }
+  return edit;
+}
+Job PrepareArchiveCopy(const Job &transfer) {
+  VerifyArchiveSets(transfer);
+  Require(transfer.action == Action::Copy,
+    "Moving into archives is not supported. Use Copy; originals will be kept.");
+  const auto target = ParseLocation(transfer.destination);
+  Require(target.Archive(), "Choose a folder inside a local writable archive.");
+  auto edit = PrepareArchiveEditJob(target.archive, transfer.sources, {}, target.path);
+  for (const auto &item : transfer.expectedSources) {
+    const auto found = edit.expectedSources.find(item.first);
+    Require(found != edit.expectedSources.end() && found->second.device == item.second.device &&
+      found->second.inode == item.second.inode, "A selected source was replaced. Select it again.");
+  }
+  return edit;
 }
 void SetArchiveDestination(Job &job,const std::string &folder,const std::string &name) {
   Require(!folder.empty() && folder[0]=='/' && !IsVirtual(folder),"Choose a local destination folder.");

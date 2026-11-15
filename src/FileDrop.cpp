@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "FileDrop.h"
 #include "FileClipboard.h"
+#include "JobSnapshot.h"
+#include "ArchiveJobs.h"
 #include "VirtualFile.h"
 #include <algorithm>
 #include <Path.h>
@@ -62,6 +64,9 @@ Job PrepareFileDrop(const BMessage &message, const std::string &destination) {
       }
     }
     if (job.sources.empty()) throw std::runtime_error("No files were dropped.");
+    FreezeLocalJob(job, destination);
+    FreezeArchiveTargets(job);
+    if (ParseLocation(destination).Archive()) return PrepareArchiveCopy(job);
     return job;
   }
   if (destination.empty() || destination[0] != '/')

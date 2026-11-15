@@ -5,6 +5,15 @@ dekkes i Listi, på vår egen måte. Se [Tracker-kartet](TRACKER-COVERAGE.md)
 for dokumentert tilbud, udekkede behov og akseptkrav. Dette erstatter ikke
 Dolphin-kravet og er ikke en påstand om ferdig funksjonslikhet.
 
+
+**Tilleggskrav 15. november 2026:** Arkiver skal så langt formatet tillater det
+oppføre seg som mapper i filbehandleren, med samme filhandlinger og uten separate
+arbeidsflyter. Dette gjelder alle støttede arkivformater, ikke bare ZIP og 7z.
+0.25.0 tar et første verifiserbart steg. Full likhet, rediger-og-lagre-tilbake,
+flytting mellom containere, lenker/spesialmetadata, flerpartsarkiver og skrivemotorer
+for formater som RAR gjenstår. Ikke merk kravet ferdig før disse grensene er løst.
+Skipta er nytt arbeidsnavn for den planlagte delen tidligere omtalt som Deila.
+
 14. november 2026. Første mål er en god, særpreget filbehandler til daglig bruk.
 Vi leverer små, ferdige arbeidsflyter som samtidig peker mot den større visjonen.
 Vi bygger videre på 0.2.0. Ingen stor omskriving er en forutsetning.

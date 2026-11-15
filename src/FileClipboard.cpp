@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
 #include "FileClipboard.h"
+#include "ArchiveJobs.h"
+#include "ArchiveVolumes.h"
+#include "JobSnapshot.h"
+#include "VirtualFile.h"
 #include <FindDirectory.h>
 #include <Messenger.h>
 #include <OS.h>
@@ -156,6 +160,19 @@ BMessage MakeFileSelection(const std::vector<std::string> &paths, bool cut) {
 }
 
 void PutFileClipboard(const std::vector<std::string> &paths, bool cut, BClipboard *clipboard) {
+  if (std::any_of(paths.begin(),paths.end(),[](const auto &path){return ParseLocation(path).Archive();})) {
+    if (cut) throw std::runtime_error("Use Move to other panel to move entries within one archive. Copy/Paste keeps originals.");
+    if (paths.empty() || paths.size()>1024) throw std::runtime_error("Select between 1 and 1024 archive entries.");
+    for(const auto &path:paths) {
+      const auto location=ParseLocation(path);
+      if(!location.Archive()||location.path=="/") throw std::runtime_error("Copy archive entries separately from local files.");
+    }
+    Job selection{Action::Copy,paths,""};FreezeArchiveTargets(selection);
+    BMessage message, encoded=EncodeJob(selection,0);
+    message.AddMessage("listi:archive-copy",&encoded);
+    Lock lock(clipboard);Commit(clipboard,message);
+    return;
+  }
   auto message = MakeFileSelection(paths, cut);
   auto items = ReadFileClipboard(message);
   { Lock lock(clipboard); Commit(clipboard, message); }
@@ -163,8 +180,46 @@ void PutFileClipboard(const std::vector<std::string> &paths, bool cut, BClipboar
 }
 
 ClipboardPaste PrepareFilePaste(const std::string &destination, BClipboard *clipboard) {
+  {
+    Lock lock(clipboard); BMessage encoded;
+    if (clipboard->Data()->FindMessage("listi:archive-copy",&encoded)==B_OK) {
+      if (encoded.FlattenedSize()>2*1024*1024) throw std::runtime_error("Clipboard selection is too large.");
+      auto job=DecodeJob(encoded);job.action=Action::Copy;job.destination=destination;
+      if(job.sources.empty()||job.sources.size()>1024)throw std::runtime_error("Invalid archive clipboard selection.");
+      for(const auto &path:job.sources) {
+        const auto location=ParseLocation(path);
+        if(!location.Archive()||location.path=="/"||!job.expectedArchiveSets.count(location.archive))
+          throw std::runtime_error("Invalid archive clipboard source.");
+      }
+      for(const auto &entry:job.expectedArchiveSets)
+        if(FindArchiveVolumes(entry.first).Fingerprint()!=entry.second)
+          throw std::runtime_error("An archive changed since Copy. Select the entries again.");
+      ClipboardPaste paste;
+      if(ParseLocation(destination).Archive()) job=PrepareArchiveCopy(job);
+      else {
+        if(destination.empty()||destination[0]!='/')throw std::runtime_error("Paste into a local folder or a writable archive.");
+        FreezeLocalJob(job,destination);
+      }
+      paste.jobs.push_back(job);return paste;
+    }
+  }
+  if (ParseLocation(destination).Archive()) {
+    Lock lock(clipboard);
+    if (clipboard->Data()->HasString(kLease))
+      throw std::runtime_error("A cut transfer is pending. Let it finish before pasting again.");
+    ClipboardPaste paste;
+    paste.items = ReadFileClipboard(*clipboard->Data());
+    Job transfer; transfer.destination = destination;
+    for (const auto &item : paste.items) {
+      if (item.cut) throw std::runtime_error("Moving into archives is not supported. Copy the files, then Paste; originals will be kept.");
+      transfer.sources.push_back(item.path);
+      transfer.expectedSources.emplace(item.path, item.node);
+    }
+    paste.jobs.push_back(PrepareArchiveCopy(transfer));
+    return paste;
+  }
   if (destination.empty() || destination[0] != '/')
-    throw std::runtime_error("Paste currently requires a local destination folder.");
+    throw std::runtime_error("Paste requires a local folder or an open writable archive.");
   char canonical[PATH_MAX];
   if (!realpath(destination.c_str(), canonical))
     throw std::runtime_error("The destination folder is unavailable.");

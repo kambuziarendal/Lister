@@ -145,6 +145,17 @@ int main() {
   r = RunVirtual(job, hooks);
   check(r.cancelled && done == 0 && files.size() == 1 &&
         files.at(destination).data == "old contents", "aborted conflict leaves original untouched");
+  reset(); hooks.conflict = [](const std::string &) { return Decision::Replace; };
+  r = RunVirtual({Action::Copy, {"sftp://FIXTURE/out/input"}, "sftp://fixture/out"}, hooks);
+  check(!r.errors.empty() && !r.completed && files.size() == 1 &&
+        files.at(destination).data == "old contents",
+        "equivalent host casing cannot bypass self-copy rejection");
+  reset(); r = RunVirtual({Action::Copy, {"sftp://fixture/out/%69nput"}, "sftp://fixture/out"}, hooks);
+  check(!r.errors.empty() && !r.completed && files.at(destination).data == "old contents",
+        "equivalent URL escaping cannot bypass self-copy rejection");
+  reset(); r = RunVirtual({Action::Copy, {"sftp://fixture:22/out/input"}, "sftp://fixture/out"}, hooks);
+  check(!r.errors.empty() && !r.completed && files.at(destination).data == "old contents",
+        "explicit default port cannot bypass self-copy rejection");
   unlink(source.c_str()); rmdir(dir);
   std::cout << checks << " fault checks, " << failures << " failures\n";
   return failures ? 1 : 0;
