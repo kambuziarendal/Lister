@@ -1,9 +1,10 @@
 # Native stability diagnostic probes
 
-Baseline 65178b1, private Listi 0.30.0. These are diagnostic reproductions, **not**
-normal passing regression tests and not included in run-native-audit.py. The
-application implementation is unchanged. Results and limits are recorded in
-`docs/STABILITY-AUDIT-0.30.0.md`.
+These historical diagnostic reproductions target the Listi 0.30.0 baseline
+(`65178b1`). They are **not** normal passing regression tests and are not
+included in `run-native-audit.py`. Their original exit meanings are retained.
+Use the current regressions listed below to test the fixes; see the
+[testing guide](../../docs/VERIFICATION.md) for the main test entry points.
 
 Run only in an owned disposable Haiku VM with app_server available. Each creates
 its own temporary fixture. A successful normal run removes its fixture; on early
@@ -16,8 +17,8 @@ starting with _. Link -lbe -lshared -ltranslation -lcolumnlistview -ltracker.
 
 - scanner-delivery.cpp: blocks a small-capacity receiver and checks normal versus
   delayed delivery. Exit 0 means silent loss was reproduced; exit 1 means it was
-  NOT reproduced. On this baseline all 160 files arrived in both cases. Do not
-  count the exit status as a product test failure or a proven natural timeout.
+  NOT reproduced. Its exit status is a diagnostic outcome, not a normal
+  regression pass/fail result or proof of a natural timeout.
 - scanner-send-fault.cpp: additionally link
   `-Wl,--wrap=_ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl`. Injects one
   B_TIMED_OUT response for a directory-row batch. Exit 0 means the defect was
@@ -30,9 +31,9 @@ starting with _. Link -lbe -lshared -ltranslation -lcolumnlistview -ltracker.
   One sample per size, 90-second budget for the entire probe; no general
   throughput or precise asymptotic-complexity claim.
 
-Promote defect reproductions into ordinary assertions only when implementing a
-fix. Do not weaken file guards to make the scaling probe faster. Preserve old
-failure logs and distinguish instrumented timings from uninstrumented UI timings.
+Keep diagnostic outcomes distinct from ordinary regression assertions.
+Instrumented timings are not general UI or throughput benchmarks; performance
+changes must preserve the file-integrity checks.
 
 The 0.31.0 fixes are exercised by `tests/directory-delivery.cpp`,
 `tests/operation-queue.cpp`, `tests/archive-read-scope.cpp` and
