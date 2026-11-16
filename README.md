@@ -14,24 +14,35 @@ GitHub](https://github.com/kambuziarendal/listi/issues). Include the version,
 Haiku version, what happened and reproduction steps where possible. Do not
 include passwords or private files in a public report.
 
-## Screenshots: DOpus view
+## Screenshots: Smiðja and DOpus
 
-**DOpus** is our chosen name for Listi's dual-panel workspace, previously called
-**Commander**. Existing builds still use the Commander menu label; the in-app
-rename is planned, not implemented. Listi is an independent implementation,
+Actual, unretouched captures of the **0.31.0 development alpha** in Haiku, using
+example files. These are two different workspace configurations, not merely a
+theme change. Existing builds still label them **Workbench** and **Commander**;
+Smiðja and DOpus are the chosen new names. Listi is an independent implementation,
 not Directory Opus or an affiliated product.
 
-These are actual Commander-view captures from earlier native Haiku tests,
-labelled with their original versions. They are not screenshots of 0.31.0.
-Folder trees and preview are optional in this workspace and are enabled here.
+### Smiðja / Workbench: a sunset in the image preview
 
-### DOpus view: light appearance, Listi 0.24.0
+The light workspace shows a selected photograph as both a thumbnail and a
+preview alongside the file panels. The broader preview/editor and customization
+plans are not implemented by this screenshot.
 
-![Listi 0.24.0 Commander workspace, now named DOpus in the plan, with two file panels in light appearance](docs/screenshots/listi-dopus-light-0.24.0.png)
+![Listi 0.31.0 Workbench, planned name Smiðja, with a Porto Covo sunset photograph in the image preview](docs/screenshots/listi-smidja-sunset-0.31.0.png)
 
-### DOpus view: dark appearance, Listi 0.16.2
+Photo: [Sunset 2007-1](https://commons.wikimedia.org/wiki/File:Sunset_2007-1.jpg)
+by Alvesgaspar, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
+[Photo and screenshot licensing](docs/screenshots/CREDITS.md).
 
-![Listi 0.16.2 Commander workspace, now named DOpus in the plan, with two file panels in dark appearance](docs/screenshots/listi-dopus-dark-0.16.2.png)
+### DOpus / Commander: two file panels and contextual actions
+
+The dark workspace uses two detail panels without folder trees or preview.
+Right-clicking a file opens its actions. **Selected files** and **This folder**
+at the top switch the menu between file-selection and current-folder actions,
+revealing different choices without leaving the menu workflow. This is context
+switching, not a claim that arbitrary menu customization is already implemented.
+
+![Listi 0.31.0 Commander, planned name DOpus, in dark appearance with a file context menu showing Selected files and This folder](docs/screenshots/listi-dopus-context-dark-0.31.0.png)
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
