@@ -1,4 +1,4 @@
-# Lister
+# Listi
 
 ## Alpha / WIP: risk of data loss
 
@@ -10,11 +10,11 @@ risks.** Test only on disposable copies of data and keep independent backups.
 
 Binaries are primarily intended for bug testing, not dependable everyday use.
 You are welcome to test, but please [contact us by reporting serious bugs on
-GitHub](https://github.com/kambuziarendal/Lister/issues). Include the version,
+GitHub](https://github.com/kambuziarendal/listi/issues). Include the version,
 Haiku version, what happened and reproduction steps where possible. Do not
 include passwords or private files in a public report.
 
-Latest development source: [0.31.0 working branch](https://github.com/kambuziarendal/Lister/tree/work/stability-fixes-20261115).
+Latest development source: [0.31.0 working branch](https://github.com/kambuziarendal/listi/tree/work/stability-fixes-20261115).
 The documentation below describes the historical 0.2.0 version on this branch.
 
 ## Screenshots: development alpha 0.31.0
