@@ -1,322 +1,196 @@
 # Listi
 
-## Alpha / WIP: risk of data loss
+**A native file manager for Haiku, built for anything from quick browsing to
+two-panel file work.**
 
-**Listi is under active development and testing. It is not a stable release.**
-It operates on files on your computer, and bugs can cause data loss or corruption,
-including during copying, moving, editing or deleting files. **All use is at your
-own risk. We do not recommend using it unless you understand and accept these
-risks.** Test only on disposable copies of data and keep independent backups.
+| Smiðja | Tvískipt |
+|---|---|
+| ![Listi Smiðja with file panels, folder trees and image preview](docs/screenshots/listi-smidja-preview-0.31.0.png) | ![Listi Tvískipt with two file panels and a context menu](docs/screenshots/listi-tviskipt-context-dark-0.31.0.png) |
+| A workspace that brings files, navigation, preview, filters and actions together. | A focused source-and-destination layout inspired by Directory Opus. |
 
-Binaries are primarily intended for bug testing, not dependable everyday use.
-You are welcome to test, but please [contact us by reporting serious bugs on
-GitHub](https://github.com/kambuziarendal/listi/issues). Include the version,
-Haiku version, what happened and reproduction steps where possible. Do not
-include passwords or private files in a public report.
+Listi combines Haiku's native controls, filesystem attributes, queries and
+Tracker interoperability with several ways of working in one application. Use a
+single file list, browse with a folder tree, work across two panels, or gather
+more tools in the Smiðja workspace.
 
-[Download the 0.31.1 alpha installer](https://github.com/kambuziarendal/listi/releases/tag/v0.31.1)
-(HPKG or ZIP for Haiku x86_64). [Source for this version](https://github.com/kambuziarendal/listi/tree/v0.31.1).
-The default branch contains this release source. Ongoing work is also available
-on [work/stability-fixes-20261115](https://github.com/kambuziarendal/listi/tree/work/stability-fixes-20261115).
+[Download Listi 0.31.1 alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.31.1)
+· [Report a bug](https://github.com/kambuziarendal/listi/issues)
+· [Read the design](docs/DESIGN.md)
+· [See the roadmap](docs/ROADMAP.md)
 
-0.31.1 updates the project/workspace names and descriptions without adding file
-features. Existing settings load without manual migration. Native scripts which
-compare the `Workspace` result must use the new display names.
+## Four workspaces, one file manager
 
-## Workspaces in pictures
+- **Einn** (`einn`) is a simple, Tracker-like view with one file panel. Folders
+  open in the same window by default.
+- **Askr** (`askr`) places a folder tree on the left and a file list on the
+  right, like a classic Explorer layout.
+- **Tvískipt** (`tviskipt`) puts two file panels side by side. Direct Copy and
+  Move use the other panel as the destination.
+- **Smiðja** (`smidja`) is the workbench, with file panels, folder trees, image
+  preview, filters and action buttons in one layout.
 
-Actual captures of the **0.31.0 development alpha** in Haiku, using example files.
-The names below are the current workspace names. These captures predate the
-rename; the captured build calls Smiðja "Workbench" and Tvískipt "Commander".
-Listi is an independent implementation, not Directory Opus or an affiliated product.
+Switching workspace keeps panel locations, selections and running jobs. Einn
+and Askr use the active panel; the other panel is hidden, not discarded.
 
-### Smiðja: a workspace for files and tools
+The screenshots above are real captures of the 0.31.0 development alpha, before
+the workspace rename. That build labels Smiðja as **Workbench** and Tvískipt as
+**Commander**. The current 0.31.1 release uses the names shown here. Listi is an
+independent implementation and is not affiliated with Directory Opus.
 
-File panels, folder trees, preview, filters and action buttons bring more tools
-into one working layout. The capture shows the existing image preview. Broader
-file previews, text editing, freely configurable modules and an optional terminal
-are planned, not features demonstrated by this alpha.
-
-![Listi Smiðja workspace with file panels and image preview, captured in 0.31.0 before the rename](docs/screenshots/listi-smidja-preview-0.31.0.png)
-
-Photo: [Sunset 2007-1](https://commons.wikimedia.org/wiki/File:Sunset_2007-1.jpg)
+Photo shown in the Smiðja preview: [Sunset 2007-1](https://commons.wikimedia.org/wiki/File:Sunset_2007-1.jpg)
 by Alvesgaspar, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
-[Photo and screenshot licensing](docs/screenshots/CREDITS.md).
+[Screenshot and photo credits](docs/screenshots/CREDITS.md).
 
-### Tvískipt: side-by-side file management
+## What is already here
 
-Two file panels support the source/destination workflow inspired by Directory
-Opus. The dark layout shown here has no folder trees or preview. Right-clicking
-a file opens its actions; **Selected files** and **This folder** switch between
-selection and current-folder actions. This is context switching, not arbitrary
-menu customization.
+### Native file work
 
-![Listi Tvískipt workspace with two file panels and a context menu, captured in 0.31.0 before the rename](docs/screenshots/listi-tviskipt-context-dark-0.31.0.png)
+- Two independent, resizable file panels with editable paths, sortable columns,
+  multiple view styles, thumbnails, selection and drag-and-drop.
+- Copy, move, rename, duplicate, symbolic links, new folders, Trash and explicit
+  permanent deletion.
+- Conservative transfers: existing destinations are not silently replaced,
+  incomplete regular files are removed on cancellation, and Trash never falls
+  back to permanent deletion.
+- A worker queue with progress, pause, resume, cancellation and explicit
+  Replace, Skip and Abort choices when conflicts occur.
+- Folder history, saved places and per-folder display preferences.
 
-A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
-workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development alpha: **0.31.1**. Historical published alpha: **0.2.0**.
+### Haiku integration
 
+- Native controls and system colours, including dark themes.
+- BFS attributes in Properties, native BFS queries and optional live search.
+- Clipboard interoperability with Tracker and Tracker-compatible Trash restore
+  metadata.
+- File monitoring so local directory changes can appear without a manual reload.
 
-We are building Listi primarily because we miss DOpus on Haiku. Useful ideas from
-other file managers support that identity, not replace it.
+### Search, compare and inspect
 
-0.31.0 focuses on stability: recoverable directory delivery, retained queue
+- Literal panel filters plus cancellable recursive name search.
+- Date, byte-size and extension criteria, saved searches and advanced BFS
+  formulas.
+- Read-only folder comparison by size or SHA-256 content.
+- Image preview, file viewer, external editor launch and terminal launch.
+
+### Archives and network locations
+
+- Create and extract common archive formats through the optional system
+  `libarchive` package.
+- Browse many archive formats, including ZIP, 7z, RAR, tar, ISO, CAB and LHA.
+- Safely edit supported local ZIP and 7z archives, with destination verification,
+  conflict detection and retained recovery copies where needed.
+- Connect to SMB, SFTP, FTP and FTPS locations. Credentials stay in memory;
+  protocol and server limitations are reported instead of being hidden.
+
+Exact behavior and limits are documented in the linked feature notes under
+[`docs/`](docs/). The current stability qualification is in
+[`STABILITY-0.31.0.md`](docs/STABILITY-0.31.0.md).
+
+## Alpha software: read before testing
+
+**Listi is under active development. It operates on files, and bugs can cause
+data loss or corruption during copying, moving, editing or deleting.**
+
+Use it at your own risk. Test with disposable copies and keep independent
+backups. The published binaries are intended primarily for bug testing, not for
+dependable everyday use. We do not recommend using this alpha unless you
+understand and accept the risk.
+
+If you test Listi, please [report serious bugs](https://github.com/kambuziarendal/listi/issues)
+with the Listi version, Haiku version, reproduction steps and whether files were
+affected. Do not include passwords or private files in a public report.
+
+## Install
+
+Listi 0.31.1 is available for **Haiku x86_64** as an HPKG and as a ZIP containing
+the same package. Checksums are included on the release page.
+
+```sh
+pkgman install ./Listi-0.31.1-1-x86_64.hpkg
+```
+
+[Download the current alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.31.1)
+
+Keep the previous package if you want application rollback. Reinstalling an old
+version does not undo file operations or restore deleted or overwritten data.
+
+### Current release
+
+0.31.1 changes the project and workspace names without adding file-management
+features. Existing settings load without manual migration. Scripts that compare
+the native `Workspace` result must use the new display names.
+
+The 0.31.0 stability work covered recoverable directory delivery, retained queue
 results, bounded archive-read reuse and network recovery after lost replies.
-No new user-facing features are introduced. See [verification and measured limits](docs/STABILITY-0.31.0.md).
+See the [0.31.1 release notes](https://github.com/kambuziarendal/listi/releases/tag/v0.31.1)
+and [measured stability limits](docs/STABILITY-0.31.0.md).
 
-0.30.0 adds combinable date, byte-size and extension filters to Find files,
-including saved criteria and advanced/live BFS searches. See
-[search filters and limits](docs/SEARCH-FILTERS-0.30.0.md).
+## Basic workflow
 
-0.29.0 adds verified Cut/Paste and panel Move between local folders and writable
-archives, in both directions. Full destination read-back precedes source removal;
-unsupported local metadata retains the source. See [archive/local moves](docs/ARCHIVE-LOCAL-MOVE-0.29.0.md).
+The highlighted panel is the active source. Direct panel Copy or Move uses the
+other panel as the destination; clipboard Paste uses the active panel. Click a
+panel or press Tab in a file list to switch roles.
 
-0.28.0 adds read-only recursive folder comparison with quick byte-size checks or
-SHA-256 content verification. **Listi > Compare folders** starts from the two
-panels. Right-click a file and choose **Select same file type** to select visible
-files with the same extension. See [comparison and selection](docs/COMPARE-0.28.0.md).
+Haiku's **Command modifier** is normally **Alt**, depending on the system keymap.
+The main shortcuts are:
 
-0.27.0 adds external editing of writable archive files with verified automatic
-save-back, conflict detection and retained private working copies. See
-[archive editor behavior and recovery](docs/ARCHIVE-EDITOR-0.27.0.md).
+| Action | Shortcut |
+|---|---|
+| Copy, cut and paste through the clipboard | Command+C / X / V |
+| Copy directly to the other panel | Command+Shift+C |
+| Move directly to the other panel | Command+M |
+| View or edit | Command+Shift+V / Command+E |
+| Rename, new folder or Trash | Command+R / N / D |
+| Filter the active panel | Command+F |
+| Find files | Command+Shift+F |
 
-0.26.0 adds clipboard Cut/Paste and panel Move between writable local archives.
-The destination is saved and verified byte-for-byte before source removal.
-Interrupted cleanup can leave both copies. See [archive move behavior](docs/ARCHIVE-MOVE-0.26.0.md).
+Function keys are deliberately unassigned. Menus and context menus expose the
+same actions without requiring shortcuts.
 
-0.25.0 connects ordinary Copy/Paste and drag-and-drop to transactional archive
-editing. Writable archives also support new folders, rename, delete and moves
-within the same archive. See [archive folder behavior and remaining limits](docs/ARCHIVE-FOLDERS-0.25.0.md).
-This is not universal archive filesystem parity; format and engine capabilities
-still matter. The [bughunt notes](docs/BUGHUNT-0.25.0.md) describe safety fixes.
+## Build from source
 
-Find files: **Command+Shift+F** opens cancellable recursive local name search
-and native BFS formulas, with optional live updates. Save named criteria and
-reopen them for fresh results. Results show original folders; reveal an original
-in its owning panel before using file actions. See [live and saved search behavior
-and limits](docs/SEARCH-0.8.0.md). General attribute builders, multiple volumes,
-content search and Tracker query-file interoperability remain open requirements.
+Build the current application inside **Haiku x86_64**:
 
-Saved work locations: each panel's Go > Places menu can save the current
-location, rename it or forget it. Names are shared across the two panels and
-persist across restarts. Local folders, archive folders, server addresses and
-the disks overview are supported. Credentials remain session-only; reconnect
-to an authenticated server before reopening its saved location after restart.
-See [saved places and bughunt](docs/PLACES-0.6.0.md) and the additional
-[Tracker capability requirements](docs/TRACKER-COVERAGE.md).
+```sh
+pkgman install haiku_devel python3 libarchive_devel curl_devel samba4_devel
+make
+make test
+make package
+```
 
+The executable is written under `src/objects.*-release/Listi`. The package is
+written under `dist/`. The project, executable and package are named **Listi**;
+the repository and package ID use `listi`.
 
-Two independent resizable panels, editable paths and location menus, sortable
-name/size/date columns, multiselection, drag-copy, node monitoring, a command
-button bank, viewer, editor and terminal launch, and saved display preferences.
-Native Haiku controls and system colours, including dark themes.
+Compatibility-only identifiers keep the historical `Lister` spelling, including
+the application signature, scripting suite, settings paths and package aliases.
+Numeric workspace values are unchanged and legacy settings keys are read beside
+the new ASCII IDs. No manual settings migration is required. See
+[Names and compatibility](docs/DESIGN.md#names-and-compatibility).
 
-Properties: **Files > Properties** or **Command+Shift+I** opens one local entry.
-Inspect file information and edit supported typed BFS attributes and ordinary
-permissions explicitly. See [behavior and limits](docs/PROPERTIES-0.10.0.md).
+## Project status and direction
 
-Duplicate one local entry beside its original with **Command+Shift+D**.
-Create a relative or absolute symbolic link in the other panel with
-**Command+Shift+L**. Both require an unused name and preserve existing entries.
-See [behavior and limits](docs/NAMED-ENTRIES-0.13.0.md).
+Listi is a Haiku-native development alpha, not a claim of feature parity with
+Directory Opus, Tracker, Dolphin or another established file manager. Broader
+previews, text editing, configurable Smiðja modules, an optional terminal,
+stronger job results and a future automation layer remain planned work.
 
-Right-click a file or folder for context actions in either panel view.
-Existing multi-selection is preserved when clicking an already selected entry.
-Right-click empty space, or use **This folder** at the top of any file menu,
-for actions on the current folder. Selection status includes total file size;
-folders and links are counted separately without scanning their contents.
-See [selection and folder actions](docs/SELECTION-CONTEXT-0.16.2.md).
-See [context menu behavior](docs/CONTEXT-MENU-0.14.0.md).
+The immediate development order is documented in the [roadmap](docs/ROADMAP.md):
+file-operation qualification, a stronger job model, then an internal command
+registry. Lua, hooks, external automation and persistent undo are later decisions,
+not features promised by this release.
 
-## Archive jobs
+Useful technical references:
 
-**Files > Archives** or the right-click **Archives** submenu creates archives
-(**Command+Shift+P**) or extracts to a new folder (**Command+Shift+E**) in all
-workspaces. ZIP, 7z, tar.gz, tar.xz and tar writers are probed from the optional
-system libarchive. Choose favorites, a default format and compression level.
-Existing targets are never replaced. See [archive workflows and limits](docs/ARCHIVES-0.18.0.md).
+- [Architecture and compatibility](docs/DESIGN.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Verification overview](docs/VERIFICATION.md)
+- [Tracker capability coverage](docs/TRACKER-COVERAGE.md)
+- [Archive workflows and limits](docs/ARCHIVES-0.18.0.md)
+- [Search behavior and limits](docs/SEARCH-FILTERS-0.30.0.md)
 
-## Workspaces
+## Licence
 
-Listi offers four layouts for different ways of working. Display names use
-Icelandic characters where needed; code and filename IDs use ASCII.
-
-- **Einn** (`einn`): a simple, Tracker-like view with one file panel. Folders open
-  in the same window by default. Clipboard and context-menu actions remain available.
-- **Askr** (`askr`): a folder tree on the left and a file list on the right,
-  for browsing a hierarchy without the two-panel transfer workflow.
-- **Tvískipt** (`tviskipt`): two file panels side by side, inspired by Directory
-  Opus. Direct Copy/Move targets the other panel; clipboard Paste targets the
-  active panel. Folder trees and preview can be toggled.
-- **Smiðja** (`smidja`): the workbench, with more tools and choices: file panels,
-  trees, image preview, filters and action buttons. Search and job details are
-  available on demand. Tree/preview settings are separate from Tvískipt.
-
-Broader previews and text editing, freely configurable buttons/modules and an
-optional terminal are **planned**, not implemented by the naming update.
-
-Switching workspace preserves panel locations, selections and running jobs.
-Einn and Askr use the active panel; the other panel is hidden, not discarded.
-Existing settings load without manual migration. The former names were Simple,
-Explorer, Commander (briefly called DOpus in documentation), and Workbench.
-Historical release notes retain their original terminology.
-
-## Workflow
-
-The bold active panel supplies selected files. Direct panel Copy/Move uses
-the other panel as destination; clipboard Paste uses the active panel. Click a panel or press Tab in a list to switch roles. Double-click
-a directory to enter it; Backspace goes up. Use Haiku's **Command modifier**
-(normally **Alt**, following your system keymap) plus **C/X/V** to copy/cut/paste
-local files using the system clipboard, including Tracker. The mouse route is
-**Files > Clipboard**. The following shortcuts also use the **Command modifier**:
-**Command+Shift+C** copies directly to the other panel; **Command+Shift+V** opens
-the viewer. **Command+E** edits, **Command+M** moves to the other panel,
-**Command+R** renames, **Command+N** creates a folder, **Command+D** trashes and
-**Command+F** filters. Buttons abbreviate these labels; menus show the shortcuts.
-See [clipboard behavior and limits](docs/CLIPBOARD-0.9.0.md). Bare letters remain
-available for list type-ahead. In path, filter, command and name fields,
-Command+A/C/X/V selects/copies/cuts/pastes text, never files. Press Enter after
-editing a path or filter to return to the list. Escape cancels a name dialog.
-**Function keys are deliberately unassigned.** Alt+W follows Haiku’s window-close behavior;
-Alt+Q quits Listi. Escape cancels an inline question.
-
-Each panel has its own **< Back / > Forward** path buttons. **Command+[ / ]**
-work while browsing that panel, not while editing text or answering a question.
-Up to 64 successful locations are kept for this session only, including local,
-archive, server, volume and Trash locations. Failed or cancelled scans do not
-become visits. Back from a failed open first retries the last successful place.
-Refresh preserves the forward branch; visiting a new place discards it. Returning
-reloads contents without restoring an old selection. History is not file undo.
-
-Operations run on a worker queue. The inline Operations area shows progress,
-Pause/Resume, Cancel and Replace/Replace all/Skip/Skip all/Abort conflicts.
-Escape closes the active question first; otherwise it cancels a pending conflict
-and collapses Operations. The action-button bank gives way to an open question
-and returns when it closes; menu actions and shortcuts remain available. The main window will not quit
-while an operation is active. Command+D / Trash moves entries to Haiku's per-volume Trash, with Tracker-compatible
-restore metadata. Open it using a panel's Go menu, then select **Files > Restore
-from Trash**. Restore never overwrites an existing file; the original parent
-folder must still exist. Unsupported/read-only volumes return an error without
-silently deleting anything. **Files > Delete permanently...** is a separate,
-confirmed action and cannot be undone. Cancellation keeps completed entries and removes the current partial
-regular file. A partially copied directory can remain.
-
-## Narrow, select, act
-
-Each panel has a literal name filter. Use **Listi > Filter names** (Alt+F on
-default Haiku), type part of a name, then Enter to return to the list. Escape in
-the field or Clear removes the filter. The status shows the visible/total count.
-Hidden entries are deselected and stay deselected when revealed again. Select All
-and file operations affect only visible selections; `..` remains navigable.
-Changing folder clears the filter; refreshing the same folder preserves it. This
-is a local view filter, not recursive search or wildcard expansion.
-
-## Install and build
-
-Download the HPKG from the [0.31.1 alpha release](https://github.com/kambuziarendal/listi/releases/tag/v0.31.1), then install in Haiku:
-
-    pkgman install ./Listi-0.31.1-1-x86_64.hpkg
-
-The project, executable, launcher and package are named **Listi** (`listi` for
-repository/package IDs). The repository is [kambuziarendal/listi](https://github.com/kambuziarendal/listi).
-The C++ namespace is `Listi` and workspace identifiers are `einn`, `askr`,
-`tviskipt` and `smidja`.
-
-Compatibility-only identifiers retain their historical spelling: the application
-signature `application/x-vnd.Kambuzi-Lister`, scripting suite, settings/recovery
-paths and package aliases. Numeric workspace values stay unchanged, and legacy
-settings keys are read and written alongside the new ASCII names. No manual
-settings migration is required. See [naming and compatibility](docs/DESIGN.md#names-and-compatibility).
-
-Build the current native application **inside Haiku x86_64**. A future portable
-C core will have separate POSIX tests; it does not exist in this release.
-
-    gcc --version
-    pkgman install haiku_devel python3 libarchive_devel curl_devel samba4_devel
-    make
-    make test
-    make package
-
-`make` uses Haiku makefile-engine. The executable is in
-`src/objects.*-release/Listi`, not the project root. `make package` uses
-PackageInfo and produces `dist/Listi-0.16.3-1-x86_64.hpkg`. Retain previous
-packages for rollback; reinstalling one does not restore or roll back files you
-have copied, moved or deleted.
-
-See [design](docs/DESIGN.md), [roadmap](docs/ROADMAP.md) and
-[verification](docs/VERIFICATION.md). No accounts, telemetry or paid services.
-
-## Internal 0.4.0 features and limits
-
-Use **Command+K** to connect to SMB, SFTP, FTP or FTPS. Credentials stay in memory. Tab between fields without connecting; use Connect or Enter to submit.
-SFTP needs an existing trusted known_hosts file. FTP is unencrypted. Package
-requirements install libcurl and libsmbclient. Archive support uses the optional
-`libarchive` system package; install it from HaikuDepot when needed. Backend errors are
-reported without pretending an unsupported operation succeeded. SMB, SFTP and
-FTP are tested with synthetic servers; FTPS and external NAS models are not yet
-qualified.
-
-Archive browsing and extraction stay inside Listi. The adapter loads the system's
-optional libarchive, not an archive GUI or a bundled private engine. ZIP, 7z,
-RAR/RAR5, tar, CPIO, ar, ISO, XAR, CAB and LHA are covered by native fixture tests.
-Single-file gzip/bzip2/xz/lzma and compressed tar are supported. LZ4 needs the
-optional `lz4` package; Zstandard needs `zstd_bin`. Install system packages through
-HaikuDepot and retry without restarting Listi. See [archive support](docs/ARCHIVES-0.16.0.md)
-for tested variants and current limits. Archives remain read-only and local.
-Cross-location moves are refused with Copy guidance; remote Trash is not emulated.
-
-Each panel's View menu selects details, icons, large icons or thumbnails, remembers
-a folder-specific view, restores its default, and toggles an independent folder
-tree. **Command+P** toggles image preview. The expanded 1024x650 laptop layout is
-qualified at the default font size; larger accessibility fonts may need more room.
-Tree branches are refreshed by closing/reopening their tree. New uncached paths
-rebuild the route automatically. Thumbnail replies/caches, preview decoding,
-folder preferences, tree nodes and operation history have explicit bounds.
-
-This is a development alpha, not a Dolphin-parity or performance claim. See
-[the current qualification](docs/INTERNAL-CANDIDATE.md) for exact tested scope,
-recovery and limitations. Dependency licenses remain their own; MIT covers Listi's
-source, not every library provided by Haiku packages.
-
-Private 0.11.0 adds MIME inspection and one-time native application choice via
-Files > Open with (Command+Shift+O). Associations remain unchanged.
-See docs/OPEN-WITH-0.11.0.md for scope and recovery.
-
-Private 0.12.0 adds explicit Copy here / Move here / Cancel for local drops.
-The destination is always the receiving panel's current folder, shown before
-transfer. Network/archive drops retain explicit copy only. See docs/DROP-0.12.0.md.
-
-Workspace candidate: View > Workspace > Einn or Tvískipt. Einn keeps one
-file panel without the action bank; clipboard and right-click actions remain
-available. See [workspace behavior](docs/WORKSPACES-0.15.0.md).
-
-## Minimal workspace and mouse selection (0.16.0)
-
-Einn shows the address, file list and compact status only. Go, the pane view
-selector, filter and navigation buttons are hidden. Use View > File view for
-Details/Icons/Large icons/Thumbnails. Hidden Tvískipt filters are suspended in
-Einn and restored when returning to Tvískipt. No function keys are assigned.
-
-Drag from empty list space to select a rectangle in either renderer. Ctrl or
-Shift adds to the original selection. Escape restores that original selection.
-Dragging an item still starts file drag-and-drop. Selection scrolls at the edges.
-
-Tvískipt identifies the active panel with a thin themed outline and subtle
-address/file-area tint, without left/right labels. Only the outline briefly
-animates on panel switches; Einn stays neutral.
-
-### Password-protected archives
-
-Encrypted ZIP is read by optional libarchive. Install optional **p7zip** for
-7z and RAR/RAR5, including encrypted filenames. Browsing, previews and extraction
-stay inside Listi. Passwords are requested in a masked field and cached only in
-memory; **Files > Archives > Forget archive passwords** clears the cache.
-See [password handling](docs/ARCHIVES-0.19.0.md) and
-[7z/RAR support and limits](docs/ARCHIVES-0.20.0.md).
-[Multipart archives](docs/ARCHIVES-0.21.0.md) support `.7z.001`, `.part1.rar`
-and `.rar/.r00` sets. Keep the parts together and open any part. Encrypted archive
-creation for ZIP and 7z is described in [the 0.22.0 archive notes](docs/ARCHIVES-0.22.0.md).
-[Safe editing](docs/ARCHIVES-0.23.0.md) can add, replace and remove entries in
-local, single-volume ZIP and 7z archives while retaining supported encryption.
+Listi's source is licensed under the MIT licence. Optional libraries and tools
+provided by Haiku packages retain their own licences. There are no accounts,
+telemetry or paid services in Listi.
