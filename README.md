@@ -96,13 +96,16 @@ switching, not a promise to restore every folder after restarting the app.
 
 The bold **SOURCE** panel supplies selected files; the other panel is the
 **DESTINATION**. Click a panel or press Tab in a list to switch roles. Double-click
-a directory to enter it; Backspace goes up. F3 View, F4 Edit, F5 Copy, F6 Move,
-F7 New folder, F8 Trash, F9 Preferences. Menus expose additional shortcuts.
+a directory to enter it; Backspace goes up. In the **0.31.0 development alpha**,
+function keys are deliberately unassigned. Use the action buttons, context menus
+or the shortcuts shown in the menus. Keyboard shortcuts use Haiku's Command
+modifier (normally Alt, depending on the system keymap), not bare letters.
+The old F3 to F9 mappings from historical releases do not apply to this alpha.
 
 Operations run on a worker queue. A separate window shows progress, Pause/Resume,
 Cancel all and Replace/Replace all/Skip/Skip all/Abort conflicts. Closing that
 window only hides it; use Operations to reopen. The main window will not quit
-while an operation is active. F8 / Trash moves entries to Haiku's per-volume Trash, with Tracker-compatible
+while an operation is active. Trash moves entries to Haiku's per-volume Trash, with Tracker-compatible
 restore metadata. Open it using a panel's Go menu, then select **Files > Restore
 from Trash**. Restore never overwrites an existing file; the original parent
 folder must still exist. Unsupported/read-only volumes return an error without
