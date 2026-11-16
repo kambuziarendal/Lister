@@ -5,17 +5,40 @@
 Listi aims to be a capable native working environment for files on Haiku: simple
 enough for quick browsing, but deep enough for sustained, selection-oriented
 file work. Directory Opus inspires the source/destination model and freedom of
-action. Haiku's own controls, attributes, queries and application ecosystem shape
-the implementation.
+action. Haiku's controls, attributes, queries and application ecosystem shape the
+implementation.
 
 The long-term ambition is broad coverage of the practical tasks people use
 established file managers for, with a coherent Listi workflow rather than copied
 interfaces. Coverage, responsiveness and resource use must be demonstrated task
-by task. This is a direction to work toward, not a claim that the alpha already
-matches or outperforms Directory Opus, Tracker or Dolphin.
+by task. This is a direction, not a claim that the alpha already matches or
+outperforms Directory Opus, Tracker or Dolphin.
 
-For what is available now, see the [README](../README.md) and
-[workflow guide](GUIDE.md). This page is not a release schedule.
+For implemented behaviour, see the [README](../README.md) and
+[workflow guide](GUIDE.md). The ideas below are not a release schedule or a
+commitment to implement them all at once.
+
+## Optional by design
+
+**Depth should be available, not compulsory.** A straightforward file browser
+should remain a complete way to use Listi. Advanced views, inspectors, automation,
+Git integration and other specialist tools should be optional and enabled when
+useful—not imposed on every workspace.
+
+The customisation goal goes beyond toggling a few controls:
+
+- Add, remove, move and reorder action buttons, toolbars and workspace modules.
+- Arrange panels, trees, inspectors, filters and an optional terminal around the
+  task. Keep keyboard access and readable layouts at different window sizes.
+- Save personal layouts and restore defaults without losing unrelated settings.
+- Keep a useful standard layout for people who never customise anything.
+- Make adaptive behaviour an explicit choice, with manual control and a
+  predictable way back. Do not silently rearrange someone's workspace.
+
+These are design goals. The current alpha has four preset workspace layouts,
+several visibility preferences and folder-specific display modes; it does **not**
+yet have a free-form layout or button editor. Safety checks, confirmations and
+clear operation targets are not optional just because a tool is configurable.
 
 ## First: make existing file work easier to trust
 
@@ -32,68 +55,142 @@ The next stages concentrate on foundations rather than feature count:
    through common validation, confirmation and queueing logic. Reuse the current
    file-safety engine rather than creating parallel implementations.
 
-A local automation interface would need a separate access and trust model after
-these foundations. Limited undo and a durable journal also need a defined scope:
-a job log is not a backup, and recovery must not overwrite newer data.
+Copy queues and pause/resume already exist. These stages improve their result
+model and control; they are not a proposal to add the first queue.
 
-## Then: more depth without more friction
+## Feature directions and current foundations
 
-### A richer Smiðja workbench
+Status here refers to the 0.31.1 alpha. A related foundation is not the same as a
+finished feature.
 
-Expand preview beyond images to suitable text, source, Markdown, HTML, PDF, audio
-and video formats through appropriate components. Actual format support must be
-qualified individually. Preview must not execute scripts or modify files.
+| Direction | Available now | Planned or exploratory work |
+|---|---|---|
+| Duplicate finder | SHA-256 folder comparison; Duplicate creates another copy | Search one or more chosen folders for duplicate contents and review groups |
+| Bulk rename | Single-entry rename | Multi-file preview, transformations, numbering and collision checks |
+| Miller columns and adaptive views | Four preset layouts, trees, details/icon/thumbnail views | Optional cascading folder columns and user-controlled adaptive layouts |
+| Directory synchronisation | Read-only recursive size/SHA-256 comparison | Previewed, conflict-aware one-way or two-way synchronisation |
+| Clipboard contents to a new file | Copy/Cut/Paste of file references | Explicitly save supported clipboard text or image data as a named file |
+| Rich built-in inspectors | Image preview/thumbnails, a basic text viewer, archive browsing, local properties | Broader code/document inspection, detailed images and camera EXIF/GPS metadata |
+| Copy queues and pause | Worker queue, progress, pause/resume and cancellation | Stronger job results and finer per-job control |
+| Automatic rules and drop folders | Manual file actions, search filters and live BFS queries | Opt-in sorting rules and configured drop targets for extract/rename/move workflows |
+| Colour coding and tags | Configurable file/folder/link colours and typed BFS attribute editing | Dedicated per-item labels, tag editing/filtering and optional colour rules |
+| Saved project sessions | Four workspace layouts, saved places and folder view modes | Named sets of open locations, future tabs/cards, views, sorting and layout |
+| Git status in file lists | No built-in Git status display | Optional status badges or columns without blocking browsing |
+| Built-in text/file diff | Read-only folder comparison by size or SHA-256 | Side-by-side text differences and file-level comparison tools |
 
-Add explicit text editing, clear read-only states and unsaved-change handling.
-Offer configurable modules, saved layouts and an optional terminal following the
-active folder. Distinguish an integrated view from a separate terminal window.
+## More depth without more friction
 
-### Navigation that remembers the task
+### Find duplicates and work with selections
 
-Explore readable, BeOS-inspired folder cards, saved paired work sets, remembered
-workspace sizes and clearer per-folder view controls. Preserve active folders,
-selections and running jobs through layout changes. Avoid surprising automatic
-switches or making extensive configuration a prerequisite.
+A duplicate finder should search explicitly chosen locations, narrow candidates
+by size, then verify content rather than equating a filename or size match with a
+duplicate. Show groups, origins and the reason for a match. Handle unreadable or
+changing files, links and cancellation honestly. Keep review separate from any
+cleanup action; finding a duplicate must never delete it automatically.
 
-### Strong selection-oriented tools
+Bulk rename should show old and proposed names before changing anything, with
+search/replace, numbering and prefix/suffix options. Check collisions, invalid
+names and source changes, and make partial results understandable. Configurable
+actions should operate on frozen selections and pass filenames as data, not
+shell code.
 
-Add bulk rename with a preview of old and proposed names, collision detection,
-source-change checks and clear partial outcomes. Build configurable actions on
-frozen selections; pass filenames as data, not shell code. Extend selection
-summaries and reusable actions without turning context menus into long catalogues.
+### Follow deep folder trees without losing context
 
-### Search and file intelligence
+Explore **optional Miller columns**: opening a subfolder adds a column to the
+right while keeping parent folders visible. This is a different browsing style,
+not a replacement for Einn, Askr, Tvískipt or Smiðja. Explore adaptive views only
+with explicit user control and sensible minimum sizes.
 
-Build on existing saved searches, date/size/extension filters and live BFS
-queries. Candidate improvements include exclusions, attribute tools, content
-search and broader volume scopes. Search results must retain a clear connection
-to originals. Existing read-only size/SHA-256 comparison is a foundation, not a
-finished synchronisation engine.
+Readable, BeOS-inspired folder cards and saved paired work sets remain goals.
+Named project sessions—such as Accounting, Video editing or Personal—could
+restore open locations, future tabs/cards, view modes, sort choices and layout.
+They must distinguish saved UI state from active operations: restoring a session
+must not replay old file jobs or store credentials in plain layout files.
 
-### Broader archives and network workflows
+### Inspect files without leaving the task
+
+Expand the optional Smiðja inspector to suitable code, text, Markdown, HTML, PDF,
+audio and video formats through appropriate components. Add useful high-resolution
+image navigation and camera EXIF metadata, including GPS coordinates where
+present. Decoding an image today does not mean those inspection tools already
+exist. Location display must not contact map services or expose coordinates
+without an explicit choice.
+
+Preview must not execute scripts or modify files. Explicit editing, read-only
+states and unsaved-change handling remain important. An optional terminal should
+follow the active folder, clearly distinguishing an integrated view from a
+separate application window.
+
+Built-in text/file diff should complement existing folder comparison with
+readable side-by-side differences. Comparison and editing/merging are separate
+capabilities; support should be labelled rather than implying every document or
+binary format can be meaningfully diffed.
+
+### Synchronise with a plan, not a surprise
+
+Directory synchronisation should start with a proposed action list: direction,
+new or changed entries, conflicts and any deletion. Make one-way and two-way
+semantics explicit, recheck changed sources and let the user review before
+writing. Do not treat a successful folder comparison as permission to synchronise
+or delete. This follows the stronger job-result and conflict model.
+
+### Turn repeated chores into opt-in workflows
+
+Explore rules based on names, extensions/types and dates, with named target
+folders and explicit extract, rename or move actions. Configured **drop folders**
+could apply a chosen workflow when files are dropped there. These are not the
+same as read-only live BFS query results.
+
+Start with visible, explicitly configured triggers and previews/dry runs. Avoid
+hidden background moves, recursion loops or overwriting files without review.
+A watched folder, a drop target and a general scripting hook have different
+trust and lifecycle requirements; none is implicitly enabled by this roadmap.
+
+**Clipboard-to-file** should distinguish data from existing file references.
+Offer a name, destination and supported output format, with normal conflict
+handling. Pasted text must not be executed as a command.
+
+### Organise and inspect project context
+
+Explore optional file labels/tags, colour coding and filtering using native
+metadata where practical. Category colours and a generic attribute editor are
+useful foundations, not a finished tagging system. Explain persistence and what
+happens when files move to a provider that cannot preserve the metadata; colour
+must not be the only signal.
+
+Optional **Git status** could show modified, untracked, staged and ignored state
+in the file list. Keep discovery and refresh bounded and asynchronous, with a
+clear unavailable state outside repositories or when support is missing. Merely
+browsing must not change repository state or fetch from a remote.
+
+### Broader archives, search and network workflows
 
 Make archives feel like folders wherever each format permits, while showing
 capability and metadata limits explicitly. Selected encrypted and multipart
 reading, local editing, and archive/local moves already exist; remaining work
 includes broader variants, metadata fidelity and supported write engines.
 
-Continue testing interrupted transfers and recovery across protocols, server
-implementations and larger datasets. Availability of SMB, SFTP, FTP or FTPS does
-not establish qualification for every server or WAN condition.
+Build on saved searches, date/size/extension filters and live BFS queries with
+clearer scopes, exclusions, attribute tools, content search and broader volume
+coverage. Results must retain a clear connection to originals.
+
+Continue testing interrupted transfers across protocols, servers and larger
+datasets. Availability of SMB, SFTP, FTP or FTPS does not qualify every server or
+WAN condition.
 
 ## Longer-term possibilities
 
-- **Conflict-aware recovery and synchronisation:** build only after job results
-  and conflict reporting are strong enough. No universal undo promise.
-- **Automation and customisation:** consider a local CLI or socket with explicit
-  access boundaries. Scripting, hooks and plugins are not implied by an internal
-  command registry.
+- **Conflict-aware recovery:** limited undo and a durable journal need a defined
+  scope. A job log is not a backup; recovery must not overwrite newer data.
+- **Automation interfaces:** consider a local CLI or socket with explicit access
+  boundaries. Scripting, hooks and plugins are not implied by an internal
+  command registry or an optional rule editor.
 - **Portability:** extract tested core logic incrementally, keeping Haiku UI,
   BFS, clipboard, Trash and application integration behind adapters. Other
-  platforms need their own filesystem, package and UI verification. Native UI
-  remains the preference; a port is not a reason to replace the Haiku experience.
+  platforms need native filesystem, package and UI verification. A port is not a
+  reason to replace the Haiku experience.
 - **Desktop integration:** coexist with Tracker by default. A replacement role
-  would require a separate compatibility and recovery study.
+  requires a separate compatibility and recovery study.
 - **Optional peer sharing:** a future adapter could connect to a separately
   developed sharing system; it is not a current dependency or shipped feature.
 

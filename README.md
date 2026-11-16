@@ -241,10 +241,17 @@ single folder, useful for substantial selection-based file work, and flexible
 enough to grow with the task. The DOpus-inspired workflow is the starting point,
 not a goal to reproduce another application's interface.
 
-The [roadmap](docs/ROADMAP.md) puts file safety and job clarity first, followed by
-richer previews, configurable workspaces, bulk actions and deeper Haiku
-integration. Planned work is labelled separately from shipped behaviour. There
-are no feature-parity or performance claims without supporting measurements.
+**Optional by design:** advanced tools should be there when useful, not imposed
+on everyone. The long-term goal is to move, add and remove buttons and modules,
+arrange the interface around a task, and save personal layouts. The current
+alpha offers preset layouts and visibility options, not a free-form layout editor.
+
+The [roadmap](docs/ROADMAP.md) puts file safety and job clarity first, then
+explores duplicate search, bulk rename, optional Miller columns, synchronisation,
+clipboard-to-file, richer inspectors, tags, rules, saved project sessions, Git
+status and text/file diff. Its status table separates existing foundations from
+future work. There are no feature-parity or performance claims without supporting
+measurements.
 
 ## Documentation and feedback
 

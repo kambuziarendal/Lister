@@ -14,8 +14,12 @@ Its interface uses Haiku controls, system colours, MIME icons and Layout Kit.
 - **Native keyboard behaviour.** Use Haiku's Command modifier and preserve text
   editing and list type-ahead. Function keys are unassigned in the current alpha.
   See the [shortcut reference](../README.md#basic-workflow).
-- **Progressive depth.** Useful defaults come first. Pane-specific controls and
-  explicit saved view choices are preferable to a large mandatory setup process.
+- **Optional by design.** Useful defaults come first. Advanced views, inspectors,
+  rules and integrations should be opt-in rather than required for ordinary
+  browsing. The long-term goal is to add, remove, move and reorder buttons and
+  workspace modules, save layouts and restore defaults. Current visibility
+  preferences are not yet a free-form layout editor. Configurability must not
+  disable safety checks or hide operation targets.
 - **Honest outcomes.** Report cancellation, errors and partial completion.
   Cancellation is not rollback, and a job log is not a backup.
 
