@@ -16,7 +16,7 @@ include passwords or private files in a public report.
 
 [Download the 0.31.1 alpha installer](https://github.com/kambuziarendal/listi/releases/tag/v0.31.1)
 (HPKG or ZIP for Haiku x86_64). [Source for this version](https://github.com/kambuziarendal/listi/tree/v0.31.1).
-The default branch retains the historical code baseline; current development is
+The default branch contains this release source. Ongoing work is also available
 on [work/stability-fixes-20261115](https://github.com/kambuziarendal/listi/tree/work/stability-fixes-20261115).
 
 0.31.1 updates the project/workspace names and descriptions without adding file
