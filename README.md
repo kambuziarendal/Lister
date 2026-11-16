@@ -10,7 +10,7 @@ risks.** Test only on disposable copies of data and keep independent backups.
 
 Binaries are primarily intended for bug testing, not dependable everyday use.
 You are welcome to test, but please [contact us by reporting serious bugs on
-GitHub](https://github.com/kambuziarendal/Lister/issues). Include the version,
+GitHub](https://github.com/kambuziarendal/listi/issues). Include the version,
 Haiku version, what happened and reproduction steps where possible. Do not
 include passwords or private files in a public report.
 
