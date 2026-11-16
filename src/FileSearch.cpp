@@ -15,7 +15,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
-namespace Lister {
+namespace Listi {
 namespace {
 bool Within(const std::string &path, const std::string &root) {
   return path == root || (root == "/" && path[0] == '/') ||
@@ -116,7 +116,7 @@ SearchSummary SearchFiles(const SearchRequest &request,
       auto item = readdir(dir.get());
       if (!item) { if (errno) ++out.skipped; break; }
       if (!strcmp(item->d_name, ".") || !strcmp(item->d_name, "..") ||
-          Lister::IsListiPrivateEntry(item->d_name)) continue;
+          Listi::IsListiPrivateEntry(item->d_name)) continue;
       if (out.visited >= request.visitLimit) { out.limited = true; break; }
       ++out.visited;
       std::string path = current.path + (current.path == "/" ? "" : "/") + item->d_name;
@@ -135,4 +135,4 @@ SearchSummary SearchFiles(const SearchRequest &request,
   }
   return out;
 }
-} // namespace Lister
+} // namespace Listi

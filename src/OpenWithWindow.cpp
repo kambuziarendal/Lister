@@ -18,22 +18,22 @@ constexpr uint32 kLoaded='owld', kOpen='owop', kOther='owot', kChosen='owch', kR
 std::mutex windowsMutex;
 std::vector<BMessenger> windows;
 struct AppRow : BRow {
-  Lister::OpenApplication app;
-  AppRow(const Lister::OpenApplication &value, bool preferred) : app(value) {
+  Listi::OpenApplication app;
+  AppRow(const Listi::OpenApplication &value, bool preferred) : app(value) {
     SetField(new BStringField((app.name + (preferred ? " (preferred)" : "")).c_str()), 0);
     SetField(new BStringField(app.path.c_str()), 1);
   }
 };
 struct Delivery {
   std::mutex mutex;
-  std::shared_ptr<Lister::OpenWithSession> session;
-  Lister::OpenTypeInfo info;
+  std::shared_ptr<Listi::OpenWithSession> session;
+  Listi::OpenTypeInfo info;
   std::string error;
-  std::unique_ptr<Lister::OpenApplication> chosen;
+  std::unique_ptr<Listi::OpenApplication> chosen;
 };
 class OpenWithWindow : public BWindow {
   std::shared_ptr<Delivery> delivery = std::make_shared<Delivery>();
-  std::shared_ptr<Lister::OpenWithSession> session;
+  std::shared_ptr<Listi::OpenWithSession> session;
   BColumnListView *apps;
   BStringView *type, *status;
   BButton *open, *other;
@@ -91,7 +91,7 @@ public:
     AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
     {std::lock_guard<std::mutex> lock(windowsMutex);windows.emplace_back(this);}
     Controls();Colors();Show();
-    Work(kLoaded, [path](auto &d) {d.session=std::make_shared<Lister::OpenWithSession>(path);d.info=d.session->Inspect();});
+    Work(kLoaded, [path](auto &d) {d.session=std::make_shared<Listi::OpenWithSession>(path);d.info=d.session->Inspect();});
   }
   ~OpenWithWindow() override {
     picker.reset();
@@ -137,7 +137,7 @@ public:
       entry_ref ref;if(message->FindRef("refs",&ref)!=B_OK)break;
       BPath location(&ref);if(location.InitCheck()!=B_OK)break;
       std::string path=location.Path();
-      Work(kChosen+1,[path](auto &d){d.session->Validate();d.chosen=std::make_unique<Lister::OpenApplication>(Lister::InspectApplication(path));});
+      Work(kChosen+1,[path](auto &d){d.session->Validate();d.chosen=std::make_unique<Listi::OpenApplication>(Listi::InspectApplication(path));});
       break;
     }
     case kChosen+1: {

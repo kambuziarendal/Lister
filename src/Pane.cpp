@@ -235,9 +235,9 @@ void Pane::Draw(BRect update) {
   SetHighColor(ViewColor());
   FillRect(update);
   if (!prefs.SinglePane()) {
-    const auto neutral = Lister::PanelBlend(ui_color(B_PANEL_BACKGROUND_COLOR),
+    const auto neutral = Listi::PanelBlend(ui_color(B_PANEL_BACKGROUND_COLOR),
                                            ui_color(B_PANEL_TEXT_COLOR), 0.12f);
-    SetHighColor(Lister::PanelBlend(neutral, ui_color(B_KEYBOARD_NAVIGATION_COLOR),
+    SetHighColor(Listi::PanelBlend(neutral, ui_color(B_KEYBOARD_NAVIGATION_COLOR),
                                     activityLevel));
     SetPenSize(2);
     StrokeRect(Bounds().InsetByCopy(1, 1));
@@ -249,7 +249,7 @@ void Pane::UpdateActivityAppearance() {
   list->SetActive(highlighted);
   grid->SetActive(highlighted);
   auto text = edit->TextView();
-  const auto background = Lister::PanelBlend(ui_color(B_DOCUMENT_BACKGROUND_COLOR),
+  const auto background = Listi::PanelBlend(ui_color(B_DOCUMENT_BACKGROUND_COLOR),
       ui_color(B_KEYBOARD_NAVIGATION_COLOR), highlighted ? 0.075f : 0.f);
   if (text->ViewColor() != background) {
     text->SetViewColor(background);
@@ -323,7 +323,7 @@ void Pane::ToggleTreeFocus() {
   else if (treeVisible) tree->FindView("folder tree")->MakeFocus();
 }
 void Pane::FocusFilter() {
-  if (simple) return;
+  if (einn) return;
   Activate();
   filter->MakeFocus(true);
   filter->TextView()->SelectAll();
@@ -335,34 +335,34 @@ void Pane::ClearRows() {
   grid->Reset();
 }
 void Pane::ApplyFilter() {
-  entries.Filter(simple ? "" : filter->Text());
+  entries.Filter(einn ? "" : filter->Text());
   list->Refresh();
   clearFilter->SetEnabled(filter->Text()[0] != 0);
   if (!scanning)
     SendSelection();
 }
 void Pane::SetWorkspace(Workspace workspace) {
-  const bool value = workspace == Workspace::Simple;
-  const bool changed = simple != value;
-  simple = value;
+  const bool value = workspace == Workspace::einn;
+  const bool changed = einn != value;
+  einn = value;
   prefs.workspace = workspace;
-  list->SetSimple(prefs.SinglePane());
-  if (chromeVisible == simple) {
-    chromeVisible = !simple;
+  list->SetSinglePane(prefs.SinglePane());
+  if (chromeVisible == einn) {
+    chromeVisible = !einn;
     for (BView* control : {static_cast<BView*>(header), static_cast<BView*>(filterRow),
                           static_cast<BView*>(back), static_cast<BView*>(forward)}) {
       if (chromeVisible) control->Show(); else control->Hide();
     }
   }
   auto layout = static_cast<BGroupLayout*>(GetLayout());
-  layout->SetInsets(simple ? 2 : 6);
-  layout->SetSpacing(simple ? 2 : 5);
-  content->SetSpacing(simple ? 0 : 4);
-  content->SetSplitterSize(simple ? 0 : contentSplitterSize);
+  layout->SetInsets(einn ? 2 : 6);
+  layout->SetSpacing(einn ? 2 : 5);
+  content->SetSpacing(einn ? 0 : 4);
+  content->SetSplitterSize(einn ? 0 : contentSplitterSize);
   // A hidden filter must not silently hide entries in the minimal workspace.
-  // Keep its text for Commander, but suspend its effect while it is hidden.
+  // Keep its text for Tviskipt, but suspend its effect while it is hidden.
   if (changed) { ApplyFilter(); grid->Update(); }
-  const bool visible = workspace == Workspace::Explorer || (prefs.Tree(id) && !simple);
+  const bool visible = workspace == Workspace::askr || (prefs.Tree(id) && !einn);
   if (treeVisible != visible) {
     treeVisible = visible;
     if (visible) tree->Show(); else tree->Hide();
@@ -395,12 +395,12 @@ void Pane::Navigate(const char *p) {
   if (request.empty())
     return;
   try {
-    if (request[0] != '/' && request != "@disks" && !Lister::IsVirtual(request))
-      request = Lister::IsVirtual(path.String())
-                  ? Lister::ChildLocation(path.String(), request)
-                  : Lister::Join(path.String(), request);
-    if (Lister::IsVirtual(request))
-      request = Lister::ParseLocation(request).URL();
+    if (request[0] != '/' && request != "@disks" && !Listi::IsVirtual(request))
+      request = Listi::IsVirtual(path.String())
+                  ? Listi::ChildLocation(path.String(), request)
+                  : Listi::Join(path.String(), request);
+    if (Listi::IsVirtual(request))
+      request = Listi::ParseLocation(request).URL();
   } catch (const std::exception &error) {
     SetStatus(error.what());
     return;
@@ -411,7 +411,7 @@ void Pane::SetStatus(const char *text) {
   status->SetText(text);
   status->SetToolTip(text);
 }
-void Pane::SetPlaces(const Lister::SavedPlaces &value, bool writable) {
+void Pane::SetPlaces(const Listi::SavedPlaces &value, bool writable) {
   places = value;
   placesWritable = writable;
   UpdatePlaces();
@@ -426,7 +426,7 @@ void Pane::UpdatePlaces() {
     message->AddInt32("action", i);
     auto item = new BMenuItem(labels[i], message);
     item->SetEnabled(placesWritable && (i ? saved :
-        locationValid && !saved && places.Items().size() < Lister::SavedPlaces::Limit));
+        locationValid && !saved && places.Items().size() < Listi::SavedPlaces::Limit));
     placesMenu->AddItem(item);
   }
   placesMenu->AddSeparatorItem();
@@ -565,7 +565,7 @@ void Pane::SendSelection(bool gesture) {
     }
   }
   s << " / " << uint64(summary.visible);
-  if (!simple && filter->Text()[0])
+  if (!einn && filter->Text()[0])
     s << " of " << uint64(summary.visible + entries.HiddenCount())
       << " entries (filtered)";
   else
@@ -732,8 +732,8 @@ void Pane::MessageReceived(BMessage *m) {
     break;
   }
   case kRevealSearch: {
-    Lister::SearchHit hit{m->GetString("path", ""), m->GetInt64("device", -1), m->GetInt64("node", -1)};
-    if (!Lister::SameSearchEntry(hit)) {
+    Listi::SearchHit hit{m->GetString("path", ""), m->GetInt64("device", -1), m->GetInt64("node", -1)};
+    if (!Listi::SameSearchEntry(hit)) {
       savedSelection.clear(); reveal = {};
       entries.Select(0); SendSelection();
       SetStatus("Search result moved, disappeared or was replaced. Search again; nothing selected.");
@@ -770,7 +770,7 @@ void Pane::MessageReceived(BMessage *m) {
   }
   case kParent: {
     try {
-      Navigate(Lister::ParentLocation(path == "@disks" ? "/" : path.String())
+      Navigate(Listi::ParentLocation(path == "@disks" ? "/" : path.String())
                    .c_str());
     } catch (const std::exception &e) {
       SetStatus(e.what());
@@ -787,7 +787,7 @@ void Pane::MessageReceived(BMessage *m) {
     Navigate("/boot/home/Desktop");
     break;
   case kTrashFolder: {
-    if (path == "@disks" || Lister::IsVirtual(path.String())) {
+    if (path == "@disks" || Listi::IsVirtual(path.String())) {
       SetStatus("Trash requires a local supported volume.");
       break;
     }
@@ -855,7 +855,7 @@ void Pane::MessageReceived(BMessage *m) {
       }
       entries.Add(std::move(row));
     }
-    entries.Filter(simple ? "" : filter->Text());
+    entries.Filter(einn ? "" : filter->Text());
     entries.RestoreSelection(savedSelection);
     list->Refresh();
     grid->Update();
@@ -885,7 +885,7 @@ void Pane::MessageReceived(BMessage *m) {
     } else {
       bool stale = false;
       if (!reveal.path.empty()) {
-        stale = !Lister::SameSearchEntry(reveal);
+        stale = !Listi::SameSearchEntry(reveal);
         entries.SetSelection(stale ? std::vector<std::string>{} : std::vector<std::string>{reveal.path},
                              stale ? "" : reveal.path);
         if (!stale && entries.Selected().empty()) stale = true;

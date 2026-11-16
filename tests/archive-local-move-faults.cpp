@@ -11,7 +11,7 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 namespace {
 enum Fault { None, DestinationRename, SourceRename, CorruptDestination, LocalDelete } fault=None;
 std::string sourceArchive,destinationArchive,deletePath;

@@ -18,7 +18,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <type_traits>
-namespace Lister {
+namespace Listi {
 namespace {
 constexpr size_t MaxValue = 65536, MaxText = 4096, MaxAttributes = 256;
 void Require(status_t s, const char *what) {

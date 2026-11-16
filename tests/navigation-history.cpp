@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "NavigationHistory.h"
 #include <iostream>
-using Lister::NavigationHistory;
+using Listi::NavigationHistory;
 int main() {
   int checks = 0, failures = 0;
   auto check = [&](bool ok, const char *name) {

@@ -4,7 +4,7 @@
 #include <string>
 #include <sys/stat.h>
 class BMessage;
-namespace Lister {
+namespace Listi {
 // Keep the user's calendar dates, not resolved timestamps, in saved criteria.
 struct SearchFilters {
   std::string extension, minimumSize, maximumSize, fromDate, throughDate;

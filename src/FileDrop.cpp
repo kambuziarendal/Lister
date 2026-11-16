@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <sys/stat.h>
 #include <cstdlib>
-namespace Lister {
+namespace Listi {
 namespace {
 constexpr const char *kSelection = "listi:drag-selection";
 void Require(status_t s) {

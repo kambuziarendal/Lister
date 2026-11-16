@@ -9,7 +9,7 @@
 #include <iostream>
 #include <unistd.h>
 #include <utime.h>
-using namespace Lister;
+using namespace Listi;
 int main() {
   BApplication app("application/x-vnd.Kambuzi-Listi-SearchFiltersTest");
   int checks = 0, failures = 0;

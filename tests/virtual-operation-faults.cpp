@@ -19,7 +19,7 @@ bool suffix(const std::string &path, const char *part) {
   return path.find(part) != std::string::npos;
 }
 }
-namespace Lister {
+namespace Listi {
 Result RunVirtual(const Job &, const Hooks &);
 Result Run(const Job &, const Hooks &) { throw std::runtime_error("Unexpected local dispatch"); }
 std::vector<FileEntry> ListArchive(const Location &, const TransferControl &) {
@@ -84,7 +84,7 @@ void ChangeNetwork(const Location &l, const char *action,
 }
 }
 int main() {
-  using namespace Lister;
+  using namespace Listi;
   char pattern[] = "/tmp/listi-faults-XXXXXX";
   char *dir = mkdtemp(pattern);
   if (!dir) return 1;

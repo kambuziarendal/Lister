@@ -2,7 +2,7 @@
 #pragma once
 #include "FileOperation.h"
 #include <Message.h>
-namespace Lister {
+namespace Listi {
 // Freeze local entry identities before a question or queue delay. Remote
 // providers retain their own capability/metadata checks, not local inode claims.
 void FreezeLocalJob(Job &, const std::string &destinationFolder = "");

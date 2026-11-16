@@ -35,9 +35,9 @@ BTextView *Text(const char *name, float height) {
 }
 struct Row : BRow {
   size_t index;
-  Row(const Lister::CompareEntry &e, size_t i) : index(i) {
+  Row(const Listi::CompareEntry &e, size_t i) : index(i) {
     SetField(new BStringField(e.relative.c_str()), 0);
-    SetField(new BStringField(Lister::CompareLabel(e.state)), 1);
+    SetField(new BStringField(Listi::CompareLabel(e.state)), 1);
     SetField(new BStringField(
                  e.leftBytes < 0 ? "" : std::to_string(e.leftBytes).c_str()),
              2);
@@ -50,7 +50,7 @@ struct WorkState {
   std::atomic<bool> cancel{false};
   std::atomic<uint64_t> bytes{0};
   std::mutex mutex;
-  Lister::CompareResult result;
+  Listi::CompareResult result;
 };
 class CompareWindow : public BWindow {
   BTextControl *left, *right;
@@ -61,7 +61,7 @@ class CompareWindow : public BWindow {
   std::unique_ptr<BFilePanel> picker;
   std::unique_ptr<BMessageRunner> timer;
   std::shared_ptr<WorkState> work;
-  Lister::CompareResult result;
+  Listi::CompareResult result;
   bool busy = false, closing = false, haveResults = false;
   std::string heading;
   void Controls() {
@@ -78,7 +78,7 @@ class CompareWindow : public BWindow {
     size_t displayed = 0, wanted = 0;
     for (size_t i = 0; i < result.entries.size(); ++i) {
       auto &e = result.entries[i];
-      if (!matches->Value() && Lister::CompareMatch(e.state))
+      if (!matches->Value() && Listi::CompareMatch(e.state))
         continue;
       ++wanted;
       if (displayed < 5000) {
@@ -117,17 +117,17 @@ class CompareWindow : public BWindow {
     detail->SetText("");
     busy = true;
     Controls();
-    Lister::CompareRequest request{left->Text(), right->Text(), checksum};
+    Listi::CompareRequest request{left->Text(), right->Text(), checksum};
     heading = checksum ? "SHA-256 comparison. " : "Quick size comparison. ";
     summary->SetText((heading + "Reading folders recursively...").c_str());
     work = std::make_shared<WorkState>();
     auto state = work;
     BMessenger target(this);
     std::thread([state, target, request] {
-      Lister::TransferControl control;
+      Listi::TransferControl control;
       control.proceed = [state] { return !state->cancel.load(); };
       control.progress = [state](uint64_t n) { state->bytes += n; };
-      auto result = Lister::CompareFolders(request, control);
+      auto result = Listi::CompareFolders(request, control);
       {
         std::lock_guard<std::mutex> lock(state->mutex);
         state->result = std::move(result);

@@ -7,7 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 int main(){
- BApplication app("application/x-vnd.Listi-compare-network");using namespace Lister;
+ BApplication app("application/x-vnd.Listi-compare-network");using namespace Listi;
  char pattern[]="/tmp/Listi-compare-network-XXXXXX";auto made=mkdtemp(pattern);if(!made)return 2;std::string local=made;
  mkdir((local+"/folder").c_str(),0700);
  std::ofstream(local+"/hello world.txt")<<"Listi network fixture\n";std::ofstream(local+"/Årsrapport.txt")<<"UTF-8 test\n";std::ofstream(local+"/folder/nested.txt")<<"nested\n";

@@ -57,7 +57,7 @@ bool InlineAction::Ask(const char *text, const char *button,
     AddChild(name);
     name->SetTarget(this);
     name->TextView()->AddFilter(
-        new Lister::ExplicitSubmit(BMessenger(this), Event(kAccept)));
+        new Listi::ExplicitSubmit(BMessenger(this), Event(kAccept)));
   }
   if (name && result.HasString("newEntryIn")) {
     nameHint = new BStringView("name hint", "Choose an unused name. Existing entries are never replaced.");
@@ -109,7 +109,7 @@ void InlineAction::MessageReceived(BMessage *message) {
     if (name) {
       std::string value = name->Text();
       if (nameHint) {
-        try { Lister::ValidateNewEntryName(result.GetString("newEntryIn", ""), value); }
+        try { Listi::ValidateNewEntryName(result.GetString("newEntryIn", ""), value); }
         catch (const std::exception &e) {
           nameHint->SetText(e.what());
           nameHint->SetToolTip(e.what());

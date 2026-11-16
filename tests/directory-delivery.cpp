@@ -15,7 +15,7 @@
 #include <set>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 namespace {
 std::atomic<int> rowFailures{0}, doneFailures{0};
 std::atomic<int> rowAttempts{0}, doneAttempts{0};

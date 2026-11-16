@@ -13,7 +13,7 @@
 #include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 namespace {
 int checks = 0, failures = 0, serial = 0;
 std::string root;

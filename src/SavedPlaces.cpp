@@ -4,7 +4,7 @@
 #include "VirtualFile.h"
 #include <algorithm>
 #include <stdexcept>
-namespace Lister {
+namespace Listi {
 namespace {
 std::string Address(const std::string &path) {
   if (path.empty() || path.size() > 8192 || path.find('\0') != std::string::npos)
@@ -88,4 +88,4 @@ void SavedPlaces::Save(const std::string &file) const {
   FromMessage(message);
   SaveMessageStore(file, message);
 }
-} // namespace Lister
+} // namespace Listi

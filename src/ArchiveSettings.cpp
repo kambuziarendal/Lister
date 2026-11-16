@@ -2,7 +2,7 @@
 #include "ArchiveSettings.h"
 #include "MessageStore.h"
 #include <stdexcept>
-namespace Lister {
+namespace Listi {
 BMessage LoadArchiveSettings(const std::string &path) {
   auto settings=LoadMessageStore(path);
   if(settings.what=='none') {settings.what='arpf';settings.AddInt32("version",1);}

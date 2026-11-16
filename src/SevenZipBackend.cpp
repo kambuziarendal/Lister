@@ -21,7 +21,7 @@
 #include <set>
 #include <sys/stat.h>
 #include <unistd.h>
-namespace Lister {
+namespace Listi {
 namespace {
 void Require(bool value, const char *error) {
   if (!value)
@@ -1189,4 +1189,4 @@ void SevenZipRead(const Location &location, const DataSink &sink,
     return;
   }
 }
-} // namespace Lister
+} // namespace Listi

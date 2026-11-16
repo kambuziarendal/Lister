@@ -24,8 +24,8 @@ int main() {
   check(file.WriteAttr("Listi:number",B_INT32_TYPE,0,&number,sizeof(number))==sizeof(number),"native fixture has typed integer file attribute");
   check(folder.WriteAttr("Listi:label",B_STRING_TYPE,0,label,sizeof(label))==sizeof(label),"native fixture has string folder attribute");
   std::string large(150000,'x');file.WriteAttr("Listi:large",B_RAW_TYPE,0,large.data(),large.size());
-  Lister::Job job;job.sources={source};job.destination=dest;
-  auto result=Lister::Run(job,{});
+  Listi::Job job;job.sources={source};job.destination=dest;
+  auto result=Listi::Run(job,{});
   check(result.errors.empty(),"copy completes without metadata error");
   BNode copiedFile((dest+"/source/file").c_str()),copiedFolder((dest+"/source").c_str());
   int32 copiedNumber=0;char copiedLabel[sizeof(label)]={};
@@ -33,8 +33,8 @@ int main() {
   check(copiedFolder.GetAttrInfo("Listi:label",&info)==B_OK && info.type==B_STRING_TYPE && copiedFolder.ReadAttr("Listi:label",B_STRING_TYPE,0,copiedLabel,sizeof(copiedLabel))==sizeof(copiedLabel) && std::string(copiedLabel)==label,"folder attribute type and value preserved");
   std::string actual(large.size(),' ');
   check(copiedFile.ReadAttr("Listi:large",B_RAW_TYPE,0,actual.data(),actual.size())==ssize_t(actual.size()) && actual==large,"multi-chunk attribute preserved");
-  Lister::Job cleanup;cleanup.action=Lister::Action::Delete;cleanup.sources={base};
-  auto removed=Lister::Run(cleanup,{});
+  Listi::Job cleanup;cleanup.action=Listi::Action::Delete;cleanup.sources={base};
+  auto removed=Listi::Run(cleanup,{});
   check(removed.errors.empty(),"owned fixture cleaned");
   std::cout<<checks<<" attribute checks, "<<failures<<" failures\n";
   return failures?1:0;

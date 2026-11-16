@@ -11,7 +11,7 @@
 #include <limits.h>
 #include <stdexcept>
 #include <sys/stat.h>
-namespace Lister {
+namespace Listi {
 namespace {
 std::string Folder(const std::string &path) {
   char resolved[PATH_MAX];

@@ -4,7 +4,7 @@
 #include <set>
 #include <sys/stat.h>
 
-namespace Lister {
+namespace Listi {
 // Frozen ordinary-file trees used only by verified archive/local moves.
 // Removal visits the recorded names, never newly discovered children.
 class LocalMoveTree {
@@ -23,4 +23,4 @@ private:
   void Capture(const std::string &, dev_t, const Hooks &, unsigned);
   void GuardParents() const;
 };
-} // namespace Lister
+} // namespace Listi

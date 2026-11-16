@@ -21,7 +21,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace Lister {
+namespace Listi {
 bool IsVirtual(const std::string &);
 Result RunVirtual(const Job &, const Hooks &);
 
@@ -313,7 +313,7 @@ struct Runner {
     if (!Allow(dst))
       return false;
     Guard();
-    std::string pattern = dst + ".lister-XXXXXX";
+    std::string pattern = dst + ".listi-XXXXXX";
     std::vector<char> name(pattern.begin(), pattern.end());
     name.push_back(0);
     FD out(mkstemp(name.data()));
@@ -561,4 +561,4 @@ Result Run(const Job &j, const Hooks &h) {
   }
   return r.result;
 }
-} // namespace Lister
+} // namespace Listi

@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace Lister {
+namespace Listi {
 struct ClipboardItem {
   entry_ref ref;
   NodeIdentity node;
@@ -30,4 +30,4 @@ ClipboardPaste PrepareFilePaste(const std::string &destination,
 // Consume only successfully moved roots, and never a newer clipboard selection.
 void FinishFilePaste(const ClipboardPaste &, const std::vector<std::string> &moved,
                      BClipboard *clipboard = be_clipboard);
-} // namespace Lister
+} // namespace Listi

@@ -14,7 +14,7 @@
 #include <set>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 std::atomic<int> failedWakes{0};
 extern "C" status_t __real__ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl(const BMessenger*,BMessage*,BHandler*,bigtime_t);
 extern "C" status_t __wrap__ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl(const BMessenger* self,BMessage* m,BHandler* reply,bigtime_t timeout){

@@ -29,7 +29,7 @@ public:
   void MessageReceived(BMessage *) override;
   void Navigate(const char *path);
   void Reload();
-  void SetPlaces(const Lister::SavedPlaces &, bool writable);
+  void SetPlaces(const Listi::SavedPlaces &, bool writable);
   void SetSource(bool);
   void Apply(const Preferences &);
   void SetWorkspace(Workspace);
@@ -43,7 +43,7 @@ public:
   void ToggleTreeFocus();
   void FocusFilter();
   void Activate();
-  bool IsSimple() const { return simple; }
+  bool IsEinn() const { return einn; }
   bool IsSinglePane() const { return prefs.SinglePane(); }
   bool IsScanning() const { return scanning; }
   void SendSelection(bool gesture = false);
@@ -67,7 +67,7 @@ private:
   FileDetails *list;
   FileGrid *grid;
   FolderTree *tree;
-  bool treeVisible = true, simple = false;
+  bool treeVisible = true, einn = false;
   BCardView *cards;
   BGroupView *header, *filterRow;
   BSplitView *content;
@@ -78,12 +78,12 @@ private:
   void SetDisplayMode(int32);
   void PublishDisplay(bool folder = false, bool forget = false);
   BMenu *placesMenu;
-  Lister::SavedPlaces places;
+  Listi::SavedPlaces places;
   bool placesWritable = true, locationValid = false;
   void UpdatePlaces();
   BTextControl *edit;
   BButton *back, *forward;
-  Lister::NavigationHistory history;
+  Listi::NavigationHistory history;
   void StartNavigation(const std::string &, int target = -1, bool trash = false);
   void UpdateNavigation();
   BTextControl *filter;
@@ -113,7 +113,7 @@ private:
   int64 serial = 0;
   bool scanning = false, refreshPending = false;
   std::vector<std::string> savedSelection;
-  Lister::SearchHit reveal;
+  Listi::SearchHit reveal;
   void ApplyFilter();
   void ClearRows();
 };

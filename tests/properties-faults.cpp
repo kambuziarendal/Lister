@@ -7,7 +7,7 @@
 #include <iostream>
 #include <cstring>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 static int fault=0,passed=0;
 extern "C" ssize_t RealWrite(BNode*,const char*,type_code,off_t,const void*,size_t) asm("__real__ZN5BNode9WriteAttrEPKcjlPKvm");
 extern "C" ssize_t WrappedWrite(BNode*,const char*,type_code,off_t,const void*,size_t) asm("__wrap__ZN5BNode9WriteAttrEPKcjlPKvm");

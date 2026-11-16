@@ -3,7 +3,7 @@
 #include "FileOperation.h"
 #include <string>
 #include <vector>
-namespace Lister {
+namespace Listi {
 struct ArchiveFormat {
   std::string id, label, extension;
   bool compression;

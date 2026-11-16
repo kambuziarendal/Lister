@@ -11,7 +11,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
-using namespace Lister;
+using namespace Listi;
 class Receiver : public BLooper {
 public:
   sem_id ready = create_sem(0, "search result");

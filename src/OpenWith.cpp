@@ -9,7 +9,7 @@
 #include <cstring>
 #include <set>
 #include <stdexcept>
-namespace Lister {
+namespace Listi {
 namespace {
 void Require(status_t status, const char *context) {
   if (status != B_OK)

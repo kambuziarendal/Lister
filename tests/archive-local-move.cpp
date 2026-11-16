@@ -15,7 +15,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <pthread.h>
-using namespace Lister;
+using namespace Listi;
 namespace {
 int checks=0, failures=0;
 void check(bool ok,const std::string &label){++checks;failures+=!ok;std::cout<<(ok?"PASS ":"FAIL ")<<label<<std::endl;}

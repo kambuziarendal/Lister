@@ -36,7 +36,7 @@ int main() {
     window->AddChild(new Pane(0,Preferences{}));
     window->AddChild(new ImagePreview());
     window->Show();
-    BMessenger search=OpenFileSearch(BMessenger(window),0,"/tmp",Lister::SavedSearches().Message());
+    BMessenger search=OpenFileSearch(BMessenger(window),0,"/tmp",Listi::SavedSearches().Message());
     thread_id reader=find_thread(name);
     check(reader>=0,std::string(name)+" created by real view");
     if(reader<0)return 2;

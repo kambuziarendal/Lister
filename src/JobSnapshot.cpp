@@ -2,7 +2,7 @@
 #include "JobSnapshot.h"
 #include "VirtualFile.h"
 #include <sys/stat.h>
-namespace Lister {
+namespace Listi {
 void FreezeLocalJob(Job &job, const std::string &folder) {
   for (const auto &path : job.sources) {
     if (IsVirtual(path)) continue;

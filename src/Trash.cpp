@@ -12,7 +12,7 @@
 #include <stdexcept>
 #include <sys/stat.h>
 
-namespace Lister {
+namespace Listi {
 namespace {
 // Tracker's on-disk restoration attribute, not a private API dependency.
 const char *kOriginalPath = "_trk/original_path";
@@ -111,4 +111,4 @@ std::string RestoreFromTrash(const std::string &path) {
           target + " (restored, but could not clear Trash metadata)");
   return EntryPath(entry);
 }
-} // namespace Lister
+} // namespace Listi

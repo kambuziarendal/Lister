@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace Lister {
+namespace Listi {
 enum class Action { Copy, Move, Delete, Trash, Restore, MakeDirectory, Rename, Duplicate, Link, CreateArchive, ExtractArchive, EditArchive, MoveArchive };
 enum class Decision { Replace, ReplaceAll, Skip, SkipAll, Abort };
 struct NodeIdentity {
@@ -60,4 +60,4 @@ Result Run(const Job &, const Hooks &);
 std::string Join(const std::string &, const std::string &);
 std::string Leaf(const std::string &);
 int SelfTest();
-} // namespace Lister
+} // namespace Listi

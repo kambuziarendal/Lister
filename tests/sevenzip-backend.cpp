@@ -7,7 +7,7 @@
 #include <fstream>
 #include <pthread.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 namespace {
 int checks = 0;
 void check(bool ok, const char *name) {

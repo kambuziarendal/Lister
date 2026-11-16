@@ -18,7 +18,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <pthread.h>
-using namespace Lister;
+using namespace Listi;
 int passed=0;
 void check(bool ok,const std::string &name){if(!ok)throw std::runtime_error("FAIL "+name);std::cout<<"PASS "<<++passed<<" "<<name<<std::endl;}
 void write(const std::string &p,const std::string &s){std::ofstream(p)<<s;}

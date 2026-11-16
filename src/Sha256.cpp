@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
-namespace Lister {
+namespace Listi {
 namespace {
 constexpr uint32_t k[64] = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
@@ -95,4 +95,4 @@ std::string Sha256::Finish() {
       result += hex[(word >> i) & 15];
   return result;
 }
-} // namespace Lister
+} // namespace Listi

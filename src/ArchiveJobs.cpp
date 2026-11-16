@@ -27,7 +27,7 @@
 #include <set>
 #include <fs_attr.h>
 
-namespace Lister {
+namespace Listi {
 namespace {
 void Require(bool ok, const std::string &message) { if (!ok) throw std::runtime_error(message); }
 struct FD { int n; explicit FD(int value):n(value){} ~FD(){if(n>=0)close(n);} };

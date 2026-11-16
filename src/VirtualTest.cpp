@@ -7,7 +7,7 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>
-namespace Lister {
+namespace Listi {
 int VirtualTest(const std::string &fixtures, const std::string &hosts) {
   int checks = 0, failures = 0;
   auto check = [&](bool ok, const std::string &name) {
@@ -278,4 +278,4 @@ int VirtualTest(const std::string &fixtures, const std::string &hosts) {
             << std::endl;
   return failures ? 1 : 0;
 }
-} // namespace Lister
+} // namespace Listi

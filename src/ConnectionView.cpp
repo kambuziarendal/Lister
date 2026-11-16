@@ -76,7 +76,7 @@ public:
         if (auto control = dynamic_cast<BTextControl *>(child)) {
           control->SetTarget(this);
           control->TextView()->AddFilter(
-              new Lister::ExplicitSubmit(BMessenger(this), BMessage(kConnect)));
+              new Listi::ExplicitSubmit(BMessenger(this), BMessage(kConnect)));
         }
         self(self, child);
       }
@@ -102,16 +102,16 @@ public:
       return;
     }
     try {
-      auto location = Lister::ParseLocation(url->Text());
+      auto location = Listi::ParseLocation(url->Text());
       if (location.Local() || location.Archive())
         throw std::runtime_error("Enter an SMB, SFTP, FTP or FTPS address.");
-      Lister::Connection auth;
+      Listi::Connection auth;
       auth.username = user->Text();
       auth.password = password->Text();
       auth.domain = domain->Text();
       auth.privateKey = key->Text();
       auth.knownHosts = hosts->Text();
-      Lister::SetConnection(location.URL(), auth);
+      Listi::SetConnection(location.URL(), auth);
       BMessage navigate(kNavigate);
       navigate.AddString("path", location.URL().c_str());
       pane.SendMessage(&navigate);

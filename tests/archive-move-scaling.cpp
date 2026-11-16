@@ -10,7 +10,7 @@
 #include <sstream>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 static uint64 calls=0;static bool counting=false;
 extern "C" int __real_lstat(const char*,struct stat*);
 extern "C" int __wrap_lstat(const char* p,struct stat* st){if(counting)++calls;return __real_lstat(p,st);}

@@ -13,7 +13,7 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 namespace {
 void writeFile(const std::string &p,const std::string &s){std::ofstream(p)<<s;}
 std::string readFile(const std::string &p){std::ifstream f(p);return {std::istreambuf_iterator<char>(f),{}};}

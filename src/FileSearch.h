@@ -5,7 +5,7 @@
 #include <functional>
 #include <string>
 class BQuery;
-namespace Lister {
+namespace Listi {
 struct SearchRequest {
   std::string root, expression;
   bool predicate = false, includeTrash = false;
@@ -26,4 +26,4 @@ struct SearchSummary {
 SearchSummary SearchFiles(const SearchRequest &, const std::function<bool()> &proceed,
                           const std::function<bool(const SearchHit &)> &deliver, BQuery *liveQuery = nullptr);
 bool SameSearchEntry(const SearchHit &);
-} // namespace Lister
+} // namespace Listi

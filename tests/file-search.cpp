@@ -12,7 +12,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
-using namespace Lister;
+using namespace Listi;
 int main() {
   BApplication app("application/x-vnd.Kambuzi-Listi-SearchTest");
   int checks = 0, failed = 0;

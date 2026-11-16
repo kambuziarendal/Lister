@@ -8,7 +8,7 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 int main(){
  char pattern[]="/tmp/Listi-ambiguous-XXXXXX";char *made=mkdtemp(pattern);if(!made)return 2;std::string root=made;
  int checks=0,failures=0;auto check=[&](bool ok,const std::string&name){++checks;failures+=!ok;std::cout<<(ok?"PASS ":"FAIL ")<<name<<std::endl;};

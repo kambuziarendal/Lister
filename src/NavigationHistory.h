@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace Lister {
+namespace Listi {
 // Only the latest successful scan may commit a visit. Addresses are normalized
 // by the caller, with authentication kept separately in the connection store.
 class NavigationHistory {
@@ -53,4 +53,4 @@ private:
   int64_t pending = 0;
   bool waiting = false, detached = false;
 };
-} // namespace Lister
+} // namespace Listi

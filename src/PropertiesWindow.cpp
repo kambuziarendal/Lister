@@ -20,7 +20,7 @@
 #include <functional>
 #include <sstream>
 namespace {
-using namespace Lister;
+using namespace Listi;
 constexpr uint32 kRefresh='prrf',kEdit='pred',kNew='prnw',kSave='prsv',kRemove='prrm',kDiscard='prdc',kPermissions='prpm',kFinished='prdn',kCanQuit='prcq';
 std::mutex windowsMutex;
 std::vector<BMessenger> propertyWindows;

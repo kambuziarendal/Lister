@@ -2,7 +2,7 @@
 #pragma once
 #include <Message.h>
 #include <string>
-namespace Lister {
+namespace Listi {
 BMessage LoadArchiveSettings(const std::string &path);
 void SaveArchiveSettings(const std::string &path,const BMessage &settings);
 }

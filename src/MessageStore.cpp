@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
-namespace Lister {
+namespace Listi {
 namespace {
 constexpr size_t MaxFile = 1024 * 1024;
 void Fail() { throw std::runtime_error(strerror(errno)); }
@@ -68,4 +68,4 @@ void SaveMessageStore(const std::string &file, const BMessage &message) {
     throw;
   }
 }
-} // namespace Lister
+} // namespace Listi

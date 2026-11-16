@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
-namespace Lister {
+namespace Listi {
 struct ArchiveVolume {
   std::string path, identity;
   int64_t size = 0;
@@ -18,4 +18,4 @@ struct ArchiveVolumes {
 // path can expand this captured set. Missing middle/first parts fail here;
 // the native reader must additionally verify that the last part is complete.
 ArchiveVolumes FindArchiveVolumes(const std::string &path);
-} // namespace Lister
+} // namespace Listi

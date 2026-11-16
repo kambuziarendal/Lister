@@ -61,13 +61,13 @@ void Launch(const std::string &path, const std::string &editor) {
 }
 struct Delivery {
   std::mutex mutex;
-  std::shared_ptr<Lister::ArchiveEditSession> session;
+  std::shared_ptr<Listi::ArchiveEditSession> session;
   std::string error, status;
   std::atomic<bool> cancel{false};
 };
 class EditorWindow : public BWindow {
   std::shared_ptr<Delivery> delivery = std::make_shared<Delivery>();
-  std::shared_ptr<Lister::ArchiveEditSession> session;
+  std::shared_ptr<Listi::ArchiveEditSession> session;
   std::unique_ptr<BMessageRunner> timer;
   BStringView *status, *copy;
   BButton *open, *save, *folder, *cancel, *restart;
@@ -85,7 +85,7 @@ class EditorWindow : public BWindow {
     restart->SetEnabled(!busy && bool(session));
   }
   void Work(uint32 done,
-            std::function<void(Delivery &, const Lister::Hooks &)> action) {
+            std::function<void(Delivery &, const Listi::Hooks &)> action) {
     busy = true;
     delivery->cancel = false;
     Controls();
@@ -96,11 +96,11 @@ class EditorWindow : public BWindow {
         std::lock_guard<std::mutex> lock(state->mutex);
         state->error.clear();
         state->status.clear();
-        Lister::Hooks hooks;
+        Listi::Hooks hooks;
         hooks.proceed = [state] { return !state->cancel.load(); };
         try {
           action(*state, hooks);
-        } catch (const Lister::Cancelled &) {
+        } catch (const Listi::Cancelled &) {
           state->error = "Save cancelled. Working copy kept; any completed "
                          "archive save remains in place.";
         } catch (const std::exception &e) {
@@ -183,7 +183,7 @@ public:
     if (m->what == kBegin) {
       std::string member = m->GetString("member", ""), application = editor;
       Work(kLoaded, [member, application](auto &d, const auto &hooks) {
-        d.session = Lister::ArchiveEditSession::Open(member, Root(), hooks);
+        d.session = Listi::ArchiveEditSession::Open(member, Root(), hooks);
         Launch(d.session->WorkingFile(), application);
         d.status = "Editor opened. Saved changes will be written back automatically.";
       });
@@ -237,7 +237,7 @@ public:
       if (!busy && session) {
         entry_ref ref;
         if (get_ref_for_path(
-                Lister::ParentLocation(session->WorkingFile()).c_str(), &ref) ==
+                Listi::ParentLocation(session->WorkingFile()).c_str(), &ref) ==
             B_OK)
           be_roster->Launch(&ref);
       }
@@ -252,7 +252,7 @@ public:
         Status("Saving working copy to archive...");
       }
       Work(kDone, [this, manual](auto &d, const auto &hooks) {
-        if (manual || session->Observe() == Lister::ArchiveEditSession::Changed)
+        if (manual || session->Observe() == Listi::ArchiveEditSession::Changed)
           d.status =
               session->Save(hooks)
                   ? "Saved to archive. Working copy retained."
@@ -286,8 +286,8 @@ public:
   }
 };
 struct EditRow : BRow {
-  Lister::ArchiveEditRecord record;
-  explicit EditRow(const Lister::ArchiveEditRecord &r) : record(r) {
+  Listi::ArchiveEditRecord record;
+  explicit EditRow(const Listi::ArchiveEditRecord &r) : record(r) {
     SetField(new BStringField(r.member.c_str()), 0);
   }
 };
@@ -299,7 +299,7 @@ class RecoveryWindow : public BWindow {
   bool busy = true;
   struct Records {
     std::mutex mutex;
-    std::vector<Lister::ArchiveEditRecord> values;
+    std::vector<Listi::ArchiveEditRecord> values;
     std::string error;
   };
   std::shared_ptr<Records> records = std::make_shared<Records>();
@@ -339,7 +339,7 @@ public:
       {
         std::lock_guard<std::mutex> lock(state->mutex);
         try {
-          state->values = Lister::ListArchiveEdits(Root());
+          state->values = Listi::ListArchiveEdits(Root());
         } catch (const std::exception &e) {
           state->error = e.what();
         }

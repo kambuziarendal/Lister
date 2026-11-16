@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 rgb_color Preferences::Color(const BString &text) const {
   unsigned int r, g, b;
   if (text.Length() == 7 &&
@@ -19,17 +20,27 @@ rgb_color Preferences::Color(const BString &text) const {
   return ui_color(B_PANEL_TEXT_COLOR);
 }
 void Preferences::Load(const BMessage &m) {
-  const int32 stored = m.GetInt32("workspace", m.GetBool("simpleWorkspace", false) ? 1 : 0);
-  workspace = stored >= 0 && stored <= 3 ? static_cast<Workspace>(stored) : Workspace::Commander;
+  // Legacy numeric values remain authoritative when present: an older app may
+  // have changed them since our last save. New-only settings use ASCII IDs.
+  int32 stored;
+  if (m.FindInt32("workspace", &stored) == B_OK) {
+    workspace = stored >= 0 && stored <= 3 ? static_cast<Workspace>(stored) : Workspace::tviskipt;
+  } else if (m.HasString("workspaceId")) {
+    workspace = Workspace::tviskipt;
+    for (auto value : {Workspace::tviskipt, Workspace::einn, Workspace::askr, Workspace::smidja})
+      if (!strcmp(m.GetString("workspaceId", ""), WorkspaceId(value))) workspace = value;
+  } else {
+    workspace = m.GetBool("simpleWorkspace", false) ? Workspace::einn : Workspace::tviskipt;
+  }
   singlePane = m.GetInt32("singlePane", 0) == 1 ? 1 : 0;
   paneMode[0] = std::max(0, std::min(3, m.GetInt32("leftMode", 0)));
   paneMode[1] = std::max(0, std::min(3, m.GetInt32("rightMode", 0)));
   paneTree[0] = m.GetBool("leftTree", false);
   paneTree[1] = m.GetBool("rightTree", false);
-  workbenchTree[0] = m.GetBool("workbenchLeftTree", true);
-  workbenchTree[1] = m.GetBool("workbenchRightTree", true);
+  smidjaTree[0] = m.GetBool("workbenchLeftTree", m.GetBool("smidjaLeftTree", true));
+  smidjaTree[1] = m.GetBool("workbenchRightTree", m.GetBool("smidjaRightTree", true));
   preview = m.GetBool("preview", false);
-  workbenchPreview = m.GetBool("workbenchPreview", true);
+  smidjaPreview = m.GetBool("workbenchPreview", m.GetBool("smidjaPreview", true));
   folderModes.clear();
   BMessage folder;
   for (int32 i = 0; i < 4096 && m.FindMessage("folderView", i, &folder) == B_OK;
@@ -63,18 +74,20 @@ void Preferences::ApplyDialog(const BMessage &message) {
   for (int i = 0; i < 2; ++i) {
     updated.paneMode[i] = paneMode[i];
     updated.paneTree[i] = paneTree[i];
-    updated.workbenchTree[i] = workbenchTree[i];
+    updated.smidjaTree[i] = smidjaTree[i];
   }
   updated.workspace = workspace;
   updated.singlePane = singlePane;
   updated.preview = preview;
-  updated.workbenchPreview = workbenchPreview;
+  updated.smidjaPreview = smidjaPreview;
   updated.folderModes = folderModes;
   *this = updated;
 }
 BMessage Preferences::Save() const {
   BMessage m;
-  // Older versions open single-pane workspaces as Simple, never a hidden target.
+  // Compatibility aliases support upgrades and rollback without a migration.
+  // The pre-enum single-pane fallback must never reveal a hidden target.
+  m.AddString("workspaceId", WorkspaceId(workspace));
   m.AddBool("simpleWorkspace", SinglePane());
   m.AddInt32("workspace", static_cast<int32>(workspace));
   m.AddInt32("singlePane", singlePane);
@@ -82,10 +95,13 @@ BMessage Preferences::Save() const {
   m.AddInt32("rightMode", paneMode[1]);
   m.AddBool("leftTree", paneTree[0]);
   m.AddBool("rightTree", paneTree[1]);
-  m.AddBool("workbenchLeftTree", workbenchTree[0]);
-  m.AddBool("workbenchRightTree", workbenchTree[1]);
+  m.AddBool("smidjaLeftTree", smidjaTree[0]);
+  m.AddBool("smidjaRightTree", smidjaTree[1]);
+  m.AddBool("smidjaPreview", smidjaPreview);
+  m.AddBool("workbenchLeftTree", smidjaTree[0]);
+  m.AddBool("workbenchRightTree", smidjaTree[1]);
   m.AddBool("preview", preview);
-  m.AddBool("workbenchPreview", workbenchPreview);
+  m.AddBool("workbenchPreview", smidjaPreview);
   for (auto &entry : folderModes) {
     BMessage folder;
     folder.AddString("path", entry.first.c_str());

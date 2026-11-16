@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 namespace {
 int checks = 0;
 void Check(bool ok, const char *label) {

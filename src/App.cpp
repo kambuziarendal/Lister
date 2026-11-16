@@ -87,7 +87,7 @@ public:
     if (m->what == kSaveSearches) {
       BMessage reply(kSearchesSaved);
       reply.AddInt64("revision", m->GetInt64("revision", -1));
-      try { Lister::SavedSearches::FromMessage(*m).Save(SettingsPath("Lister_searches").String()); }
+      try { Listi::SavedSearches::FromMessage(*m).Save(SettingsPath("Lister_searches").String()); }
       catch (const std::exception &e) {
         std::string error = "Could not save search criteria. The previous list is unchanged. ";
         error += e.what(); reply.AddString("error", error.c_str());
@@ -98,7 +98,7 @@ public:
       BMessage reply(kPlacesSaved);
       reply.AddInt64("serial", m->GetInt64("serial", -1));
       try {
-        Lister::SavedPlaces::FromMessage(*m).Save(SettingsPath("Lister_places").String());
+        Listi::SavedPlaces::FromMessage(*m).Save(SettingsPath("Lister_places").String());
       } catch (const std::exception &e) {
         std::string error = "Could not save places. The previous list is unchanged. ";
         error += e.what();
@@ -108,7 +108,7 @@ public:
       return;
     }
     if (m->what == kSavePreferences) {
-      try { Lister::SaveMessageStore(SettingsPath().String(), *m); }
+      try { Listi::SaveMessageStore(SettingsPath().String(), *m); }
       catch (const std::exception &e) {
         BMessage error(kServiceError);
         error.AddString("error", (std::string("Could not save preferences: ") + e.what()).c_str());
@@ -126,7 +126,7 @@ public:
       BMessenger pane;
       m->FindMessenger("pane", &pane);
       if (mode == "open") {
-        auto archive = Lister::OpenArchive(path.String());
+        auto archive = Listi::OpenArchive(path.String());
         if (!archive.empty() && pane.IsValid()) {
           BMessage navigate(kNavigate);
           navigate.AddString("path", archive.c_str());
@@ -140,7 +140,7 @@ public:
         struct PreviewFull {};
         bool truncated = false;
         try {
-          Lister::ReadFile(path.String(), [&](const char *p, size_t n) {
+          Listi::ReadFile(path.String(), [&](const char *p, size_t n) {
             size_t available = 1024 * 1024 - text.size();
             text.append(p, std::min(n, available));
             if (n > available) throw PreviewFull();
@@ -155,7 +155,7 @@ public:
         app.SendMessage(&done);
         return;
       }
-      if (Lister::IsVirtual(path.String()))
+      if (Listi::IsVirtual(path.String()))
         throw std::runtime_error("Copy this entry locally before editing or opening it with an application. Remote edits are not uploaded automatically.");
       status_t s = B_OK;
       if (mode == "terminal" || mode == "command") {
@@ -193,7 +193,7 @@ public:
         error.AddString("error", text);
         app.SendMessage(&error);
       }
-    } catch (const Lister::Cancelled &) {
+    } catch (const Listi::Cancelled &) {
       return;
     } catch (const std::exception &e) {
       BMessage error(kServiceError);
@@ -300,7 +300,7 @@ public:
 class MainWindow : public BWindow {
   Preferences prefs;
   BMessenger searchWindow;
-  Lister::SavedSearches searches, pendingSearches;
+  Listi::SavedSearches searches, pendingSearches;
   bool searchesWritable = true, searchesSaving = false;
   int64 searchesRevision = 0;
   std::string pendingSearchName;
@@ -310,7 +310,7 @@ class MainWindow : public BWindow {
     message.AddBool("writable", searchesWritable); message.AddBool("saving", searchesSaving);
     return message;
   }
-  Lister::SavedPlaces places, pendingPlaces;
+  Listi::SavedPlaces places, pendingPlaces;
   bool placesWritable = true, placesSaving = false;
   int64 placesSerial = 0;
   void PublishPlaces() {
@@ -318,8 +318,8 @@ class MainWindow : public BWindow {
   }
   Pane *panes[2];
   ImagePreview *preview;
-  BMenuItem *previewMenu, *simpleMenu, *explorerMenu, *commanderMenu,
-      *workbenchMenu;
+  BMenuItem *previewMenu, *einnMenu, *askrMenu, *tviskiptMenu,
+      *smidjaMenu;
   BMenuBar *menu;
   BSplitView *split;
   BGroupView *footer;
@@ -344,7 +344,7 @@ class MainWindow : public BWindow {
     pendingNamedEntry = {};
     pendingArchiveEdit = {};
     if (archiveClipboardPending) {
-      try { Lister::FinishFilePaste(clipboardPaste, {}); }
+      try { Listi::FinishFilePaste(clipboardPaste, {}); }
       catch (const std::exception &e) { Notice(e.what()); }
       clipboardPaste = {}; archiveClipboardPending = false;
     }
@@ -360,8 +360,8 @@ class MainWindow : public BWindow {
   }
   int source = 0;
   int64 clipboardSerial = 0;
-  Lister::Job pendingDrop, pendingNamedEntry;
-  Lister::Job pendingArchiveEdit;
+  Listi::Job pendingDrop, pendingNamedEntry;
+  Listi::Job pendingArchiveEdit;
   std::unique_ptr<BFilePanel> archiveAddPicker;
   std::string archiveAddTarget, archiveAddFolder;
   BMessenger archiveWindow;
@@ -369,28 +369,28 @@ class MainWindow : public BWindow {
     if(actionArea->Pending()){queue->ErrorInfo("Finish or cancel the open question first.");return;}
     if(archiveWindow.IsValid()){archiveWindow.SendMessage('arav');return;}
     try {
-      auto job=Lister::PrepareArchiveJob(extract,panes[source]->Selected());
+      auto job=Listi::PrepareArchiveJob(extract,panes[source]->Selected());
       std::string folder=panes[prefs.SinglePane()?source:1-source]->Path();
-      if(folder=="@disks" || Lister::IsVirtual(folder)) {
-        auto loc=Lister::ParseLocation(job.sources[0]);
-        folder=Lister::ParentLocation(loc.Archive()?loc.archive:job.sources[0]);
+      if(folder=="@disks" || Listi::IsVirtual(folder)) {
+        auto loc=Listi::ParseLocation(job.sources[0]);
+        folder=Listi::ParentLocation(loc.Archive()?loc.archive:job.sources[0]);
       }
       archiveWindow=OpenArchiveWindow(job,folder,BMessenger(this));
     }catch(const std::exception &e){Notice(e.what());}
   }
-  void ConfirmArchiveAddition(const Lister::Job &job) {
+  void ConfirmArchiveAddition(const Listi::Job &job) {
     pendingArchiveEdit = job;
     BString text;
-    if (job.action == Lister::Action::MoveArchive) {
+    if (job.action == Listi::Action::MoveArchive) {
       text << "Move " << int32(job.sources.size()) << " selected entries to:\n"
            << job.destination.c_str();
       const bool sameArchive = !job.sources.empty() &&
-        Lister::ParseLocation(job.sources.front()).archive == Lister::ParseLocation(job.destination).archive;
+        Listi::ParseLocation(job.sources.front()).archive == Listi::ParseLocation(job.destination).archive;
       text << (sameArchive
         ? "\nEntries move within this archive. Existing names are never replaced."
         : "\nSource entries are removed only after the saved destination is verified."
           " If interrupted after copying, both copies may remain. Existing names require a choice.");
-      if (!job.sources.empty() && Lister::ParseLocation(job.sources.front()).Local())
+      if (!job.sources.empty() && Listi::ParseLocation(job.sources.front()).Local())
         text << "\nFiles with links or filesystem attributes must be copied instead, so the original metadata is retained.";
       AskInline(text.String(), "Move entries", BMessage(kArchiveEditAccepted));
       return;
@@ -407,22 +407,22 @@ class MainWindow : public BWindow {
   void AddToArchive() {
     if(actionArea->Pending()){queue->ErrorInfo("Finish or cancel the open question first.");return;}
     try {
-      const auto folder=panes[source]->Path();auto location=Lister::ParseLocation(folder);
+      const auto folder=panes[source]->Path();auto location=Listi::ParseLocation(folder);
       if(location.Archive()){archiveAddTarget=location.archive;archiveAddFolder=location.path;}
       else {
         const auto selected=panes[source]->Selected();
-        if(selected.size()!=1||Lister::IsVirtual(selected[0]))throw std::runtime_error("Select one local writable archive, or open a folder inside it.");
+        if(selected.size()!=1||Listi::IsVirtual(selected[0]))throw std::runtime_error("Select one local writable archive, or open a folder inside it.");
         archiveAddTarget=selected[0];archiveAddFolder="/";
       }
       struct stat st;
       if(lstat(archiveAddTarget.c_str(),&st)||!S_ISREG(st.st_mode))
         throw std::runtime_error("Choose one local writable archive.");
-      pendingArchiveEdit=Lister::PrepareArchiveEditTarget(archiveAddTarget,archiveAddFolder);
+      pendingArchiveEdit=Listi::PrepareArchiveEditTarget(archiveAddTarget,archiveAddFolder);
     } catch(const std::exception &e) {Notice(e.what());return;}
     BMessenger here(this);BMessage chosen(kArchiveAddChosen);
     archiveAddPicker.reset(new BFilePanel(B_OPEN_PANEL,&here,nullptr,
       node_flavor(B_FILE_NODE|B_DIRECTORY_NODE),true,&chosen));
-    archiveAddPicker->SetPanelDirectory(Lister::ParentLocation(archiveAddTarget).c_str());
+    archiveAddPicker->SetPanelDirectory(Listi::ParentLocation(archiveAddTarget).c_str());
     archiveAddPicker->Show();
   }
   void RemoveFromArchive() {
@@ -430,23 +430,23 @@ class MainWindow : public BWindow {
     try {
       const auto selected=panes[source]->Selected();
       if(selected.empty())throw std::runtime_error("Select entries inside one writable archive.");
-      auto location=Lister::ParseLocation(selected[0]);
+      auto location=Listi::ParseLocation(selected[0]);
       if(!location.Archive())throw std::runtime_error("Open an archive and select the entries to remove.");
-      pendingArchiveEdit=Lister::PrepareArchiveEditJob(location.archive,{},selected,location.path);
+      pendingArchiveEdit=Listi::PrepareArchiveEditJob(location.archive,{},selected,location.path);
       BMessage accepted(kArchiveEditAccepted);
       BString text; text << "Remove " << int32(selected.size()) << " selected entries from this archive?\n\n"
         << location.archive.c_str() << "\n\nThe archive is rebuilt safely. The original remains unchanged if the job fails.";
       AskInline(text.String(),"Remove from archive",accepted);
     }catch(const std::exception &e){Notice(e.what());pendingArchiveEdit={};}
   }
-  void NamedEntry(Lister::Action action) {
+  void NamedEntry(Listi::Action action) {
     if (actionArea->Pending()) {
       queue->ErrorInfo("Finish or cancel the open question first.");
       return;
     }
     try {
-      auto job = Lister::PrepareNamedEntry(action, panes[source]->Selected(), panes[prefs.SinglePane() ? source : 1-source]->Path());
-      const bool duplicate = action == Lister::Action::Duplicate;
+      auto job = Listi::PrepareNamedEntry(action, panes[source]->Selected(), panes[prefs.SinglePane() ? source : 1-source]->Path());
+      const bool duplicate = action == Listi::Action::Duplicate;
       std::string text = std::string(duplicate ? "Duplicate: " : "Link to: ") + job.sources[0] +
           "\nIn: " + job.destination;
       if (!duplicate) text += "\nRelative: path from this folder. Absolute: full target path.";
@@ -458,7 +458,7 @@ class MainWindow : public BWindow {
         pendingNamedEntry = job;
     } catch (const std::exception &e) { Notice(e.what()); }
   }
-  Lister::ClipboardPaste clipboardPaste;
+  Listi::ClipboardPaste clipboardPaste;
   bool archiveClipboardPending = false;
   std::set<int64> clipboardJobs;
   std::vector<std::string> clipboardMoved;
@@ -470,7 +470,7 @@ class MainWindow : public BWindow {
     try {
       if (action != kClipboardPaste) {
         auto selected = panes[source]->Selected();
-        Lister::PutFileClipboard(selected, action == kClipboardCut);
+        Listi::PutFileClipboard(selected, action == kClipboardCut);
         BString status;
         status << int32(selected.size()) << (action == kClipboardCut
           ? " marked for moving. Paste in a destination folder."
@@ -482,10 +482,10 @@ class MainWindow : public BWindow {
         queue->ErrorInfo("A clipboard transfer is still running. Let it finish before pasting again.");
         return;
       }
-      clipboardPaste = Lister::PrepareFilePaste(panes[source]->Path());
+      clipboardPaste = Listi::PrepareFilePaste(panes[source]->Path());
       if (clipboardPaste.jobs.size() == 1 &&
-          (clipboardPaste.jobs[0].action == Lister::Action::EditArchive ||
-           clipboardPaste.jobs[0].action == Lister::Action::MoveArchive)) {
+          (clipboardPaste.jobs[0].action == Listi::Action::EditArchive ||
+           clipboardPaste.jobs[0].action == Listi::Action::MoveArchive)) {
         archiveClipboardPending = !clipboardPaste.lease.empty();
         ConfirmArchiveAddition(clipboardPaste.jobs[0]);
         if (!archiveClipboardPending) clipboardPaste = {};
@@ -539,12 +539,12 @@ class MainWindow : public BWindow {
     }
     for (auto action : {kCopy, kMove, kSame, kSwitch})
       if (auto item = menu->FindItem(action)) item->SetEnabled(!prefs.SinglePane());
-    if (auto item = menu->FindItem(kFilter)) item->SetEnabled(!prefs.Simple());
+    if (auto item = menu->FindItem(kFilter)) item->SetEnabled(!prefs.IsEinn());
     queue->SetCompact(prefs.SinglePane());
-    simpleMenu->SetMarked(prefs.Simple());
-    explorerMenu->SetMarked(prefs.workspace == Workspace::Explorer);
-    commanderMenu->SetMarked(prefs.workspace == Workspace::Commander);
-    workbenchMenu->SetMarked(prefs.Workbench());
+    einnMenu->SetMarked(prefs.IsEinn());
+    askrMenu->SetMarked(prefs.workspace == Workspace::askr);
+    tviskiptMenu->SetMarked(prefs.workspace == Workspace::tviskipt);
+    smidjaMenu->SetMarked(prefs.IsSmidja());
     ShowBank(prefs.buttons && !actionArea->Pending());
     const bool showCommand = prefs.command && !prefs.SinglePane();
     if (commandVisible != showCommand) {
@@ -565,108 +565,108 @@ class MainWindow : public BWindow {
     for (auto p : panes) { p->Apply(prefs); p->Reload(); }
     ApplyWorkspace();
   }
-  Lister::Job Snapshot(Lister::Action a) {
-    Lister::Job j;
+  Listi::Job Snapshot(Listi::Action a) {
+    Listi::Job j;
     j.action = a;
     j.sources = panes[source]->Selected();
     j.destination = panes[1 - source]->Path();
     return j;
   }
-  void Operation(Lister::Action a) {
+  void Operation(Listi::Action a) {
     if (actionArea->Pending()) {
       queue->ErrorInfo("Finish or cancel the open question first.");
       return;
     }
-    if (prefs.SinglePane() && (a == Lister::Action::Copy || a == Lister::Action::Move)) {
-      Notice("Use Copy or Cut, then navigate and Paste. Panel transfers need Commander.");
+    if (prefs.SinglePane() && (a == Listi::Action::Copy || a == Listi::Action::Move)) {
+      Notice("Use Copy or Cut, then navigate and Paste. Panel transfers need Tvískipt or Smiðja.");
       return;
     }
     auto job = Snapshot(a);
-    if ((a == Lister::Action::Trash || a == Lister::Action::Delete) &&
-        !job.sources.empty() && Lister::ParseLocation(job.sources.front()).Archive()) {
+    if ((a == Listi::Action::Trash || a == Listi::Action::Delete) &&
+        !job.sources.empty() && Listi::ParseLocation(job.sources.front()).Archive()) {
       RemoveFromArchive();
       return;
     }
-    if (a != Lister::Action::MakeDirectory && job.sources.empty()) {
+    if (a != Listi::Action::MakeDirectory && job.sources.empty()) {
       Notice("Select one or more files in the active panel first.");
       return;
     }
-    if ((a == Lister::Action::Copy || a == Lister::Action::Move) &&
+    if ((a == Listi::Action::Copy || a == Listi::Action::Move) &&
         job.destination == "@disks") {
       Notice("Open a destination folder first.");
       return;
     }
-    if (a == Lister::Action::Rename || a == Lister::Action::MakeDirectory) {
-      if (a == Lister::Action::Rename && job.sources.size() != 1) {
+    if (a == Listi::Action::Rename || a == Listi::Action::MakeDirectory) {
+      if (a == Listi::Action::Rename && job.sources.size() != 1) {
         Notice("Select one entry to rename.");
         return;
       }
       job.destination = panes[source]->Path();
-      if (a == Lister::Action::MakeDirectory) job.sources.clear();
+      if (a == Listi::Action::MakeDirectory) job.sources.clear();
       if (job.destination == "@disks") {
         Notice("Open a folder first.");
         return;
       }
       try {
-        Lister::FreezeLocalJob(job, job.destination);
-        Lister::FreezeArchiveTargets(job);
-        if (Lister::ParseLocation(job.destination).Archive())
-          Lister::PrepareArchiveEditTarget(Lister::ParseLocation(job.destination).archive);
+        Listi::FreezeLocalJob(job, job.destination);
+        Listi::FreezeArchiveTargets(job);
+        if (Listi::ParseLocation(job.destination).Archive())
+          Listi::PrepareArchiveEditTarget(Listi::ParseLocation(job.destination).archive);
       }
       catch (const std::exception &e) { Notice(e.what()); return; }
-      auto message = Lister::EncodeJob(job, kNameAccepted);
+      auto message = Listi::EncodeJob(job, kNameAccepted);
       AskInline(
-          a == Lister::Action::Rename ? "Rename selected entry"
+          a == Listi::Action::Rename ? "Rename selected entry"
                                       : "Create a folder in the active panel",
-          a == Lister::Action::Rename ? "Rename" : "Create folder", message,
-          a == Lister::Action::Rename
-              ? Lister::LocationLeaf(job.sources[0]).c_str()
+          a == Listi::Action::Rename ? "Rename" : "Create folder", message,
+          a == Listi::Action::Rename
+              ? Listi::LocationLeaf(job.sources[0]).c_str()
               : "New folder");
       return;
     }
     try {
-      Lister::FreezeLocalJob(job, (a == Lister::Action::Copy || a == Lister::Action::Move) ? job.destination : "");
-      Lister::FreezeArchiveTargets(job);
+      Listi::FreezeLocalJob(job, (a == Listi::Action::Copy || a == Listi::Action::Move) ? job.destination : "");
+      Listi::FreezeArchiveTargets(job);
     }
     catch (const std::exception &e) { Notice(e.what()); return; }
-    if (a == Lister::Action::Copy || a == Lister::Action::Move) {
-      if (Lister::ParseLocation(job.destination).Archive()) {
-        try { ConfirmArchiveAddition(a == Lister::Action::Move ?
-          Lister::PrepareArchiveMutation(job) : Lister::PrepareArchiveCopy(job)); }
+    if (a == Listi::Action::Copy || a == Listi::Action::Move) {
+      if (Listi::ParseLocation(job.destination).Archive()) {
+        try { ConfirmArchiveAddition(a == Listi::Action::Move ?
+          Listi::PrepareArchiveMutation(job) : Listi::PrepareArchiveCopy(job)); }
         catch (const std::exception &e) { Notice(e.what()); }
         return;
       }
-      if (a == Lister::Action::Move && !job.sources.empty() && Lister::ParseLocation(job.sources.front()).Archive()) {
-        try { ConfirmArchiveAddition(Lister::PrepareArchiveMove(job)); }
+      if (a == Listi::Action::Move && !job.sources.empty() && Listi::ParseLocation(job.sources.front()).Archive()) {
+        try { ConfirmArchiveAddition(Listi::PrepareArchiveMove(job)); }
         catch (const std::exception &e) { Notice(e.what()); }
         return;
       }
       queue->Enqueue(job);
       return;
     }
-    auto m = Lister::EncodeJob(job, kConfirm);
+    auto m = Listi::EncodeJob(job, kConfirm);
     BString text;
-    if (a == Lister::Action::Trash)
+    if (a == Listi::Action::Trash)
       text << "Move " << int32(job.sources.size())
            << " selected entries to this volume's Trash?\n\nYou can restore "
               "them from Trash.\n"
            << job.sources[0].c_str();
-    else if (a == Lister::Action::Restore)
+    else if (a == Listi::Action::Restore)
       text << "Restore " << int32(job.sources.size())
            << " selected entries to their original folders?\n\nExisting files "
               "will not be overwritten.";
-    else if (a == Lister::Action::Delete)
+    else if (a == Listi::Action::Delete)
       text << "Permanently delete " << int32(job.sources.size())
            << " selected entries?\n\nThis cannot be undone.\n"
            << job.sources[0].c_str();
     else
-      text << (a == Lister::Action::Copy ? "Copy " : "Move ")
+      text << (a == Listi::Action::Copy ? "Copy " : "Move ")
            << int32(job.sources.size()) << " selected entries from:\n"
            << panes[source]->Path() << "\n\nto:\n"
            << job.destination.c_str();
     AskInline(text,
-              a == Lister::Action::Trash     ? "Move to Trash"
-              : a == Lister::Action::Restore ? "Restore"
+              a == Listi::Action::Trash     ? "Move to Trash"
+              : a == Listi::Action::Restore ? "Restore"
                                              : "Delete permanently",
               m);
   }
@@ -676,7 +676,7 @@ class MainWindow : public BWindow {
       Notice("Select exactly one file.");
       return;
     }
-    if (action == kEdit && Lister::ParseLocation(selected[0]).Archive()) {
+    if (action == kEdit && Listi::ParseLocation(selected[0]).Archive()) {
       OpenArchiveEditor(selected[0], prefs.editor.String());
       return;
     }
@@ -689,9 +689,9 @@ class MainWindow : public BWindow {
 
 public:
   MainWindow(const Preferences &p, BMessenger svc,
-             const Lister::SavedPlaces &saved, bool writable,
-             const Lister::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.31.0", B_TITLED_WINDOW,
+             const Listi::SavedPlaces &saved, bool writable,
+             const Listi::SavedSearches &queries, bool queriesWritable)
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.31.1", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable), places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
@@ -752,20 +752,20 @@ public:
     menu->AddItem(select);
     auto viewMenu = new BMenu("View");
     auto workspace = new BMenu("Workspace");
-    auto simpleMessage = new BMessage(kWorkspace);
-    simpleMessage->AddInt32("workspace", int32(Workspace::Simple));
-    auto explorerMessage = new BMessage(kWorkspace);
-    explorerMessage->AddInt32("workspace", int32(Workspace::Explorer));
-    auto workbenchMessage = new BMessage(kWorkspace);
-    workbenchMessage->AddInt32("workspace", int32(Workspace::Workbench));
-    explorerMenu = new BMenuItem("Explorer", explorerMessage);
-    simpleMenu = new BMenuItem("Simple", simpleMessage);
-    commanderMenu = new BMenuItem("Commander", new BMessage(kWorkspace));
-    workbenchMenu = new BMenuItem("Workbench", workbenchMessage);
-    workspace->AddItem(simpleMenu);
-    workspace->AddItem(explorerMenu);
-    workspace->AddItem(commanderMenu);
-    workspace->AddItem(workbenchMenu);
+    auto einnMessage = new BMessage(kWorkspace);
+    einnMessage->AddInt32("workspace", int32(Workspace::einn));
+    auto askrMessage = new BMessage(kWorkspace);
+    askrMessage->AddInt32("workspace", int32(Workspace::askr));
+    auto smidjaMessage = new BMessage(kWorkspace);
+    smidjaMessage->AddInt32("workspace", int32(Workspace::smidja));
+    askrMenu = new BMenuItem(WorkspaceMenuLabel(Workspace::askr), askrMessage);
+    einnMenu = new BMenuItem(WorkspaceMenuLabel(Workspace::einn), einnMessage);
+    tviskiptMenu = new BMenuItem(WorkspaceMenuLabel(Workspace::tviskipt), new BMessage(kWorkspace));
+    smidjaMenu = new BMenuItem(WorkspaceMenuLabel(Workspace::smidja), smidjaMessage);
+    workspace->AddItem(einnMenu);
+    workspace->AddItem(askrMenu);
+    workspace->AddItem(tviskiptMenu);
+    workspace->AddItem(smidjaMenu);
     viewMenu->AddItem(workspace);
     auto fileView = new BMenu("File view");
     const char* viewNames[] = {"Details", "Icons", "Large icons", "Thumbnails"};
@@ -840,7 +840,7 @@ public:
     bank->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     command = new BTextControl("Command:", "", nullptr);
     command->TextView()->AddFilter(
-        new Lister::ExplicitSubmit(BMessenger(this), BMessage(kCommand)));
+        new Listi::ExplicitSubmit(BMessenger(this), BMessage(kCommand)));
     command->SetToolTip(
         "Runs a shell command in the active directory using Terminal.");
     queue = new OperationQueue(BMessenger(this));
@@ -948,9 +948,7 @@ public:
           }
           reply.AddString("result", pane->Path());
         } else if (!strcmp(property, "Workspace"))
-          reply.AddString("result", prefs.Simple() ? "Simple" :
-              prefs.workspace == Workspace::Explorer ? "Explorer" :
-              prefs.Workbench() ? "Workbench" : "Commander");
+          reply.AddString("result", WorkspaceName(prefs.workspace));
         else if (!strcmp(property, "PathReady"))
           reply.AddBool("result",
                         !panes[0]->IsScanning() && !panes[1]->IsScanning());
@@ -978,7 +976,7 @@ public:
       BMessage accepted(*m);
       accepted.what = kPlaceAccepted;
       accepted.AddBool("placeLabel", true);
-      std::string initial = place ? place->name : Lister::LocationLeaf(path);
+      std::string initial = place ? place->name : Listi::LocationLeaf(path);
       if (initial.empty()) initial = path;
       std::string question = action == 0 ? "Save this work location: " :
           action == 1 ? "Rename saved place: " : "Forget saved place: ";
@@ -1022,10 +1020,10 @@ public:
         if (searchesSaving || m->GetInt64("revision", -1) != searchesRevision)
           throw std::runtime_error("The saved-search list changed or is being written. Please try again.");
         auto next = searches;
-        Lister::SavedSearch item;
+        Listi::SavedSearch item;
         item.name = m->GetString("name", ""); item.request.root = m->GetString("root", "");
         item.request.expression = m->GetString("expression", "");
-        item.request.filters = Lister::ReadSearchFilters(*m);
+        item.request.filters = Listi::ReadSearchFilters(*m);
         item.request.predicate = m->GetBool("predicate", false);
         item.request.includeTrash = m->GetBool("trash", false); item.live = m->GetBool("live", false);
         if (m->GetBool("remove", false)) next.Remove(item.name);
@@ -1141,7 +1139,7 @@ public:
       UpdatePreview();
       break;
     case kSwitch:
-      if (prefs.workspace == Workspace::Explorer) { panes[source]->ToggleTreeFocus(); break; }
+      if (prefs.workspace == Workspace::askr) { panes[source]->ToggleTreeFocus(); break; }
       if (prefs.SinglePane()) break;
       source = 1 - source;
       for (int i = 0; i < 2; i++)
@@ -1187,14 +1185,14 @@ public:
       const std::string folder = panes[source]->Path(), destination = panes[1-source]->Path();
       const bool background = m->GetBool("folderContext", false);
       if (!background && selected.empty()) break;
-      const bool folderLocal = folder != "@disks" && !Lister::IsVirtual(folder);
+      const bool folderLocal = folder != "@disks" && !Listi::IsVirtual(folder);
       bool local = true;
-      for (const auto &path : selected) local &= !Lister::IsVirtual(path);
+      for (const auto &path : selected) local &= !Listi::IsVirtual(path);
       try {
         BMessage snapshot;
         std::exception_ptr fileSnapshotError;
         if (!selected.empty() && local) {
-          try { snapshot = Lister::MakeFileSelection(selected); }
+          try { snapshot = Listi::MakeFileSelection(selected); }
           catch (...) { fileSnapshotError = std::current_exception(); }
         }
         struct stat folderBefore{};
@@ -1211,14 +1209,14 @@ public:
         options.local = local;
         options.dual = !prefs.SinglePane();
         options.folderLocal = folderLocal;
-        const auto folderLocation=Lister::ParseLocation(folder);
+        const auto folderLocation=Listi::ParseLocation(folder);
         options.folderArchive=folderLocation.Archive();
         options.archiveAdd=folderLocation.Archive()||
           (selected.size()==1&&local&&!options.directory);
         options.archiveRemove=!selected.empty();
         std::string selectedArchive;
         for(const auto &path:selected){
-          auto selectedLocation=Lister::ParseLocation(path);
+          auto selectedLocation=Listi::ParseLocation(path);
           if(!selectedLocation.Archive()||
              (!selectedArchive.empty()&&selectedArchive!=selectedLocation.archive)){
             options.archiveRemove=false;break;
@@ -1250,7 +1248,7 @@ public:
           if (action == kRefresh) { panes[owner]->Reload(); break; }
         } else if (local) {
           if (fileSnapshotError) std::rethrow_exception(fileSnapshotError);
-          Lister::ReadFileClipboard(snapshot);
+          Listi::ReadFileClipboard(snapshot);
         }
         if (action == kCopy || action == kMove || action == kCreateLink) {
           struct stat after{};
@@ -1276,14 +1274,14 @@ public:
           if(path.SetTo(&ref)!=B_OK)throw std::runtime_error("A selected file is unavailable.");
           additions.emplace_back(path.Path());
         }
-        Lister::SetArchiveEditAdditions(pendingArchiveEdit,additions);
+        Listi::SetArchiveEditAdditions(pendingArchiveEdit,additions);
         BMessage accepted(kArchiveEditAccepted);BString text;
         text << "Add " << int32(additions.size()) << " selected entries to this archive?\n\n"
           << archiveAddTarget.c_str();
         if(archiveAddFolder!="/")text << "\nInside: " << archiveAddFolder.c_str();
         text << "\n\nSelected:";
         const int32 shown=std::min<int32>(int32(additions.size()),3);
-        for(int32 i=0;i<shown;++i)text << "\n" << Lister::Leaf(additions[i]).c_str();
+        for(int32 i=0;i<shown;++i)text << "\n" << Listi::Leaf(additions[i]).c_str();
         if(int32(additions.size())>shown)text << "\n…and " << int32(additions.size())-shown << " more";
         text << "\n\nExisting names will require an explicit Replace or Skip choice.";
         AskInline(text.String(),"Update archive",accepted);
@@ -1301,8 +1299,8 @@ public:
         queue->Enqueue(pendingArchiveEdit);pendingArchiveEdit={};
       }
       break;
-    case 'apfg': Lister::ForgetArchivePasswords(); break;
-    case kArchiveAccepted: queue->Enqueue(Lister::DecodeJob(*m)); break;
+    case 'apfg': Listi::ForgetArchivePasswords(); break;
+    case kArchiveAccepted: queue->Enqueue(Listi::DecodeJob(*m)); break;
     case kResumeArchiveEdits: ResumeArchiveEditors(prefs.editor.String()); break;
     case kOpenWith: {
       auto selected = panes[source]->Selected();
@@ -1322,25 +1320,25 @@ public:
       ClipboardAction(m->what);
       break;
     case kCopy:
-      Operation(Lister::Action::Copy);
+      Operation(Listi::Action::Copy);
       break;
     case kMove:
-      Operation(Lister::Action::Move);
+      Operation(Listi::Action::Move);
       break;
     case kDelete:
-      Operation(Lister::Action::Trash);
+      Operation(Listi::Action::Trash);
       break;
     case kRestore:
-      Operation(Lister::Action::Restore);
+      Operation(Listi::Action::Restore);
       break;
     case kPermanentDelete:
-      Operation(Lister::Action::Delete);
+      Operation(Listi::Action::Delete);
       break;
     case kDuplicate:
-      NamedEntry(Lister::Action::Duplicate);
+      NamedEntry(Listi::Action::Duplicate);
       break;
     case kCreateLink:
-      NamedEntry(Lister::Action::Link);
+      NamedEntry(Listi::Action::Link);
       break;
     case kNamedEntryAccepted:
       if (!pendingNamedEntry.sources.empty()) {
@@ -1351,22 +1349,22 @@ public:
       }
       break;
     case kRename:
-      Operation(Lister::Action::Rename);
+      Operation(Listi::Action::Rename);
       break;
     case kMkdir:
-      Operation(Lister::Action::MakeDirectory);
+      Operation(Listi::Action::MakeDirectory);
       break;
     case kConfirm:
       if (m->GetInt32("which", 0) == 1)
-        queue->Enqueue(Lister::DecodeJob(*m));
+        queue->Enqueue(Listi::DecodeJob(*m));
       break;
     case kNameAccepted: {
-      auto j = Lister::DecodeJob(*m);
+      auto j = Listi::DecodeJob(*m);
       try {
         j.destination =
-            Lister::ChildLocation(j.destination, m->GetString("name", ""));
-        if (Lister::ParseLocation(j.destination).Archive())
-          j = Lister::PrepareArchiveMutation(j);
+            Listi::ChildLocation(j.destination, m->GetString("name", ""));
+        if (Listi::ParseLocation(j.destination).Archive())
+          j = Listi::PrepareArchiveMutation(j);
       } catch (const std::exception &e) {
         Notice(e.what());
         break;
@@ -1380,13 +1378,13 @@ public:
         break;
       }
       try {
-        pendingDrop = Lister::PrepareFileDrop(*m, m->GetString("destination", ""));
-        if (pendingDrop.action == Lister::Action::EditArchive) {
+        pendingDrop = Listi::PrepareFileDrop(*m, m->GetString("destination", ""));
+        if (pendingDrop.action == Listi::Action::EditArchive) {
           ConfirmArchiveAddition(pendingDrop);
           pendingDrop = {};
           break;
         }
-        const bool canMove = !Lister::IsVirtual(pendingDrop.destination) &&
+        const bool canMove = !Listi::IsVirtual(pendingDrop.destination) &&
           pendingDrop.expectedSources.size() == pendingDrop.sources.size();
         std::string text = "Drop " + std::to_string(pendingDrop.sources.size()) +
             " item(s) into:\n" + pendingDrop.destination +
@@ -1401,8 +1399,8 @@ public:
     }
     case kDropAccepted:
       if (!pendingDrop.sources.empty()) {
-        const bool move = m->GetInt32("which", 0) == 2 && !Lister::IsVirtual(pendingDrop.destination) && pendingDrop.expectedSources.size() == pendingDrop.sources.size();
-        pendingDrop.action = move ? Lister::Action::Move : Lister::Action::Copy;
+        const bool move = m->GetInt32("which", 0) == 2 && !Listi::IsVirtual(pendingDrop.destination) && pendingDrop.expectedSources.size() == pendingDrop.sources.size();
+        pendingDrop.action = move ? Listi::Action::Move : Listi::Action::Copy;
         queue->Enqueue(pendingDrop);
         pendingDrop = {};
       }
@@ -1410,7 +1408,7 @@ public:
     case kFileProgress:
       for (auto p : panes) {
         p->MessageReceived(m);
-        if (m->HasString("destination") && Lister::ParentLocation(m->GetString(
+        if (m->HasString("destination") && Listi::ParentLocation(m->GetString(
                                                "destination", "")) == p->Path())
           p->Reload();
       }
@@ -1424,7 +1422,7 @@ public:
           for (int32 i = 0; done.FindString("moved", i, &path) == B_OK; ++i)
             clipboardMoved.emplace_back(path);
           if (clipboardJobs.empty()) {
-            try { Lister::FinishFilePaste(clipboardPaste, clipboardMoved); }
+            try { Listi::FinishFilePaste(clipboardPaste, clipboardMoved); }
             catch (const std::exception &e) { Notice(e.what()); }
             clipboardPaste = {};
             clipboardMoved.clear();
@@ -1515,7 +1513,7 @@ class App : public BApplication {
 public:
   App() : BApplication(kSignature) {}
   ~App() {
-    Lister::StopArchivePasswords();
+    Listi::StopArchivePasswords();
     if (services && services->Lock())
       services->Quit();
   }
@@ -1524,17 +1522,17 @@ public:
     Preferences prefs;
     BMessage settings;
     std::string settingsError;
-    try { settings = Lister::LoadMessageStore(SettingsPath().String()); prefs.Load(settings); }
+    try { settings = Listi::LoadMessageStore(SettingsPath().String()); prefs.Load(settings); }
     catch (const std::exception &e) { settingsError = e.what(); }
     services = new Services(BMessenger(this));
     services->Run();
-    Lister::SavedPlaces places;
+    Listi::SavedPlaces places;
     std::string placesError;
-    try { places = Lister::SavedPlaces::Load(SettingsPath("Lister_places").String()); }
+    try { places = Listi::SavedPlaces::Load(SettingsPath("Lister_places").String()); }
     catch (const std::exception &e) { placesError = e.what(); }
-    Lister::SavedSearches searches;
+    Listi::SavedSearches searches;
     std::string searchesError;
-    try { searches = Lister::SavedSearches::Load(SettingsPath("Lister_searches").String()); }
+    try { searches = Listi::SavedSearches::Load(SettingsPath("Lister_searches").String()); }
     catch (const std::exception &e) { searchesError = e.what(); }
     auto window = new MainWindow(prefs, BMessenger(services), places, placesError.empty(), searches, searchesError.empty());
     mainWindow = BMessenger(window);
@@ -1588,14 +1586,14 @@ public:
     BApplication::MessageReceived(m);
   }
 };
-namespace Lister {
+namespace Listi {
 int VirtualTest(const std::string &, const std::string &);
 }
 int main(int argc, char **argv) {
   if (argc == 4 && !strcmp(argv[1], "--virtual-test"))
-    return Lister::VirtualTest(argv[2], argv[3]);
+    return Listi::VirtualTest(argv[2], argv[3]);
   if (argc > 1 && !strcmp(argv[1], "--self-test"))
-    return Lister::SelfTest();
+    return Listi::SelfTest();
   App app;
   app.Run();
   return 0;

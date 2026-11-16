@@ -5,7 +5,7 @@
 #include <string>
 #include <sys/stat.h>
 #include <vector>
-namespace Lister {
+namespace Listi {
 struct ArchiveEditRecord {
   std::string directory, member;
 };
@@ -39,7 +39,7 @@ private:
   void Persist();
   bool ChangedBytes();
 };
-} // namespace Lister
+} // namespace Listi
 // These functions are called only from the application's UI thread.
 void OpenArchiveEditor(const std::string &member, const std::string &editor);
 void ResumeArchiveEditors(const std::string &editor);

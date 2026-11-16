@@ -12,7 +12,7 @@ class OperationQueue {
 public:
   explicit OperationQueue(BMessenger main);
   ~OperationQueue();
-  void Enqueue(const Lister::Job &);
+  void Enqueue(const Listi::Job &);
   void SetCompact(bool);
   void Show();
   void Toggle();
@@ -27,19 +27,19 @@ public:
   bool Busy() const { return count.load() > 0; }
   void Pause();
   void Cancel();
-  bool Answer(Lister::Decision, int64 request);
+  bool Answer(Listi::Decision, int64 request);
 
 private:
   void Loop();
   void Publish(const BMessage &);
   bool Proceed();
-  Lister::Decision Ask(const std::string &);
+  Listi::Decision Ask(const std::string &);
   class ProgressView *view;
   BMessenger main, display;
   std::thread thread;
   std::mutex mutex;
   std::condition_variable changed;
-  std::deque<Lister::Job> jobs;
+  std::deque<Listi::Job> jobs;
   std::vector<BMessage> events;
   std::unique_ptr<BMessageRunner> eventTimer;
   std::atomic<int> count{0};

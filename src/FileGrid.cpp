@@ -31,13 +31,13 @@ public:
       return;
     }
     int64 serial = m->GetInt64("serial", -1);
-    Lister::TransferControl c;
+    Listi::TransferControl c;
     c.proceed = [&] { return generation->load() == serial; };
     BBitmap *bitmap = nullptr;
     try {
       c.Check();
       bitmap = LoadPreviewBitmap(m->GetString("path", ""), c, 128);
-    } catch (const Lister::Cancelled &) {
+    } catch (const Listi::Cancelled &) {
       return;
     } catch (const std::exception &) {
     }
@@ -92,7 +92,7 @@ class GridView : public FileGrid {
 
 public:
   void SetActive(bool active) override {
-    const auto background = Lister::PanelBackground(B_DOCUMENT_BACKGROUND_COLOR, active);
+    const auto background = Listi::PanelBackground(B_DOCUMENT_BACKGROUND_COLOR, active);
     if (ViewColor() == background) return;
     SetViewColor(background);
     SetLowColor(background);
@@ -268,7 +268,7 @@ public:
     if (!(buttons & B_PRIMARY_MOUSE_BUTTON))
       return;
     BMessage drag;
-    try { drag = Lister::MakeFileDrag(model->Selected()); }
+    try { drag = Listi::MakeFileDrag(model->Selected()); }
     catch (const std::exception &e) { pane->ShowStatus(e.what()); return; }
     dragging = true;
     DragMessage(&drag, BRect(point.x, point.y, point.x + 90, point.y + 22));

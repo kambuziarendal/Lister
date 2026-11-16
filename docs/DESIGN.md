@@ -5,11 +5,37 @@ dekkes i Listi, på vår egen måte. Se [Tracker-kartet](TRACKER-COVERAGE.md)
 for dokumentert tilbud, udekkede behov og akseptkrav. Dette erstatter ikke
 Dolphin-kravet og er ikke en påstand om ferdig funksjonslikhet.
 
-Listi is the owner-selected name. The visible app, executable and Deskbar launcher
-use Listi. Keep the `lister` package identity, application signature, scripting
-suite and `Lister_settings` path for in-place upgrades and settings compatibility.
-Internal C++ namespaces and temporary-file prefixes remain stable. No repository
-rename or public release is part of this candidate.
+## Names and compatibility
+
+**Listi** is the project, application, executable and launcher name. The repository
+and package ID are `listi`; our C++ namespace is `Listi`. Workspace names are:
+
+| Display name | ASCII ID / enum value | Existing numeric value | Layout |
+| --- | --- | --- | --- |
+| Einn | `einn` | 1 | Simple, Tracker-like single panel; same-window navigation |
+| Askr | `askr` | 2 | Folder tree on the left, file list on the right |
+| Tvískipt | `tviskipt` | 0 | Two side-by-side file panels, inspired by Directory Opus |
+| Smiðja | `smidja` | 3 | Workbench with more tools and options |
+
+Menus use the display name plus a short description. Identifiers and filenames
+use ASCII, never transliterations of UI strings inferred at runtime. The existing
+native `Workspace` scripting property returns the new display name.
+
+This is a naming-only change, not new layout behavior or a portable-core rewrite.
+The enum values deliberately retain their on-disk numbers. New saves include
+`workspaceId` plus the numeric `workspace` alias, and `smidjaLeftTree`,
+`smidjaRightTree`, `smidjaPreview` plus their `workbench*` aliases. Existing numeric
+and legacy fields take precedence if both exist, so edits made after downgrading
+to an older app are not masked by stale new fields. Canonical-only settings also
+load. Unknown workspace IDs/numbers safely fall back to Tvískipt.
+
+No manual migration or new settings directory is introduced. Compatibility-only
+names intentionally remain: `application/x-vnd.Kambuzi-Lister`,
+`suite/vnd.Kambuzi-Lister`, `Lister_settings`, `Lister_places`, `Lister_searches`,
+`Lister_archive_settings`, `Lister_attribute_recovery`, and package provides/
+replaces/conflicts for `lister` and `app:lister`. They are stable upgrade/storage
+contracts, not visible branding. Historical test reports and third-party names
+retain their original spellings. Older screenshots are explicitly versioned.
 
 ## Functional ambition, clarified by the owner 14 November 2026
 

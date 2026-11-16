@@ -49,10 +49,10 @@ public:
   off_t Position() const override { return position; }
 };
 class BoundedBitmap : public BMallocIO {
-  const Lister::TransferControl &control;
+  const Listi::TransferControl &control;
 
 public:
-  explicit BoundedBitmap(const Lister::TransferControl &c) : control(c) {}
+  explicit BoundedBitmap(const Listi::TransferControl &c) : control(c) {}
   status_t SetSize(off_t size) override {
     if (size < 0 || size > 64 * 1024 * 1024)
       return B_NO_MEMORY;
@@ -86,7 +86,7 @@ public:
       return;
     }
     int64 serial = m->GetInt64("serial", -1);
-    Lister::TransferControl c;
+    Listi::TransferControl c;
     c.proceed = [&] { return generation->load() == serial; };
     BMessage result(kReady);
     result.AddInt64("serial", serial);
@@ -98,7 +98,7 @@ public:
       text << int32(image->Bounds().Width() + 1) << " x "
            << int32(image->Bounds().Height() + 1);
       result.AddString("caption", text);
-    } catch (const Lister::Cancelled &) {
+    } catch (const Listi::Cancelled &) {
       if (!temporary.empty())
         unlink(temporary.c_str());
       delete image;
@@ -116,12 +116,12 @@ public:
 };
 } // namespace
 BBitmap *LoadPreviewBitmap(const std::string &source,
-                           const Lister::TransferControl &c, int maxSize) {
+                           const Listi::TransferControl &c, int maxSize) {
   BBitmap *image = nullptr;
   std::string path = source, temporary;
   try {
     c.Check();
-    if (Lister::IsVirtual(path)) {
+    if (Listi::IsVirtual(path)) {
       char pattern[] = "/tmp/Listi-preview-XXXXXX";
       int fd = mkstemp(pattern);
       if (fd < 0)
@@ -129,7 +129,7 @@ BBitmap *LoadPreviewBitmap(const std::string &source,
       temporary = pattern;
       try {
         size_t total = 0;
-        Lister::ReadFile(
+        Listi::ReadFile(
             path,
             [&](const char *data, size_t n) {
               total += n;
@@ -281,7 +281,7 @@ void ImagePreview::Draw(BRect) {
   BString line(caption.c_str());
   TruncateString(&line, B_TRUNCATE_END, std::max(0.f, Bounds().Width() - 24));
   DrawString(line, BPoint(12, Bounds().bottom - 26));
-  BString name(path.empty() ? "" : Lister::LocationLeaf(path).c_str());
+  BString name(path.empty() ? "" : Listi::LocationLeaf(path).c_str());
   TruncateString(&name, B_TRUNCATE_MIDDLE,
                  std::max(0.f, Bounds().Width() - 24));
   DrawString(name, BPoint(12, Bounds().bottom - 9));

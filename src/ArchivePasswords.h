@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 #include <sys/stat.h>
-namespace Lister {
+namespace Listi {
 // Non-copyable, explicitly cleared storage. Never serialized into jobs or URLs.
 class ArchiveSecret {
   std::vector<char> bytes;
@@ -38,4 +38,4 @@ ArchiveSecretPtr CachedArchivePassword(const std::string &path,
 uint64_t HoldArchiveCreationPassword(ArchiveSecretPtr);
 ArchiveSecretPtr TakeArchiveCreationPassword(uint64_t);
 void DiscardArchiveCreationPassword(uint64_t);
-} // namespace Lister
+} // namespace Listi

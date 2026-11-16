@@ -51,7 +51,7 @@ public:
     int32 iconPixels = m->GetInt32("iconSize", 16);
     if (m->GetBool("trash", false)) {
       try {
-        path = Lister::TrashDirectory(path.String(), true).c_str();
+        path = Listi::TrashDirectory(path.String(), true).c_str();
       } catch (const std::exception &error) {
         BMessage failed(kScanDone);
         failed.AddInt64("serial", serial);
@@ -112,10 +112,10 @@ public:
     };
     BMessage done(kScanDone);
     done.AddInt64("serial", serial);
-    if (Lister::IsVirtual(path.String())) {
-      Lister::TransferControl control;
+    if (Listi::IsVirtual(path.String())) {
+      Listi::TransferControl control;
       control.proceed = [&] { return generation->load() == serial; };
-      auto virtualRow = [&](const Lister::FileEntry &entry,
+      auto virtualRow = [&](const Listi::FileEntry &entry,
                             bool parent = false) {
         BMessage item;
         item.AddInt32("iconSize", iconPixels);
@@ -145,10 +145,10 @@ public:
           send();
       };
       try {
-        auto entries = Lister::ListFiles(path.String(), control);
-        auto parent = Lister::ParentLocation(path.String());
+        auto entries = Listi::ListFiles(path.String(), control);
+        auto parent = Listi::ParentLocation(path.String());
         if (parent != path.String()) {
-          Lister::FileEntry entry;
+          Listi::FileEntry entry;
           entry.path = parent;
           entry.directory = true;
           virtualRow(entry, true);
@@ -158,7 +158,7 @@ public:
           if (deliveryFailed) break;
           virtualRow(entry);
         }
-      } catch (const Lister::Cancelled &) {
+      } catch (const Listi::Cancelled &) {
         return;
       } catch (const std::exception &error) {
         done.AddString("error", error.what());
@@ -203,9 +203,9 @@ public:
               break;
             }
             if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..") ||
-                Lister::IsListiPrivateEntry(e->d_name))
+                Listi::IsListiPrivateEntry(e->d_name))
               continue;
-            row(Lister::Join(path.String(), e->d_name).c_str(), e->d_name);
+            row(Listi::Join(path.String(), e->d_name).c_str(), e->d_name);
           }
           closedir(dir);
           BNode node(path.String());

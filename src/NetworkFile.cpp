@@ -15,7 +15,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace Lister {
+namespace Listi {
 namespace {
 DynamicLibrary &SMB() {
   static DynamicLibrary lib({"libsmbclient.so", "libsmbclient.so.0"});
@@ -578,4 +578,4 @@ void ChangeNetwork(const Location &l, const char *action,
   s.Set(CURLOPT_QUOTE, s.commands);
   s.Perform();
 }
-} // namespace Lister
+} // namespace Listi

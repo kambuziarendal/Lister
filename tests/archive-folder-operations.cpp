@@ -10,7 +10,7 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 std::string content(const std::string&p){std::string s;ReadFile(p,[&](const char*b,size_t n){s.append(b,n);});return s;}
 void clean(const std::string&p){BDirectory d(p.c_str());BEntry e;while(d.GetNextEntry(&e,false)==B_OK){struct stat s;e.GetStat(&s);if(S_ISDIR(s.st_mode)){BPath path;e.GetPath(&path);clean(path.Path());}e.Remove();}rmdir(p.c_str());}
 int main(){

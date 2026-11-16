@@ -25,8 +25,8 @@ private:
   std::string path, caption = "Select an image to preview";
 };
 
-namespace Lister {
+namespace Listi {
 struct TransferControl;
 }
-BBitmap *LoadPreviewBitmap(const std::string &, const Lister::TransferControl &,
+BBitmap *LoadPreviewBitmap(const std::string &, const Listi::TransferControl &,
                            int maxSize = 0);

@@ -2,6 +2,7 @@
 #include "Common.h"
 #include <Application.h>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <limits>
 int main() {
@@ -16,40 +17,75 @@ int main() {
   stale.ReplaceBool("icons",false);stale.ReplaceFloat("fontSize",17);
   live.paneMode[0]=3;live.paneMode[1]=2;
   live.paneTree[0]=true;live.paneTree[1]=true;
-  live.workspace=Workspace::Simple;live.singlePane=1;
+  live.workspace=Workspace::einn;live.singlePane=1;
   live.preview=true;live.folderModes["/synthetic"]=1;
   live.ApplyDialog(stale);
-  check(live.Simple() && live.singlePane==1,"stale preferences dialog preserves active workspace");
+  check(live.IsEinn() && live.singlePane==1,"stale preferences dialog preserves active workspace");
   Preferences restored;restored.Load(live.Save());
-  check(restored.Simple() && restored.singlePane==1,"workspace and chosen panel survive restart");
-  check(restored.buttons && restored.paneTree[1] && restored.preview,"hidden Commander options remain stored");
+  check(restored.IsEinn() && restored.singlePane==1,"workspace and chosen panel survive restart");
+  check(restored.buttons && restored.paneTree[1] && restored.preview,"hidden Tviskipt options remain stored");
   BMessage legacy;restored.Load(legacy);
-  check(!restored.Simple() && restored.singlePane==0,"older settings default to Commander");
+  check(!restored.IsEinn() && restored.singlePane==0,"older settings default to Tviskipt");
   legacy.AddBool("simpleWorkspace",true);legacy.AddInt32("singlePane",42);restored.Load(legacy);
-  check(restored.Simple() && restored.singlePane==0,"invalid stored pane cannot select outside workspace");
-  live.workspace=Workspace::Explorer;
+  check(restored.IsEinn() && restored.singlePane==0,"invalid stored pane cannot select outside workspace");
+  live.workspace=Workspace::askr;
   live.ApplyDialog(stale);
-  check(live.workspace==Workspace::Explorer,"stale dialog preserves Explorer");
+  check(live.workspace==Workspace::askr,"stale dialog preserves Askr");
   restored.Load(live.Save());
-  check(restored.workspace==Workspace::Explorer && restored.singlePane==1,"Explorer and active pane survive restart");
-  check(live.Save().GetBool("simpleWorkspace",false),"Explorer fallback is Simple on older versions");
+  check(restored.workspace==Workspace::askr && restored.singlePane==1,"Askr and active pane survive restart");
+  check(live.Save().GetBool("simpleWorkspace",false),"Askr fallback is Einn on older versions");
   BMessage invalid;invalid.AddInt32("workspace",99);restored.Load(invalid);
-  check(!restored.SinglePane(),"unknown workspace safely defaults to Commander");
+  check(!restored.SinglePane(),"unknown workspace safely defaults to Tviskipt");
   check(!live.icons && live.font.Size()==17,"dialog appearance fields apply");
   check(live.paneMode[0]==3 && live.paneMode[1]==2,"stale dialog preserves current pane modes");
   check(live.paneTree[0] && live.paneTree[1],"stale dialog preserves both trees");
   check(live.preview && live.folderModes["/synthetic"]==1,"stale dialog preserves preview and folder overrides");
-  live.workspace=Workspace::Workbench;live.workbenchTree[0]=false;
-  live.workbenchTree[1]=true;live.workbenchPreview=false;
+  live.workspace=Workspace::smidja;live.smidjaTree[0]=false;
+  live.smidjaTree[1]=true;live.smidjaPreview=false;
   live.ApplyDialog(stale);
-  check(live.Workbench() && !live.SinglePane(),"stale dialog preserves Workbench");
+  check(live.IsSmidja() && !live.SinglePane(),"stale dialog preserves Smidja");
   restored.Load(live.Save());
-  check(restored.Workbench() && !restored.workbenchTree[0] && restored.workbenchTree[1] &&
-        !restored.workbenchPreview,"Workbench customization survives restart");
-  check(!live.Save().GetBool("simpleWorkspace",true),"Workbench rolls back safely to Commander");
-  BMessage oldWorkbench;oldWorkbench.AddInt32("workspace",3);restored.Load(oldWorkbench);
-  check(restored.Workbench() && restored.workbenchTree[0] && restored.workbenchTree[1] &&
-        restored.workbenchPreview,"Workbench defaults expose both trees and preview");
+  check(restored.IsSmidja() && !restored.smidjaTree[0] && restored.smidjaTree[1] &&
+        !restored.smidjaPreview,"Smidja customization survives restart");
+  check(!live.Save().GetBool("simpleWorkspace",true),"Smidja rolls back safely to Tviskipt");
+  BMessage oldSmidja;oldSmidja.AddInt32("workspace",3);restored.Load(oldSmidja);
+  check(restored.IsSmidja() && restored.smidjaTree[0] && restored.smidjaTree[1] &&
+        restored.smidjaPreview,"Smidja defaults expose both trees and preview");
+  // Numeric identities from existing installations must not change.
+  for (int32 id = 0; id < 4; ++id) {
+    const auto expected = static_cast<Workspace>(id);
+    BMessage old; old.AddInt32("workspace", id);
+    old.AddBool("workbenchLeftTree", false);
+    old.AddBool("workbenchRightTree", true);
+    old.AddBool("workbenchPreview", false);
+    restored.Load(old);
+    check(restored.workspace == expected, "legacy workspace number preserves layout");
+    check(!restored.smidjaTree[0] && restored.smidjaTree[1] && !restored.smidjaPreview,
+          "legacy Smidja layout survives upgrade");
+    auto saved = restored.Save();
+    check(saved.GetInt32("workspace", -1) == id &&
+          !strcmp(saved.GetString("workspaceId", ""), WorkspaceId(expected)),
+          "new save includes stable numeric alias and canonical ASCII ID");
+    check(!saved.GetBool("workbenchLeftTree", true) && saved.GetBool("workbenchRightTree", false) &&
+          !saved.GetBool("workbenchPreview", true), "older app can read saved Smidja fields");
+    BMessage canonical; canonical.AddString("workspaceId", WorkspaceId(expected));
+    canonical.AddBool("smidjaLeftTree", false); canonical.AddBool("smidjaRightTree", true);
+    canonical.AddBool("smidjaPreview", false); restored.Load(canonical);
+    check(restored.workspace == expected && !restored.smidjaTree[0] &&
+          restored.smidjaTree[1] && !restored.smidjaPreview, "canonical-only settings load");
+    // Simulate an older version modifying fields while newer aliases remain.
+    saved.ReplaceInt32("workspace", (id + 1) % 4);
+    saved.ReplaceBool("workbenchLeftTree", true);
+    saved.ReplaceBool("workbenchPreview", true);
+    restored.Load(saved);
+    check(static_cast<int32>(restored.workspace) == (id + 1) % 4 &&
+          restored.smidjaTree[0] && restored.smidjaPreview,
+          "rollback edits override stale canonical aliases");
+  }
+  BMessage unknown; unknown.AddString("workspaceId", "unknown"); restored.Load(unknown);
+  check(restored.workspace == Workspace::tviskipt, "unknown ID defaults to Tviskipt");
+  check(!strcmp(WorkspaceName(Workspace::smidja), "Smiðja") &&
+        !strcmp(WorkspaceName(Workspace::tviskipt), "Tvískipt"), "display names preserve Unicode");
   for(float size:{std::numeric_limits<float>::quiet_NaN(),std::numeric_limits<float>::infinity(),-1.f,7.f,41.f}) {
     BMessage m;m.AddFloat("fontSize",size);live.Load(m);
     check(live.font.Size()==12,"invalid persisted font safely defaults to 12");

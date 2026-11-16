@@ -16,7 +16,7 @@ struct Reply {
   std::mutex mutex;
   std::condition_variable changed;
   bool done=false;
-  Lister::ArchiveSecretPtr secret;
+  Listi::ArchiveSecretPtr secret;
 };
 class PasswordWindow : public BWindow {
   std::shared_ptr<Reply> reply;
@@ -31,7 +31,7 @@ public:
   PasswordWindow(const std::string &path,bool retry,std::shared_ptr<Reply> result)
       :BWindow(BRect(290,230,930,455),"Listi: Archive password",B_TITLED_WINDOW,
         B_AUTO_UPDATE_SIZE_LIMITS),reply(std::move(result)) {
-    auto file=new BStringView("password archive",Lister::LocationLeaf(path).c_str());
+    auto file=new BStringView("password archive",Listi::LocationLeaf(path).c_str());
     file->SetExplicitMinSize(BSize(0,B_SIZE_UNSET));file->SetTruncation(B_TRUNCATE_MIDDLE);
     file->SetToolTip(path.c_str());
     password=new BTextControl("archive password","Password:","",nullptr);
@@ -52,13 +52,13 @@ public:
   void MessageReceived(BMessage *m)override {
     if(m->what!='apok'){BWindow::MessageReceived(m);return;}
     try {
-      auto secret=std::make_shared<Lister::ArchiveSecret>(password->Text());
+      auto secret=std::make_shared<Listi::ArchiveSecret>(password->Text());
       {std::lock_guard<std::mutex> lock(reply->mutex);if(reply->done)return;reply->secret=std::move(secret);}
       Finish();PostMessage(B_QUIT_REQUESTED);
     }catch(const std::exception &e){status->SetText(e.what());}
   }
 };
-Lister::ArchiveSecretPtr Ask(const std::string &path,bool retry,const Lister::TransferControl &control) {
+Listi::ArchiveSecretPtr Ask(const std::string &path,bool retry,const Listi::TransferControl &control) {
   auto reply=std::make_shared<Reply>();
   BMessenger window(new PasswordWindow(path,retry,reply));
   try {
@@ -74,4 +74,4 @@ Lister::ArchiveSecretPtr Ask(const std::string &path,bool retry,const Lister::Tr
   }
 }
 }
-void InstallArchivePasswordWindow(){Lister::SetArchivePasswordPrompt(Ask);}
+void InstallArchivePasswordWindow(){Listi::SetArchivePasswordPrompt(Ask);}

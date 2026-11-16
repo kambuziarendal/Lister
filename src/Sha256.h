@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
-namespace Lister {
+namespace Listi {
 // Streaming SHA-256 (FIPS 180-4). State is per comparison, with no global
 // cache.
 class Sha256 {
@@ -22,4 +22,4 @@ private:
   bool finished = false;
   void Block(const uint8_t *);
 };
-} // namespace Lister
+} // namespace Listi

@@ -37,7 +37,7 @@ frontend-haiku/
   OperationQueue.cpp       native execution and UI progress
   Trash.cpp                native per-volume Trash and restoration
   Scripting.cpp            BMessage-to-command adapter
-  Makefile, Lister.rdef
+  Makefile, Listi.rdef
 tests/core/               headless tests and POSIX temporary-directory fixture
 tests/haiku/              native integration, hey and GUI acceptance
 ```

@@ -4,7 +4,7 @@
 #include <Messenger.h>
 #include <atomic>
 #include <memory>
-namespace Lister {
+namespace Listi {
 constexpr uint32 kSearchStart = 'ssrt', kSearchStop = 'sstp',
     kSearchRows = 'shit', kSearchDone = 'sfin', kSearchBegin = 'sbeg';
 // The caller invalidates generation before Stop or Quit, interrupting scans.

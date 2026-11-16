@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace Lister {
+namespace Listi {
 struct Cancelled : std::exception {};
 struct TransferControl {
   std::function<bool()> proceed;
@@ -76,4 +76,4 @@ void UploadNetwork(const std::string &, const Location &,
                    const TransferControl &);
 void ChangeNetwork(const Location &, const char *action, const std::string &,
                    const TransferControl &);
-} // namespace Lister
+} // namespace Listi

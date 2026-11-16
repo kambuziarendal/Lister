@@ -2,7 +2,7 @@
 #pragma once
 #include <String.h>
 
-namespace Lister {
+namespace Listi {
 // Literal name filtering, never shell expansion or a recursive search.
 inline bool MatchesNameFilter(const char *name, const char *filter,
                               bool parent = false) {

@@ -14,7 +14,7 @@
 #include <pthread.h>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 namespace {
 int checks=0;
 void check(bool ok,const std::string &name){if(!ok)throw std::runtime_error("FAIL "+name);++checks;std::cout<<"PASS "<<name<<std::endl;}

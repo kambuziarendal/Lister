@@ -3,7 +3,7 @@
 #include <Message.h>
 #include <string>
 #include <vector>
-namespace Lister {
+namespace Listi {
 struct SavedPlace { std::string name, path; };
 class SavedPlaces {
 public:
@@ -21,4 +21,4 @@ private:
   std::vector<SavedPlace> items;
   std::string Name(const std::string &, const std::string &except = "") const;
 };
-} // namespace Lister
+} // namespace Listi

@@ -7,7 +7,7 @@
 #include <sstream>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 std::string bytes(const std::string &p){std::ifstream f(p,std::ios::binary);if(!f)throw std::runtime_error("Missing expected file: "+p);return {std::istreambuf_iterator<char>(f),{}};}
 int main(int argc,char **argv){
  BApplication app("application/x-vnd.Listi-ArchiveJobFixtures");if(argc!=3)return 2;

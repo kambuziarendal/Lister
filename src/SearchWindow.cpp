@@ -23,12 +23,12 @@
 #include <memory>
 #include <stdexcept>
 namespace {
-using namespace Lister;
+using namespace Listi;
 constexpr uint32 kStart = 'ssrt', kStop = 'sstp', kHit = 'shit',
                  kFinished = 'sfin', kSave = 'sqsv', kForget = 'sqfg', kLoad = 'sqld', kName = 'sqnm', kPicked = 'spik', kShow = 'sshw', kMode = 'smod', kClearFilters = 'sclr';
 struct HitRow : BRow {
-  Lister::SearchHit hit;
-  explicit HitRow(const Lister::SearchHit &value) : BRow(24), hit(value) {
+  Listi::SearchHit hit;
+  explicit HitRow(const Listi::SearchHit &value) : BRow(24), hit(value) {
     size_t slash = hit.path.find_last_of('/');
     SetField(new BStringField(hit.path.substr(slash + 1).c_str()), 0);
     SetField(new BStringField(hit.path.substr(0, slash ? slash : 1).c_str()), 1);
@@ -217,7 +217,7 @@ public:
       .AddGroup(B_HORIZONTAL, 8).Add(status).Add(show).End();
     results->SetTarget(this);
     for (auto field : {root, expression, extension, minimum, maximum, fromDate, throughDate})
-      field->TextView()->AddFilter(new Lister::ExplicitSubmit(BMessenger(this), BMessage(kStart)));
+      field->TextView()->AddFilter(new Listi::ExplicitSubmit(BMessenger(this), BMessage(kStart)));
     AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(kStop));
     AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
     worker = NewSearchWorker(BMessenger(this), generation); worker->Run();

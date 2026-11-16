@@ -15,7 +15,7 @@ int main(int argc, char **argv) {
     failures += !ok;
     std::cout << (ok ? "PASS " : "FAIL ") << label << std::endl;
   };
-  Lister::TransferControl control;
+  Listi::TransferControl control;
   try {
     std::unique_ptr<BBitmap> image(LoadPreviewBitmap(argv[1], control));
     check(image && image->Bounds().Width() == 319 && image->Bounds().Height() == 239,
@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
     bool cancelled = false;
     try {
       std::unique_ptr<BBitmap> ignored(LoadPreviewBitmap(argv[1], control));
-    } catch (const Lister::Cancelled &) {
+    } catch (const Listi::Cancelled &) {
       cancelled = true;
     }
     check(cancelled && calls >= 3, "cancellation during native translation is propagated");

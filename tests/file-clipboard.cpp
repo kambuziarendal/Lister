@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 int checks = 0;
 void Check(bool ok, const char *label) {
   printf("%s %s\n", ok ? "PASS" : "FAIL", label); fflush(stdout);

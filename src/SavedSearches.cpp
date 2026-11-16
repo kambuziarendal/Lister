@@ -3,7 +3,7 @@
 #include "MessageStore.h"
 #include <algorithm>
 #include <stdexcept>
-namespace Lister {
+namespace Listi {
 const SavedSearch *SavedSearches::Find(const std::string &name) const {
   for (const auto &item : items) if (item.name == name) return &item;
   return nullptr;

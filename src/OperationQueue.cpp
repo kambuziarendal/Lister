@@ -21,17 +21,17 @@ namespace {
 uint64_t Size(const std::string &p, const std::function<bool()> &proceed, unsigned depth = 0) {
   if (depth > 64 || !proceed())
     return 0;
-  if (Lister::IsVirtual(p)) {
+  if (Listi::IsVirtual(p)) {
     try {
-      Lister::TransferControl control;
+      Listi::TransferControl control;
       control.proceed = proceed;
-      Lister::FileEntry e;
-      if (!Lister::StatFile(p, e, control) || e.link)
+      Listi::FileEntry e;
+      if (!Listi::StatFile(p, e, control) || e.link)
         return 0;
       if (!e.directory)
         return std::max<int64_t>(0, e.size);
       uint64_t total = 0;
-      for (auto &child : Lister::ListFiles(p, control))
+      for (auto &child : Listi::ListFiles(p, control))
         total += Size(child.path, proceed, depth + 1);
       return total;
     } catch (...) {
@@ -52,34 +52,34 @@ uint64_t Size(const std::string &p, const std::function<bool()> &proceed, unsign
   while (auto e = readdir(dir)) {
     if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
       continue;
-    total += Size(Lister::Join(p, e->d_name), proceed, depth + 1);
+    total += Size(Listi::Join(p, e->d_name), proceed, depth + 1);
     if (!proceed())
       break;
   }
   closedir(dir);
   return total;
 }
-const char *Verb(Lister::Action a) {
+const char *Verb(Listi::Action a) {
   switch (a) {
-  case Lister::Action::CreateArchive: return "Create archive";
-  case Lister::Action::ExtractArchive: return "Extract archive";
-  case Lister::Action::EditArchive: return "Update archive";
-  case Lister::Action::MoveArchive: return "Move archive entries";
-  case Lister::Action::Copy:
+  case Listi::Action::CreateArchive: return "Create archive";
+  case Listi::Action::ExtractArchive: return "Extract archive";
+  case Listi::Action::EditArchive: return "Update archive";
+  case Listi::Action::MoveArchive: return "Move archive entries";
+  case Listi::Action::Copy:
     return "Copy";
-  case Lister::Action::Move:
+  case Listi::Action::Move:
     return "Move";
-  case Lister::Action::Duplicate:
+  case Listi::Action::Duplicate:
     return "Duplicate";
-  case Lister::Action::Link:
+  case Listi::Action::Link:
     return "Create link";
-  case Lister::Action::Trash:
+  case Listi::Action::Trash:
     return "Move to Trash";
-  case Lister::Action::Restore:
+  case Listi::Action::Restore:
     return "Restore";
-  case Lister::Action::Delete:
+  case Listi::Action::Delete:
     return "Delete";
-  case Lister::Action::Rename:
+  case Listi::Action::Rename:
     return "Rename";
   default:
     return "Create directory";
@@ -199,7 +199,7 @@ public:
   void Toggle() { Expand(!expanded); }
   void Dismiss() {
     if (choicesVisible) {
-      owner->Answer(Lister::Decision::Abort, conflictRequest);
+      owner->Answer(Listi::Decision::Abort, conflictRequest);
       ShowChoices(false);
     }
     Expand(false);
@@ -232,7 +232,7 @@ public:
       summary->SetText("Cancelling. Finishing the current safe step...");
       break;
     case kAnswer:
-      if (owner->Answer(static_cast<Lister::Decision>(m->GetInt32("decision", 4)),
+      if (owner->Answer(static_cast<Listi::Decision>(m->GetInt32("decision", 4)),
                         m->GetInt64("request", -1)))
         ShowChoices(false);
       break;
@@ -336,7 +336,7 @@ OperationQueue::~OperationQueue() {
     stopping = true;
     cancel = true;
     paused = false;
-    answer = int(Lister::Decision::Abort);
+    answer = int(Listi::Decision::Abort);
   }
   changed.notify_all();
   if (thread.joinable())
@@ -351,7 +351,7 @@ void OperationQueue::ErrorInfo(const char *text) {
   error.AddString("error", text);
   display.SendMessage(&error);
 }
-void OperationQueue::Enqueue(const Lister::Job &j) {
+void OperationQueue::Enqueue(const Listi::Job &j) {
   {
     std::lock_guard<std::mutex> l(mutex);
     jobs.push_back(j);
@@ -379,11 +379,11 @@ void OperationQueue::Cancel() {
     }
     count -= jobs.size();
     jobs.clear();
-    answer = int(Lister::Decision::Abort);
+    answer = int(Listi::Decision::Abort);
   }
   changed.notify_all();
   for (auto token : discardedPasswords)
-    Lister::DiscardArchiveCreationPassword(token);
+    Listi::DiscardArchiveCreationPassword(token);
   // Queued jobs never reach Loop(), but their clipboard leases still need a
   // terminal result. Send outside the mutex and do not dismiss active choices.
   for (int64 tag : discardedTags) {
@@ -413,12 +413,12 @@ void OperationQueue::PresentEvent(BMessage &done) {
   // Called on the view's owning window thread, never by the worker.
   view->MessageReceived(&done);
 }
-bool OperationQueue::Answer(Lister::Decision d, int64 request) {
+bool OperationQueue::Answer(Listi::Decision d, int64 request) {
   {
     std::lock_guard<std::mutex> l(mutex);
     if (!awaitingAnswer || request != conflictSerial || answer >= 0 ||
-        int(d) < int(Lister::Decision::Replace) ||
-        int(d) > int(Lister::Decision::Abort))
+        int(d) < int(Listi::Decision::Replace) ||
+        int(d) > int(Listi::Decision::Abort))
       return false;
     answer = int(d);
   }
@@ -430,12 +430,12 @@ bool OperationQueue::Proceed() {
   changed.wait(l, [this] { return !paused || cancel || stopping; });
   return !cancel && !stopping;
 }
-Lister::Decision OperationQueue::Ask(const std::string &path) {
+Listi::Decision OperationQueue::Ask(const std::string &path) {
   int64 request;
   {
     std::lock_guard<std::mutex> l(mutex);
     if (cancel || stopping)
-      return Lister::Decision::Abort;
+      return Listi::Decision::Abort;
     answer = -1;
     request = ++conflictSerial;
     awaitingAnswer = true;
@@ -447,12 +447,12 @@ Lister::Decision OperationQueue::Ask(const std::string &path) {
   std::unique_lock<std::mutex> l(mutex);
   changed.wait(l, [this] { return answer >= 0 || cancel || stopping; });
   awaitingAnswer = false;
-  return cancel || stopping ? Lister::Decision::Abort
-                                           : static_cast<Lister::Decision>(answer);
+  return cancel || stopping ? Listi::Decision::Abort
+                                           : static_cast<Listi::Decision>(answer);
 }
 void OperationQueue::Loop() {
   for (;;) {
-    Lister::Job job;
+    Listi::Job job;
     {
       std::unique_lock<std::mutex> l(mutex);
       changed.wait(l, [this] { return stopping || !jobs.empty(); });
@@ -463,7 +463,7 @@ void OperationQueue::Loop() {
       cancel = false;
       paused = false;
     }
-    Lister::ArchiveListingScope listingScope;
+    Listi::ArchiveListingScope listingScope;
     const int64 operation = ++operationSerial;
     BString title;
     title << Verb(job.action) << ": " << int32(job.sources.size())
@@ -476,9 +476,9 @@ void OperationQueue::Loop() {
     start.AddBool("start", true);
     Publish(start);
     uint64_t total = 0;
-    if (job.action == Lister::Action::Copy ||
-        job.action == Lister::Action::Move || job.action == Lister::Action::Duplicate || job.action == Lister::Action::CreateArchive ||
-        job.action == Lister::Action::EditArchive || job.action == Lister::Action::MoveArchive)
+    if (job.action == Listi::Action::Copy ||
+        job.action == Listi::Action::Move || job.action == Listi::Action::Duplicate || job.action == Listi::Action::CreateArchive ||
+        job.action == Listi::Action::EditArchive || job.action == Listi::Action::MoveArchive)
       for (auto &s : job.sources)
         total += Size(s, [this] { return Proceed(); });
     start.AddInt64("total", std::max<uint64_t>(1, total));
@@ -486,7 +486,7 @@ void OperationQueue::Loop() {
     std::map<std::string, uint64_t> fileBytes, fileSizes;
     uint64_t bytes = 0;
     bigtime_t last = 0;
-    Lister::Hooks hooks;
+    Listi::Hooks hooks;
     hooks.proceed = [this] { return Proceed(); };
     hooks.conflict = [this](auto &p) { return Ask(p); };
     hooks.progress = [&](auto &p, uint64_t n) {
@@ -494,10 +494,10 @@ void OperationQueue::Loop() {
       fileBytes[p] += n;
       if (!fileSizes.count(p)) {
         try {
-          Lister::FileEntry entry;
-          Lister::TransferControl control;
+          Listi::FileEntry entry;
+          Listi::TransferControl control;
           control.proceed = hooks.proceed;
-          if (Lister::StatFile(p, entry, control))
+          if (Listi::StatFile(p, entry, control))
             fileSizes[p] = std::max<int64_t>(0, entry.size);
         } catch (...) {
           fileSizes[p] = 0;
@@ -536,13 +536,13 @@ void OperationQueue::Loop() {
       file.AddInt32("state", 3);
       main.SendMessage(&file, (BHandler *)nullptr, 500000);
     };
-    auto result = Lister::Run(job, hooks);
+    auto result = Listi::Run(job, hooks);
     count--;
     BMessage done(kJobDone);
     done.AddInt64("operation", operation);
     done.AddInt64("tag", job.tag);
-    if (job.action == Lister::Action::Move || job.action == Lister::Action::Duplicate || job.action == Lister::Action::CreateArchive ||
-        job.action == Lister::Action::EditArchive || job.action == Lister::Action::MoveArchive)
+    if (job.action == Listi::Action::Move || job.action == Listi::Action::Duplicate || job.action == Listi::Action::CreateArchive ||
+        job.action == Listi::Action::EditArchive || job.action == Listi::Action::MoveArchive)
       for (const auto &root : result.completedRoots)
         done.AddString("moved", root.first.c_str());
     BString summary;

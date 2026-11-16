@@ -172,12 +172,12 @@ public:
   NameColumn *name;
   SizeColumn *size;
   DateColumn *date;
-  bool syncing = false, simple = false, arranging = false;
+  bool syncing = false, singlePane = false, arranging = false;
   RubberBand *band;
   DetailsList(Pane *p, PaneModel *state, const Preferences &prefs)
       : BColumnListView("files", B_WILL_DRAW | B_NAVIGABLE | B_DRAW_ON_CHILDREN, B_FANCY_BORDER),
         pane(p), model(state) {
-    simple = prefs.SinglePane();
+    singlePane = prefs.SinglePane();
     name = new NameColumn(prefs);
     name->batchTarget = ScrollView();
     AddColumn(name, 0);
@@ -255,13 +255,13 @@ public:
       if (!ColumnAt(i)->IsVisible()) contentWidth -= ColumnAt(i)->Width();
     float contentHeight = 0;
     for (int32 i = 0; i < CountRows(); ++i) contentHeight += RowAt(i)->Height() + 1;
-    bool showVertical = !simple, showHorizontal = false;
+    bool showVertical = !singlePane, showHorizontal = false;
     {
       // Adding one scrollbar can make the other necessary. Start without
       // either to avoid retaining mutually unnecessary bars at the boundary.
       for (int i = 0; i < 3; ++i) {
         showHorizontal = contentWidth > fullWidth - (showVertical ? verticalWidth : 0);
-        showVertical = !simple || contentHeight > fullHeight - (showHorizontal ? horizontalHeight : 0);
+        showVertical = !singlePane || contentHeight > fullHeight - (showHorizontal ? horizontalHeight : 0);
       }
     }
     const float extraWidth = showVertical ? 0 : verticalWidth;
@@ -354,7 +354,7 @@ public:
   }
   bool InitiateDrag(BPoint point, bool) override {
     BMessage drag;
-    try { drag = Lister::MakeFileDrag(model->Selected()); }
+    try { drag = Listi::MakeFileDrag(model->Selected()); }
     catch (const std::exception &e) { pane->ShowStatus(e.what()); return false; }
     DragMessage(&drag, BRect(point.x, point.y, point.x + 90, point.y + 22));
     return true;
@@ -400,13 +400,13 @@ public:
     auto found = rows.find(path);
     if (found != rows.end()) list->UpdateRow(found->second);
   }
-  void SetSimple(bool value) override {
-    list->simple = value;
+  void SetSinglePane(bool value) override {
+    list->singlePane = value;
     list->UpdateScrollBars();
   }
   void SetActive(bool value) override {
     active = value;
-    const auto color = Lister::PanelBackground(B_PANEL_BACKGROUND_COLOR, active);
+    const auto color = Listi::PanelBackground(B_PANEL_BACKGROUND_COLOR, active);
     if (list->Color(B_COLOR_BACKGROUND) != color) list->SetColor(B_COLOR_BACKGROUND, color);
   }
   void Apply(const Preferences &p) override {
@@ -417,7 +417,7 @@ public:
     list->SetFont(&p.font);
     list->SetColumnVisible(1, p.size);
     list->SetColumnVisible(2, p.date);
-    list->SetColor(B_COLOR_BACKGROUND, Lister::PanelBackground(B_PANEL_BACKGROUND_COLOR, active));
+    list->SetColor(B_COLOR_BACKGROUND, Listi::PanelBackground(B_PANEL_BACKGROUND_COLOR, active));
     list->SetColor(B_COLOR_TEXT, ui_color(B_PANEL_TEXT_COLOR));
     list->SetColor(B_COLOR_SELECTION,
                     tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.80));

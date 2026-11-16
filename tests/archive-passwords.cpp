@@ -10,7 +10,7 @@
 #include <atomic>
 #include <set>
 #include <chrono>
-using namespace Lister;
+using namespace Listi;
 int checks=0;
 void check(bool ok,const char *name){if(!ok){fprintf(stderr,"FAIL %s\n",name);exit(1);}++checks;printf("PASS %s\n",name);}
 std::string read(const std::string &p){std::string out;ReadFile(p,[&](const char *b,size_t n){out.append(b,n);});return out;}

@@ -6,7 +6,7 @@
 #include <ctime>
 #include <limits>
 #include <stdexcept>
-namespace Lister {
+namespace Listi {
 namespace {
 std::string Trim(const std::string &s) {
   auto first = s.find_first_not_of(" \t");

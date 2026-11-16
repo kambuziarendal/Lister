@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 #include <sys/stat.h>
-namespace Lister {
+namespace Listi {
 struct OpenApplication {
   std::string path, name, signature;
   struct stat identity{};

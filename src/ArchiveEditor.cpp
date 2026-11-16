@@ -12,7 +12,7 @@
 #include <fcntl.h>
 #include <stdexcept>
 #include <unistd.h>
-namespace Lister {
+namespace Listi {
 namespace {
 void Require(bool ok, const std::string &message) {
   if (!ok)
@@ -399,4 +399,4 @@ bool ArchiveEditSession::Save(const Hooks &hooks) {
   stable = 0;
   return true;
 }
-} // namespace Lister
+} // namespace Listi

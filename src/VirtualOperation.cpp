@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace Lister {
+namespace Listi {
 namespace {
 std::atomic<unsigned long> sequence{0};
 std::string Token() {
@@ -427,4 +427,4 @@ Result RunVirtual(const Job &job, const Hooks &hooks) {
   }
   return runner.result;
 }
-} // namespace Lister
+} // namespace Listi

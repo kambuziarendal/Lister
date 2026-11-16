@@ -26,13 +26,13 @@ namespace {
 constexpr uint32 kReady='arld',kGo='argo',kBrowse='arbr',kFolder='arfo',kFormat='arfm',kOptions='arop',kShow='arsh',kFavorite='arfv',kProtect='aren';
 struct Loaded {
   std::mutex mutex;
-  std::vector<Lister::ArchiveFormat> formats;
+  std::vector<Listi::ArchiveFormat> formats;
   BMessage settings;
   std::string error;
 };
 std::string SettingsPath(){BPath p;find_directory(B_USER_SETTINGS_DIRECTORY,&p);p.Append("Lister_archive_settings");return p.Path();}
 class ArchiveWindow : public BWindow {
-  Lister::Job job;BMessenger target;
+  Listi::Job job;BMessenger target;
   BTextControl *folder,*name,*password=nullptr,*confirm=nullptr;
   BStringView *status,*formatSummary;
   BMenuField *format,*level;
@@ -41,12 +41,12 @@ class ArchiveWindow : public BWindow {
   BGroupView *options;
   std::unique_ptr<BFilePanel> picker;
   std::shared_ptr<Loaded> loaded=std::make_shared<Loaded>();
-  std::vector<Lister::ArchiveFormat> formats;
+  std::vector<Listi::ArchiveFormat> formats;
   BMessage settings;
   std::string formatID="zip",extension;
   bool expanded=true,ready=false;
-  bool Extract()const{return job.action==Lister::Action::ExtractArchive;}
-  const Lister::ArchiveFormat *SelectedFormat()const{
+  bool Extract()const{return job.action==Listi::Action::ExtractArchive;}
+  const Listi::ArchiveFormat *SelectedFormat()const{
     auto found=std::find_if(formats.begin(),formats.end(),[&](const auto &f){return f.id==formatID;});
     return found==formats.end()?nullptr:&*found;
   }
@@ -94,15 +94,15 @@ class ArchiveWindow : public BWindow {
   void ClearSecretInputs(){if(password)password->SetText("");if(confirm)confirm->SetText("");}
   void ShowOptions(bool show){if(expanded!=show){expanded=show;if(show)options->Show();else options->Hide();}change->SetLabel(show?"Hide format options":"Change format...");}
 public:
-  ArchiveWindow(const Lister::Job &frozen,const std::string &initial,BMessenger owner)
-   :BWindow(BRect(160,140,790,frozen.action==Lister::Action::ExtractArchive?410:600),frozen.action==Lister::Action::ExtractArchive?"Listi: Extract archive":"Listi: Create archive",
+  ArchiveWindow(const Listi::Job &frozen,const std::string &initial,BMessenger owner)
+   :BWindow(BRect(160,140,790,frozen.action==Listi::Action::ExtractArchive?410:600),frozen.action==Listi::Action::ExtractArchive?"Listi: Extract archive":"Listi: Create archive",
      B_TITLED_WINDOW,B_AUTO_UPDATE_SIZE_LIMITS),job(frozen),target(owner) {
-    const auto first=Lister::LocationLeaf(job.sources[0]);
+    const auto first=Listi::LocationLeaf(job.sources[0]);
     folder=new BTextControl("archive folder","Destination folder:",initial.c_str(),nullptr);
     std::string proposed=job.sources.size()==1?first:"Archive";
     if(Extract()) {
-      auto loc=Lister::ParseLocation(job.sources[0]);
-      proposed=Lister::Leaf(loc.Archive()?loc.archive:job.sources[0]);
+      auto loc=Listi::ParseLocation(job.sources[0]);
+      proposed=Listi::Leaf(loc.Archive()?loc.archive:job.sources[0]);
       for(const char *suffix:{".tar.gz",".tar.xz",".tar.bz2",".tar.lz4",".tar.zst",".zip",".7z",".rar",".tar",".tgz",".txz",".gz",".xz",".bz2"}) {
         std::string ending=suffix;
         if(proposed.size()>ending.size() && proposed.substr(proposed.size()-ending.size())==ending){proposed.resize(proposed.size()-ending.size());break;}
@@ -155,13 +155,13 @@ public:
       auto data=loaded;BMessenger reply(this);
       std::thread([data,reply]{
         {std::lock_guard<std::mutex> lock(data->mutex);
-         try{data->settings=Lister::LoadArchiveSettings(SettingsPath());data->formats=Lister::WritableArchiveFormats();}
+         try{data->settings=Listi::LoadArchiveSettings(SettingsPath());data->formats=Listi::WritableArchiveFormats();}
          catch(const std::exception &e){data->error=e.what();}}
         reply.SendMessage(kReady);
       }).detach();
     }else ready=true;
   }
-  ~ArchiveWindow(){ClearSecretInputs();if(job.archivePasswordToken)Lister::DiscardArchiveCreationPassword(job.archivePasswordToken);}
+  ~ArchiveWindow(){ClearSecretInputs();if(job.archivePasswordToken)Listi::DiscardArchiveCreationPassword(job.archivePasswordToken);}
   void MessageReceived(BMessage *m) override {
     try {
       switch(m->what) {
@@ -196,23 +196,23 @@ public:
       case kFolder:{entry_ref ref;BPath path;if(m->FindRef("refs",&ref)==B_OK && path.SetTo(&ref)==B_OK)folder->SetText(path.Path());break;}
       case kGo:{
         if(!ready)break;
-        Lister::ArchiveSecretPtr secret;
+        Listi::ArchiveSecretPtr secret;
         if(!Extract()&&protect->Value()==B_CONTROL_ON){
           if(strcmp(password->Text(),confirm->Text()))throw std::runtime_error("Passwords do not match.");
-          secret=std::make_shared<Lister::ArchiveSecret>(password->Text());
+          secret=std::make_shared<Listi::ArchiveSecret>(password->Text());
         }
-        Lister::SetArchiveDestination(job,folder->Text(),name->Text());
+        Listi::SetArchiveDestination(job,folder->Text(),name->Text());
         if(!Extract()){
           job.archiveFormat=formatID;auto marked=level->Menu()->FindMarked();job.archiveLevel=marked?level->Menu()->IndexOf(marked):6;
           job.archiveEncryptNames=secret&&encryptNames->Value()==B_CONTROL_ON;
           settings.SetInt32(("level:"+formatID).c_str(),job.archiveLevel);
           settings.SetBool("ask",ask->Value());if(useDefault->Value())settings.SetString("default",formatID.c_str());
-          Lister::SaveArchiveSettings(SettingsPath(),settings);
-          job.archivePasswordToken=Lister::HoldArchiveCreationPassword(secret);
+          Listi::SaveArchiveSettings(SettingsPath(),settings);
+          job.archivePasswordToken=Listi::HoldArchiveCreationPassword(secret);
           ClearSecretInputs();
         }
-        auto result=Lister::EncodeJob(job,kArchiveAccepted);
-        if(target.SendMessage(&result)!=B_OK){Lister::DiscardArchiveCreationPassword(job.archivePasswordToken);job.archivePasswordToken=0;Status("The main window is no longer available. Nothing was queued. Re-enter the password to try again.");break;}
+        auto result=Listi::EncodeJob(job,kArchiveAccepted);
+        if(target.SendMessage(&result)!=B_OK){Listi::DiscardArchiveCreationPassword(job.archivePasswordToken);job.archivePasswordToken=0;Status("The main window is no longer available. Nothing was queued. Re-enter the password to try again.");break;}
         job.archivePasswordToken=0;
         ready=false;start->SetEnabled(false);PostMessage(B_QUIT_REQUESTED);break;
       }
@@ -222,4 +222,4 @@ public:
   }
 };
 }
-BMessenger OpenArchiveWindow(const Lister::Job &job,const std::string &folder,BMessenger target){return BMessenger(new ArchiveWindow(job,folder,target));}
+BMessenger OpenArchiveWindow(const Listi::Job &job,const std::string &folder,BMessenger target){return BMessenger(new ArchiveWindow(job,folder,target));}

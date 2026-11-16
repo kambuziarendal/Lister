@@ -19,7 +19,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace Lister {
+namespace Listi {
 namespace {
 constexpr int32 kCopyMode = 'Tcsl', kCutMode = 'Tmsl';
 constexpr const char *kLease = "listi:paste-lease";
@@ -319,4 +319,4 @@ void FinishFilePaste(const ClipboardPaste &paste, const std::vector<std::string>
   }
   if (clipboard == be_clipboard) Notify(removed, false, true);
 }
-} // namespace Lister
+} // namespace Listi

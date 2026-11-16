@@ -4,7 +4,7 @@
 #include <MessageFilter.h>
 #include <Messenger.h>
 
-namespace Lister {
+namespace Listi {
 // BTextControl invokes its action on focus loss too. For forms that must never
 // accept a partial answer on blur, use a null control action and this filter.
 class ExplicitSubmit : public BMessageFilter {
@@ -20,4 +20,4 @@ public:
     return B_SKIP_MESSAGE;
   }
 };
-} // namespace Lister
+} // namespace Listi

@@ -7,7 +7,7 @@
 #include <map>
 #include <memory>
 
-namespace Lister {
+namespace Listi {
 std::string SafeArchivePath(const char *raw) {
   if (!raw)
     throw std::runtime_error("Archive entry has no name");
@@ -207,4 +207,4 @@ void ReadArchive(const Location &location, const DataSink &sink,
   else
     Backend().read(location, sink, control);
 }
-} // namespace Lister
+} // namespace Listi

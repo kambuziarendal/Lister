@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include <InterfaceDefs.h>
-namespace Lister {
+namespace Listi {
 inline rgb_color PanelBlend(rgb_color base, rgb_color accent, float amount) {
   auto channel = [amount](uint8 a, uint8 b) {
     return uint8(a + (int(b) - int(a)) * amount + 0.5f);

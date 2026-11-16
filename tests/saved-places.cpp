@@ -5,7 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 int main() {
   BApplication app("application/x-vnd.Kambuzi-Listi-PlacesTest");
   int checks = 0, failures = 0;

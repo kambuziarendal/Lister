@@ -44,7 +44,7 @@ void PaneModel::Add(std::unique_ptr<PaneEntry> entry) {
 void PaneModel::Filter(const std::string &query) {
   visible.clear();
   for (auto &entry : entries) {
-    if (Lister::MatchesNameFilter(entry->name.c_str(), query.c_str(), entry->parent))
+    if (Listi::MatchesNameFilter(entry->name.c_str(), query.c_str(), entry->parent))
       visible.push_back(entry.get());
     else {
       selection.erase(entry->path);

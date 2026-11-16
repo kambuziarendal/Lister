@@ -11,7 +11,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace Lister {
+namespace Listi {
 bool IsListiPrivateEntry(const char *name) {
   return name && !strncmp(name, ".Listi-archive-stage-", 21);
 }
@@ -352,4 +352,4 @@ void RenameFile(const std::string &a, const std::string &b,
   if (rename(a.c_str(), b.c_str()))
     Fail(b);
 }
-} // namespace Lister
+} // namespace Listi

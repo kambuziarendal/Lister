@@ -10,7 +10,7 @@
 #include <memory>
 #include <unistd.h>
 
-namespace Lister {
+namespace Listi {
 namespace {
 void Require(bool ok, const std::string &message) {
   if (!ok)
@@ -177,4 +177,4 @@ void LocalMoveTree::Remove(const std::string &selected, const Hooks &hooks) {
   removed.insert(selected);
   FlushPath(ParentLocation(root));
 }
-} // namespace Lister
+} // namespace Listi

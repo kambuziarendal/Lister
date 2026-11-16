@@ -10,7 +10,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <fcntl.h>
-using namespace Lister;
+using namespace Listi;
 int passed=0;
 void Check(bool result,const char *label){if(!result)throw std::runtime_error(label);++passed;std::cout<<"PASS "<<label<<std::endl;}
 void Refuse(std::function<void()> action,const char *label){bool refused=false;try{action();}catch(const std::exception &){refused=true;}Check(refused,label);}

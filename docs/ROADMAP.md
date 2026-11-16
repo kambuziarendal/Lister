@@ -47,6 +47,230 @@ Ingen nye funksjoner er lagt til i denne stabilitetsrunden.
 Masseomdøping og tilpassbare handlinger nedenfor beholder plassen i planen, men
 kommer etter stabilitetstrinnene. Søkefiltrene i 0.30.0 er allerede levert lokalt.
 
+## Fremdriftsplan, godkjent for planlegging 16. november 2026
+
+**PAUSET for funksjonsutvikling. Arne har godkjent planen, ikke oppstart av trinnene.
+Unntaket er den særskilt autoriserte navneoppdateringen nedenfor.
+Ingen implementasjon, testkjøring, bakgrunnsjobb eller automatisk oppstart etter
+kvoteresett. Vent på uttrykkelig klarsignal.** Alle trinn nedenfor er ikke startet.
+Denne rekkefølgen gjelder foran eldre forslag om neste utviklingstrinn.
+
+### 1. Målrettet filsikkerhet og delvis flytting
+
+- Samle en kort, aktuell dekningsoversikt med henvisning til eksisterende tester
+  og 0.31.0-bevis. VERIFICATION.md inneholder historiske resultater, ikke en
+  samlet kvalifisering av dagens kandidat. Ikke gjenta allerede dekkede prøver
+  uten en konkret grunn.
+- Utvid lokal feilinjeksjon for full disk under skriving, metadata og flush,
+  manglende rettigheter og relevante symlinksløyfer. Eksisterende ENOSPC ved
+  arkivpublisering er ikke full-disk-kvalifisering av vanlig lokal kopiering.
+- Prøv flytting mellom to faktiske testvolumer med avbrudd, endringer og feil
+  under kopiering/opprydding. Fletting med eksisterende mål er ikke tilstrekkelig
+  bevis for faktisk kryssvolumflytting.
+- Kontroller hva UI opplyser ved delvis flytting. Definer synlige utfall som
+  flyttet, kopiert med kilde beholdt, hoppet over, feilet og ikke behandlet.
+  Rett konkrete feil innen dette avgrensede trinnet; full resultatmodell følger
+  i trinn 2.
+- Ferdig når målrettede prøver viser nøyaktig kilde-/målinnhold etter feil,
+  ingen falsk suksess, og dokumenterte gjenværende grenser. Ingen universell
+  sikkerhets- eller strømbruddsgaranti.
+
+### 2. Jobbidentitet, resultater og avbryt per jobb
+
+- Tildel unik jobb-ID ved køinnlegging, ikke først ved kjøring. Definer levetid
+  og instanstilhørighet uten å love vedvarende jobber over omstart.
+- Behold strukturerte jobbstatuser/resultater uavhengig av UI-drenering, med
+  avgrenset oppbevaring og tydelig status når gamle resultater ikke finnes.
+- Innfør avbryt av én ventende eller aktiv jobb; behold en eksplisitt Avbryt alle.
+  Frosset utvalg/mål, konfliktspørsmål, Cut-leaser og passordhåndtak må fortsatt
+  ryddes korrekt. Avbryt betyr ikke at allerede utførte handlinger angres.
+- Gi forståelig oversikt ved delvis flytting, med detaljer som gjør det mulig
+  å finne hva som ligger igjen, ikke bare antall fullførte rotmapper.
+- Ferdig når målrettede kø-/UI-prøver dekker ventende, kjørende, pauset og
+  konfliktventende jobb, gamle svar, fullført jobb og bevart status etter
+  UI-oppdatering. Avbryt av én jobb må ikke avbryte de andre.
+
+### 3. Lite internt kommandoregister
+
+- Begynn med noen få eksisterende handlinger. Skill forberedelse/validering,
+  eventuell brukerbekreftelse og køinnlegging. UI og register skal gjenbruke
+  samme filvern, ikke utvikle parallelle motorer.
+- Typede argumenter og strukturerte resultater; tekstsyntaks er en mulig adapter,
+  ikke intern representasjon for alle UI-hendelser. BMessage forblir native
+  meldingsmekanisme, ikke grunnlaget for den portable kontrakten.
+- Ny registerlogikk skal bruke konservativ C uten Haiku-headere, med smal
+  C++/Haiku-adapter. Ikke trekk ut hele den eksisterende motoren samtidig.
+- Migrer knapper, menyer og dagens snarveier gradvis. Ikke gjeninnfør F-taster.
+- Ferdig når migrerte handlinger har samme validering, bekreftelser, frosne
+  mål og jobbresultater via alle interne innganger, med relevante regresjoner.
+
+### 4. Beslutningspunkt for ekstern automatisering
+
+- Etter trinn 1 til 3: vurder konkret nytte og kontrakt for lokal socket/CLI,
+  klienttillit, adgang, jobbstatus, frakobling og eventuell dry-run.
+- Dette er et nytt beslutningspunkt, ikke godkjenning av det tidligere
+  Claude-forslaget. Arne vil lese seg opp før han bestemmer løsningen.
+- Ingen socket, Lua, hooks eller generell ekstern programkjøring åpnes som
+  automatisk følge av det interne registeret.
+
+### 5. Begrenset angre og varig journal, separat senere funksjon
+
+- Avklar hvilke operasjoner som faktisk kan angres, hvilke data som må beholdes,
+  lagringsgrenser, konflikter og gjenoppretting etter avbrudd før implementering.
+- Ikke likestill jobblogg med angre eller backup. Nyere brukerdata skal ikke
+  overskrives under gjenoppretting. Eksterne programmer og alle fjernhandlinger
+  kan ikke gis et generelt angreløfte.
+- Krever eget avgrenset omfang og akseptkriterier før oppstart.
+
+### Bevarte ønsker og arbeidsgrenser
+
+Smiðja, utvidet preview/Edit, tilpassbart oppsett, terminal, workspace-størrelser,
+masseomdøping og tilpassbare handlinger beholdes i planen. Plassering av neste
+produktfunksjon vurderes etter fundamentet i trinn 1 til 3; ekstern automatisering
+og journal er ikke automatiske forutsetninger for alle disse forbedringene.
+Lua, hooks, makroopptaker, Skipta-integrasjon og stor portabel-kjerneuttrekking er
+fortsatt ikke gjort og ikke autorisert for oppstart. Ingen nye avhengigheter uten
+avklaring, stor refaktorering eller nye binaries som del av denne planleggingen.
+Ett avgrenset trinn av gangen. Målrettet testing underveis og nødvendig samlet
+sluttkontroll per ferdig kandidat, uten unødvendige omkjøringer. Ingen dato- eller
+fremdriftsløfter mens arbeidet er pauset.
+
+## DOpus 13: inspirasjon til senere trinn, vurdert 16. november 2026
+
+**Kandidater, ikke implementasjonsvedtak.** Offisielle DOpus 13-høydepunkter er
+lest og sammenholdt med planen vår, ikke kjørt eller fullstendig funksjonsrevidert.
+Ingen endring av den pausede rekkefølgen: filsikkerhet, jobbmodell og internt
+kommandoregister først. Vi skal hente arbeidsflyter, ikke kopiere hele produktet.
+
+### Anbefalte presiseringer av eksisterende planer
+
+- **Mappevisning som huskes:** lagre kolonner, sortering, visning og thumbnail-
+  størrelse per sted, med tydelig «bare denne mappen» og «bruk som standard».
+  Skill dette fra workspace-layout og mappekort, og tilby enkel nullstilling.
+  DOpus 13 beskriver Automatic Formats og Set Lister Defaults [2].
+- **Trygg tilpasning av Smiðja:** palett med ferdige handlinger som kan legges
+  til verktøylinjer/menyer. Vis standardoppsettet ved siden av eget, og la nye
+  standardhandlinger hentes inn uten å slette brukerens oppsett [6]. Dette
+  konkretiserer eksisterende edit-mode-krav og bygger senere på registeret.
+- **Mappekort og rask mappeveksling:** vurder låsing mot utilsiktet lukking og
+  en søkbar kort-/stedvelger [3]. Behold vår BeOS-inspirerte kortutforming;
+  navigasjonslås og lukkebeskyttelse må være separate, forståelige valg.
+- **Bedre søkeavgrensning:** eksplisitt utelukkelse av mapper og gjenbrukbare
+  søkeoppsett [5], som utvidelse av våre eksisterende lagrede søk og BFS-søk.
+  Ikke bygg en ny indeksmotor eller innfør Windows-avhengigheten Everything.
+- **Preview-kontroller:** separat valg for autospill og lyd, fullskjerm fra
+  preview og senere eventuelt en koblet visning på skjerm nummer to [4]. Dette
+  supplerer Smiðja-formatstøtten, ikke erstatter den. Forhåndsvisning skal fortsatt
+  ikke kjøre script; automatisk avspilling bør være av som utgangspunkt.
+
+### Nye kandidater som bør vurderes separat
+
+- **Mappepar:** lagre for eksempel prosjektmappe og eksportmappe som et par,
+  med eksplisitt åpning av partneren i det andre panelet [2]. Begynn eventuelt
+  med eksakte stier, ikke regex eller skjult automatikk. Dette er navigering,
+  ikke synkronisering; en ventende jobb beholder sitt frosne mål.
+- **Undermapper utvidet i fillisten:** DOpus lar flere nivåer være åpne samtidig
+  [2]. Nyttig, men dyrere enn det ser ut: utvalg av både forelder og barn,
+  rekursiv lesing, lenker og nettverkslatens må håndteres. Lavere prioritet.
+- **Utvalgssammendrag etter filtype:** enkel oversikt over antall/type og
+  tilgjengelig størrelse [2]. Vurder tekst før diagrammer, og ikke utløse dyr
+  rekursiv nettverkslesing bare for å fylle statuslinjen.
+
+Masseomdøping, preview, lagrede oppsett og sammenligning finnes allerede i vår
+plan eller delvis i produktet; de skal ikke oppføres som helt nye oppfinnelser.
+Duplikatfinner og skrivende synkronisering [5] bør vente til resultatmodell og
+konfliktoversikt er gode. Eksisterende mappe-diff er ikke en ferdig synkmotor.
+Vi prioriterer ikke script-IDE, hundrevis av temavalg, Windows-spesifikke
+shell-/Edge-integrasjoner eller egen bilde-/medieredigeringspakke. Lua, hooks,
+ekstern automatisering og nye avhengigheter er fortsatt uavklart/utsatt.
+
+Kilder: [DOpus 13-oversikt](https://docs.dopus.com/doku.php?id=release_history:opus13),
+[2: mapper og oppsett](https://docs.dopus.com/doku.php?id=release_history:opus13:page2),
+[3: kort og navigering](https://docs.dopus.com/doku.php?id=release_history:opus13:page3),
+[4: visning](https://docs.dopus.com/doku.php?id=release_history:opus13:page4),
+[5: søk og filverktøy](https://docs.dopus.com/doku.php?id=release_history:opus13:page5),
+[6: tilpasning](https://docs.dopus.com/doku.php?id=release_history:opus13:page6).
+
+## Navn og identitet, besluttet 16. november 2026
+
+Prosjektet heter **Listi**, med `listi` som repo-/pakke-ID. Følgende navn erstatter
+alle tidligere navn på modusene. DOpus er inspirasjonskilden, ikke lenger et
+modusnavn i Listi.
+
+- **Einn (`einn`):** enkel Tracker-lignende modus med ett panel.
+- **Askr (`askr`):** mappetre til venstre, filliste til høyre.
+- **Tvískipt (`tviskipt`):** to filpaneler ved siden av hverandre, i Directory Opus-stil.
+- **Smiðja (`smidja`):** arbeidsbenken med flere verktøy og valg.
+
+Navneoppdateringen er uttrykkelig autorisert som en egen avgrenset oppgave.
+Bare navn, beskrivelser og nødvendig innstillingskompatibilitet endres; øvrig
+utvikling er fortsatt pauset. Diff og foreslått GitHub-beskrivelse/topics skal
+ble klargjort før publisering. Arne ga deretter klarsignal med «Deploy».
+Navneoppdateringen leveres som 0.31.1 alpha med installer; øvrige funksjonstrinn
+er fortsatt pauset. Den tidligere verifiserte 0.31.0-pakken er også tilgjengelig.
+Stabile numeriske workspace-verdier og historiske lagrings-/programidentiteter
+bevares for kompatibilitet, se [DESIGN](DESIGN.md#names-and-compatibility).
+Historiske testnotater beholder navnene som faktisk ble brukt i de versjonene.
+
+## Utvidet Smiðja, krav 16. november 2026
+
+**Planlagt, ikke påbegynt. Arne har uttrykkelig bedt om at dette bare legges i
+planen. Implementasjon skal vente på nytt klarsignal, ikke starte automatisk
+når cooldown er over.** Dette endrer ikke rekkefølgen for allerede avtalte trinn.
+
+- Preview skal dekke **alle filtyper som kan forhåndsvises**, ikke en lukket liste
+  med eksempler. Bilder, script, TXT, Markdown, HTML, PDF, lyd og video er bare
+  eksempler. Støtten skal kunne utvides gjennom passende visningskomponenter og
+  tilgjengelige motorer. Faktisk format-/variantstøtte må dokumenteres og prøves;
+  manglende komponenter skal forklares, ikke fremstilles som ferdig støtte.
+- Alt innhold som kan redigeres som tekst skal ha en tydelig **Edit-knapp** som
+  åpner en teksteditor i Smiðja. Tekst, script, Markdown og HTML skal kunne
+  vises som tekst/kildekode. Forhåndsvisning skal ikke kjøre script eller endre
+  filer. Brukeren velger eksplisitt redigering og lagring. Skrivebeskyttede kilder
+  må fremgå tydelig, og endringer må ikke kunne gå tapt lydløst.
+- Video og lyd skal kunne spilles i preview gjennom MPlayer eller tilsvarende
+  egnet integrasjon. PDF og øvrige visbare formater får passende visning.
+  Motorvalg og eventuell innebygging kvalifiseres per plattform.
+- Ukjente filtyper skal få et spørsmål om filen er tekstredigerbar og om brukeren
+  vil forsøke visning i teksteditoren. Ikke åpne ukjent binærinnhold automatisk
+  som redigerbar tekst. Kjente tekstformater skal ikke kreve dette spørsmålet.
+- Einn edit mode for hele arbeidsbenken: legg til, fjern og plasser knapper og
+  moduler. Filtre skal blant annet kunne fjernes. Lagre og gjenopprett brukerens
+  oppsett, også etter omstart, uten å miste mapper eller pågående jobber.
+- Valgfri terminal som følger aktiv arbeidsmappe. Brukeren skal kunne ha den
+  separat eller i stedet for preview og velge kompatibel terminalapp.
+  En fremtidig Linux-port bør kunne bruke eksempelvis foot eller QTerminal der
+  Listi og terminalen støtter integrasjonen. Skill mellom innebygd visning og
+  separat terminalvindu. Ingen universell innebyggingsstøtte er bekreftet.
+
+Dette er produktkrav, ikke en implementert støttematrise. Når arbeidet autoriseres,
+deles det i avgrensede trinn for visningsstøtte, tekstredigering, lagret oppsett og
+terminalintegrasjon, med faktisk brukerflyt og relevante feiltilfeller verifisert.
+
+## Workspace-bytte og vindusstørrelse, krav 16. november 2026
+
+**Kun planlegging. Ingen implementasjon før nytt klarsignal fra Arne.**
+
+- Ved bytte fra Tvískipt/Smiðja til Einn eller Askr skal mappen som er åpen i det aktive panelet følge med til
+  enkeltpanelet. Ikke bytt til det andre panelets mappe eller en standardmappe.
+  En markert undermappe skal ikke åpnes bare fordi arbeidsoppsettet skiftes.
+- Vinduet skal samtidig tilpasses innholdet i denne mappen og det nye oppsettet.
+  Einn og Askr skal kunne bli mer kompakte når ekstra paneler forsvinner.
+  Askr må fortsatt ha plass til mappetreet og nødvendige kontroller.
+- Ved bytte tilbake til Tvískipt eller Smiðja skal vinduet utvides etter
+  det aktuelle oppsettets behov, slik at paneler, synlige moduler og kontroller
+  får plass. Aktiv mappe skal bevares også denne veien, uten å miste det andre
+  panelets lagrede mappe eller pågående jobber.
+- Lag forhåndsdefinerte størrelsesregler per workspace. Reglene skal være enkle
+  å endre og lagres som brukerinnstillinger, ikke spres som hardkodede mål.
+  Konkretiser standardmål, minimumsmål og innholdsbasert tilpasning når trinnet
+  tas opp. Ta hensyn til brukerens valgte moduler, skrift-/skjermskalering og
+  tilgjengelig skjermflate. Store mapper skal bruke scrolling fremfor vinduer
+  utenfor skjermen; alle kontroller må fortsatt være tilgjengelige.
+- Senere akseptprøver skal dekke bytte begge veier med venstre og høyre panel
+  aktivt, små/store mapper, ulike skjermstørrelser og tilpasset Smiðja.
+  Dette er planlagte kontroller, ikke utførte tester.
+
 ## Hovedretning og neste trinn, presisert 15. november 2026
 
 Vi lager Listi først og fremst fordi vi savner DOpus på Haiku. DOpus-inspirert
@@ -326,13 +550,13 @@ inkludert to detaljpaneler uten mappe-/forhåndsvisning.
 
 ### Arbeidsoppsett, godkjent plan 14. november
 
-Arne godkjente retningen Enkel, Utforsker, Commander og Arbeidsbenk, men vil
+Arne godkjente retningen Einn, Askr, Tvískipt og Smiðja, men vil
 at vi tar det gradvis uten hast. Planlagt, ikke implementert i 0.14.0.
 
-- Enkel: ett filpanel, ingen nederste handlingsknapper. Tracker-aktig flyt.
-- Utforsker: mappetre og ett filpanel, ingen nederste handlingsknapper.
-- Commander: to filpaneler og dagens handlingsknapper.
-- Arbeidsbenk: to paneler, mappetre, forhåndsvisning og flere tilgjengelige
+- Einn: ett filpanel, ingen nederste handlingsknapper. Tracker-aktig flyt.
+- Askr: mappetre og ett filpanel, ingen nederste handlingsknapper.
+- Tvískipt: to filpaneler og dagens handlingsknapper.
+- Smiðja: to paneler, mappetre, forhåndsvisning og flere tilgjengelige
   verktøy. Søk og operasjonslogg åpnes ved behov.
 
 Valg under Vis > Arbeidsoppsett. Samme filhandlinger og snarveier i alle,
@@ -344,8 +568,8 @@ justeres når hvert trinn planlegges.
 
 ### Neste avgrensede trinn: 0.15.0
 
-Enkel og veksling tilbake til Commander er implementert først. Utforsker og
-Arbeidsbenk står fortsatt i planen. Privat kvalifisering dokumenteres separat.
+Einn og veksling tilbake til Tvískipt er implementert først. Askr og
+Smiðja står fortsatt i planen. Privat kvalifisering dokumenteres separat.
 Se WORKSPACES-0.15.0.md for konkret oppførsel.
 
 ### Arkiver, presisert av Arne 15. november
@@ -357,7 +581,7 @@ HaikuDepot. Ikke bygg alle motorer inn i appen eller lag et eget pakkesystem.
 Oppdag installert støtte ved bruk; vis konkret manglende motor ved ukjent format.
 Kvalifiser lesing, browsing og uttrekk per format, inkludert 7z/RAR og relevante
 krypterte/oppdelte/feilaktige prøver. Ikke lov alle varianter før de er prøvd.
-Simple-forenklingen fullføres først. Arkivarbeidet følger som eget avgrenset trinn.
+Einn-forenklingen fullføres først. Arkivarbeidet følger som eget avgrenset trinn.
 
 0.16.0 implements the first optional system-libarchive adapter and qualifies a
 broader read/extract matrix, with lz4/zstd_bin helpers installed separately.
@@ -365,12 +589,12 @@ Follow-up: password UI, multipart inputs, additional engines for unsupported
 families and archive extraction from the single-pane workspace. Do not substitute
 an external archive GUI for those missing internal workflows.
 
-### Utforsker og kodegjennomgang, privat 0.17.0
+### Askr og kodegjennomgang, privat 0.17.0
 
-Utforsker er implementert som neste trinn: mappetre og ett filpanel, uten
-nederste handlingsknapper. Enkel og Commander beholdes. Se
+Askr er implementert som neste trinn: mappetre og ett filpanel, uten
+nederste handlingsknapper. Einn og Tvískipt beholdes. Se
 [arbeidsoppsett](WORKSPACES-0.17.0.md) og [kodeaudit](AUDIT-0.17.0.md).
-Arbeidsbenk, mappekort/arbeidssett og gjenstående arkivfunksjoner ligger fortsatt
+Smiðja, mappekort/arbeidssett og gjenstående arkivfunksjoner ligger fortsatt
 i køen. Kodeaudit er ikke bevis på feilfrihet eller full ekstern formatdekning.
 
 ### Arkivtrinn 0.18.0
@@ -394,7 +618,7 @@ split volumes and archive editing remain open. See ARCHIVES-0.19.0.md.
 Encrypted 7z/RAR4/RAR5 reading was delivered privately in 0.20.0 with optional
 p7zip. 0.21.0 adds numbered 7z, modern RAR and old RAR volume sets, with the same
 password workflow and atomic whole-archive publication. See ARCHIVES-0.21.0.md.
-Next: encrypted ZIP/7z creation, editing existing archives, then Workbench.
+Next: encrypted ZIP/7z creation, editing existing archives, then Smiðja.
 Split ZIP, split creation and remote/nested archive materialization remain open.
 
 ## 0.22.0: encrypted archive creation
@@ -414,14 +638,14 @@ editing, writing and flushing succeed. Supported ZIP/7z encryption is retained.
 Split, remote, nested and RAR editing remain separate work. See
 ARCHIVES-0.23.0.md.
 
-## 0.24.0: Arbeidsbenk
+## 0.24.0: Smiðja
 
 Det fjerde godkjente arbeidsoppsettet bygges av de eksisterende, kvalifiserte
-komponentene. Arbeidsbenk har to paneler og starter med begge mappetrær og
+komponentene. Smiðja har to paneler og starter med begge mappetrær og
 forhåndsvisningen synlig. Filter, adresser, handlingsbank, søk og operasjonslogg
 er tilgjengelige uten nye filoperasjoner i samme versjon. Bytte mellom oppsett
-beholder panelobjekter, mapper, utvalg, delere og pågående jobber. Commander og
-Arbeidsbenk lagrer tre- og forhåndsvisningsvalg separat. Se
+beholder panelobjekter, mapper, utvalg, delere og pågående jobber. Tvískipt og
+Smiðja lagrer tre- og forhåndsvisningsvalg separat. Se
 WORKSPACES-0.24.0.md.
 
 ## Long-term portability direction

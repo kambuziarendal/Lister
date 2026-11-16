@@ -24,13 +24,13 @@ public:
       return;
     }
     auto serial = m->GetInt64("serial", -1);
-    Lister::TransferControl c;
+    Listi::TransferControl c;
     c.proceed = [&] { return generation->load() == serial; };
     BMessage result(kTreeLoaded);
     result.AddInt64("serial", serial);
     result.AddString("path", m->GetString("path", ""));
     try {
-      auto children = Lister::ListFiles(m->GetString("path", ""), c);
+      auto children = Listi::ListFiles(m->GetString("path", ""), c);
       std::sort(children.begin(), children.end(),
                 [](const auto &a, const auto &b) { return a.name < b.name; });
       size_t count = 0;
@@ -40,7 +40,7 @@ public:
             throw std::runtime_error("Too many folders in this branch");
           result.AddString("child", entry.path.c_str());
         }
-    } catch (const Lister::Cancelled &) {
+    } catch (const Listi::Cancelled &) {
       return;
     } catch (const std::exception &e) {
       result.AddString("error", e.what());
@@ -132,7 +132,7 @@ void FolderTree::ShowPath(const std::string &path) {
   if (!reader || IsHidden() || path == "@disks")
     return;
   try {
-    auto location = Lister::ParseLocation(path);
+    auto location = Listi::ParseLocation(path);
     location.path = "/";
     std::string newRoot = location.URL();
     desired = path;
@@ -228,7 +228,7 @@ void FolderTree::MessageReceived(BMessage *m) {
   // preserve the reader's ascending name order.
   for (int32 i = count - 1; i >= 0; --i) {
     if (m->FindString("child", i, &path) != B_OK) continue;
-    auto item = new TreeItem(path, Lister::LocationLeaf(path).c_str());
+    auto item = new TreeItem(path, Listi::LocationLeaf(path).c_str());
     items[path] = item;
     list->AddUnder(item, parent);
     auto dummy = new BStringItem("Loading...");

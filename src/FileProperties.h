@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 #include <sys/stat.h>
-namespace Lister {
+namespace Listi {
 struct FileAttribute {
   std::string name, text;
   type_code type = 0;

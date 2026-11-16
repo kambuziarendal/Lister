@@ -10,6 +10,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+// Stable installed-app identity; not a display name. Retained for upgrades.
 constexpr const char *kSignature = "application/x-vnd.Kambuzi-Lister";
 enum : uint32 {
   kGridMode = 'gmod',
@@ -91,35 +92,60 @@ enum : uint32 {
   kNameAccepted = 'name',
   kOpenPaths = 'opth'
 };
+// Values are the existing on-disk workspace IDs. Never reorder.
 enum class Workspace : int32 {
-  Commander = 0,
-  Simple = 1,
-  Explorer = 2,
-  Workbench = 3
+  tviskipt = 0,
+  einn = 1,
+  askr = 2,
+  smidja = 3
 };
+inline const char *WorkspaceId(Workspace workspace) {
+  switch (workspace) {
+  case Workspace::einn: return "einn";
+  case Workspace::askr: return "askr";
+  case Workspace::smidja: return "smidja";
+  default: return "tviskipt";
+  }
+}
+inline const char *WorkspaceName(Workspace workspace) {
+  switch (workspace) {
+  case Workspace::einn: return "Einn";
+  case Workspace::askr: return "Askr";
+  case Workspace::smidja: return "Smiðja";
+  default: return "Tvískipt";
+  }
+}
+inline const char *WorkspaceMenuLabel(Workspace workspace) {
+  switch (workspace) {
+  case Workspace::einn: return "Einn: simple single-panel browsing";
+  case Workspace::askr: return "Askr: folder tree and file list";
+  case Workspace::smidja: return "Smiðja: workbench with more tools";
+  default: return "Tvískipt: side-by-side file panels";
+  }
+}
 struct Preferences {
   BFont font = *be_plain_font;
   bool icons = true, size = true, date = true, buttons = true, command = false;
   int32 paneMode[2] = {0, 0};
   bool paneTree[2] = {false, false};
-  bool workbenchTree[2] = {true, true};
+  bool smidjaTree[2] = {true, true};
   bool preview = false;
-  bool workbenchPreview = true;
-  Workspace workspace = Workspace::Commander;
+  bool smidjaPreview = true;
+  Workspace workspace = Workspace::tviskipt;
   bool SinglePane() const {
-    return workspace == Workspace::Simple || workspace == Workspace::Explorer;
+    return workspace == Workspace::einn || workspace == Workspace::askr;
   }
-  bool Simple() const { return workspace == Workspace::Simple; }
-  bool Workbench() const { return workspace == Workspace::Workbench; }
+  bool IsEinn() const { return workspace == Workspace::einn; }
+  bool IsSmidja() const { return workspace == Workspace::smidja; }
   bool Tree(int pane) const {
-    return Workbench() ? workbenchTree[pane] : paneTree[pane];
+    return IsSmidja() ? smidjaTree[pane] : paneTree[pane];
   }
   void SetTree(int pane, bool value) {
-    (Workbench() ? workbenchTree[pane] : paneTree[pane]) = value;
+    (IsSmidja() ? smidjaTree[pane] : paneTree[pane]) = value;
   }
-  bool Preview() const { return Workbench() ? workbenchPreview : preview; }
+  bool Preview() const { return IsSmidja() ? smidjaPreview : preview; }
   void SetPreview(bool value) {
-    (Workbench() ? workbenchPreview : preview) = value;
+    (IsSmidja() ? smidjaPreview : preview) = value;
   }
   int32 singlePane = 0;
   std::map<std::string, int32> folderModes;

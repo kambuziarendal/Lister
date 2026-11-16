@@ -4,7 +4,7 @@
 #include <iostream>
 #include <sstream>
 #include <pthread.h>
-using namespace Lister;
+using namespace Listi;
 std::string bytes(const std::string &path) {
   std::ifstream file(path, std::ios::binary);
   if (!file) throw std::runtime_error("Missing expected fixture: " + path);

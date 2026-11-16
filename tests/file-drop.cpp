@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 int checks=0;
 void Check(bool ok,const char *s){printf("%s %s\n",ok?"PASS":"FAIL",s);if(!ok)throw std::runtime_error(s);++checks;}
 void Write(const std::string &p,const char *v){std::ofstream(p)<<v;}

@@ -3,7 +3,7 @@
 #include "FileSearch.h"
 #include <Message.h>
 #include <vector>
-namespace Lister {
+namespace Listi {
 struct SavedSearch { std::string name; SearchRequest request; bool live = false; };
 class SavedSearches {
 public:

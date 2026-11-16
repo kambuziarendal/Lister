@@ -6,7 +6,7 @@
 #include <Query.h>
 #include <sys/stat.h>
 #include <cstdlib>
-namespace Lister {
+namespace Listi {
 namespace {
 constexpr uint32 kRefresh = 'sref', kReconcile = 'srec';
 class SearchWorker : public BLooper {

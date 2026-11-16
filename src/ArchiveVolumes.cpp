@@ -10,7 +10,7 @@
 #include <memory>
 #include <regex>
 #include <sys/stat.h>
-namespace Lister {
+namespace Listi {
 namespace {
 std::string Lower(std::string s) {
   for (auto &c : s)
@@ -118,4 +118,4 @@ void ArchiveVolumes::Verify() const {
                                file.path);
   }
 }
-} // namespace Lister
+} // namespace Listi

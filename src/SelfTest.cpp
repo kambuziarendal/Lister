@@ -17,9 +17,9 @@
 #include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
-namespace Lister {
+namespace Listi {
 int SelfTest() {
-  char pattern[] = "/boot/home/Lister-test-XXXXXX";
+  char pattern[] = "/boot/home/Listi-test-XXXXXX";
   char *dir = mkdtemp(pattern);
   if (!dir)
     return 1;
@@ -98,7 +98,7 @@ int SelfTest() {
   symlink("nested/file", Join(root, "src/tree/link").c_str());
   BNode node(Join(root, "src/tree/nested/file").c_str());
   const char attribute[] = "Haiku metadata";
-  node.WriteAttr("Lister:test", B_STRING_TYPE, 0, attribute, sizeof(attribute));
+  node.WriteAttr("Listi:test", B_STRING_TYPE, 0, attribute, sizeof(attribute));
   Hooks hooks;
   hooks.proceed = [] { return true; };
   hooks.conflict = [](auto &) { return Decision::Replace; };
@@ -114,7 +114,7 @@ int SelfTest() {
   check(!strcmp(link, "nested/file"), "symbolic link is copied, not traversed");
   BNode target(Join(root, "dst/tree/nested/file").c_str());
   char attr[80] = {};
-  target.ReadAttr("Lister:test", B_STRING_TYPE, 0, attr, sizeof(attr));
+  target.ReadAttr("Listi:test", B_STRING_TYPE, 0, attr, sizeof(attr));
   check(!strcmp(attr, attribute), "BFS attributes preserved");
   write(Join(root, "dst/tree/nested/file"), "keep me");
   hooks.conflict = [](auto &) { return Decision::SkipAll; };
@@ -349,4 +349,4 @@ int SelfTest() {
   std::cout << checks << " checks, " << failures << " failures" << std::endl;
   return failures ? 1 : 0;
 }
-} // namespace Lister
+} // namespace Listi

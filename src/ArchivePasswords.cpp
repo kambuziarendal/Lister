@@ -5,7 +5,7 @@
 #include <list>
 #include <map>
 #include <mutex>
-namespace Lister {
+namespace Listi {
 ArchiveSecret::ArchiveSecret(const char *text) {
   size_t length = strlen(text);
   if (!length || length > 1024) throw std::runtime_error("Enter a password of 1 to 1024 bytes.");
@@ -119,4 +119,4 @@ void DiscardArchiveCreationPassword(uint64_t token) {
   std::lock_guard<std::mutex> lock(mutex);
   creation.erase(token);
 }
-} // namespace Lister
+} // namespace Listi

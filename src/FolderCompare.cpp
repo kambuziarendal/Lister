@@ -9,7 +9,7 @@
 #include <set>
 #include <sys/stat.h>
 #include <unistd.h>
-namespace Lister {
+namespace Listi {
 namespace {
 void Need(bool ok, const std::string &s) {
   if (!ok)
@@ -276,4 +276,4 @@ CompareResult CompareFolders(const CompareRequest &r,
   }
   return result;
 }
-} // namespace Lister
+} // namespace Listi

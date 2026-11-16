@@ -8,7 +8,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 int passed=0;
 void Check(bool ok,const char *label){if(!ok)throw std::runtime_error(label);std::cout<<"PASS "<<label<<std::endl;++passed;}
 void Refuse(std::function<void()> work,const char *label){bool denied=false;try{work();}catch(const std::exception &){denied=true;}Check(denied,label);}

@@ -14,39 +14,48 @@ GitHub](https://github.com/kambuziarendal/listi/issues). Include the version,
 Haiku version, what happened and reproduction steps where possible. Do not
 include passwords or private files in a public report.
 
-## Screenshots: Smiðja and DOpus
+[Download the 0.31.1 alpha installer](https://github.com/kambuziarendal/listi/releases/tag/v0.31.1)
+(HPKG or ZIP for Haiku x86_64). [Source for this version](https://github.com/kambuziarendal/listi/tree/v0.31.1).
+The default branch retains the historical code baseline; current development is
+on [work/stability-fixes-20261115](https://github.com/kambuziarendal/listi/tree/work/stability-fixes-20261115).
 
-Actual, unretouched captures of the **0.31.0 development alpha** in Haiku, using
-example files. These are two different workspace configurations, not merely a
-theme change. Existing builds still label them **Workbench** and **Commander**;
-Smiðja and DOpus are the chosen new names. Listi is an independent implementation,
-not Directory Opus or an affiliated product.
+0.31.1 updates the project/workspace names and descriptions without adding file
+features. Existing settings load without manual migration. Native scripts which
+compare the `Workspace` result must use the new display names.
 
-### Smiðja / Workbench: a sunset in the image preview
+## Workspaces in pictures
 
-The light workspace shows a selected photograph as both a thumbnail and a
-preview alongside the file panels. The broader preview/editor and customization
-plans are not implemented by this screenshot.
+Actual captures of the **0.31.0 development alpha** in Haiku, using example files.
+The names below are the current workspace names. These captures predate the
+rename; the captured build calls Smiðja "Workbench" and Tvískipt "Commander".
+Listi is an independent implementation, not Directory Opus or an affiliated product.
 
-![Listi 0.31.0 Workbench, planned name Smiðja, with a Porto Covo sunset photograph in the image preview](docs/screenshots/listi-smidja-sunset-0.31.0.png)
+### Smiðja: a workspace for files and tools
+
+File panels, folder trees, preview, filters and action buttons bring more tools
+into one working layout. The capture shows the existing image preview. Broader
+file previews, text editing, freely configurable modules and an optional terminal
+are planned, not features demonstrated by this alpha.
+
+![Listi Smiðja workspace with file panels and image preview, captured in 0.31.0 before the rename](docs/screenshots/listi-smidja-preview-0.31.0.png)
 
 Photo: [Sunset 2007-1](https://commons.wikimedia.org/wiki/File:Sunset_2007-1.jpg)
 by Alvesgaspar, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
 [Photo and screenshot licensing](docs/screenshots/CREDITS.md).
 
-### DOpus / Commander: two file panels and contextual actions
+### Tvískipt: side-by-side file management
 
-The dark workspace uses two detail panels without folder trees or preview.
-Right-clicking a file opens its actions. **Selected files** and **This folder**
-at the top switch the menu between file-selection and current-folder actions,
-revealing different choices without leaving the menu workflow. This is context
-switching, not a claim that arbitrary menu customization is already implemented.
+Two file panels support the source/destination workflow inspired by Directory
+Opus. The dark layout shown here has no folder trees or preview. Right-clicking
+a file opens its actions; **Selected files** and **This folder** switch between
+selection and current-folder actions. This is context switching, not arbitrary
+menu customization.
 
-![Listi 0.31.0 Commander, planned name DOpus, in dark appearance with a file context menu showing Selected files and This folder](docs/screenshots/listi-dopus-context-dark-0.31.0.png)
+![Listi Tvískipt workspace with two file panels and a context menu, captured in 0.31.0 before the rename](docs/screenshots/listi-tviskipt-context-dark-0.31.0.png)
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Development alpha: **0.31.0**. Historical published alpha: **0.2.0**.
+replacement. Development alpha: **0.31.1**. Historical published alpha: **0.2.0**.
 
 
 We are building Listi primarily because we miss DOpus on Haiku. Useful ideas from
@@ -129,41 +138,30 @@ workspaces. ZIP, 7z, tar.gz, tar.xz and tar writers are probed from the optional
 system libarchive. Choose favorites, a default format and compression level.
 Existing targets are never replaced. See [archive workflows and limits](docs/ARCHIVES-0.18.0.md).
 
-## Workspaces in the development alpha
+## Workspaces
 
-Listi offers four implemented workspaces in the **0.31.0 development alpha**,
-selected through **View > Workspace**. These descriptions do not apply to the
-historical 0.1.0 and 0.2.0 downloads. The comparisons below describe workflows,
-not full compatibility with Tracker, Windows Explorer or Directory Opus.
+Listi offers four layouts for different ways of working. Display names use
+Icelandic characters where needed; code and filename IDs use ASCII.
 
-- **Simple:** a minimal, Tracker-like single-folder view. Opening a folder
-  navigates in the same window by default rather than opening a new window for
-  each folder. It keeps the editable path and file view without the folder tree
-  or bottom action bank. Use Copy/Cut and Paste to transfer files.
-- **Explorer:** the familiar Explorer-style layout: a folder tree alongside one
-  file panel, with an editable path, back/forward navigation, view controls and
-  filtering. Useful for browsing a hierarchy without a second destination panel.
-- **DOpus** (currently labelled **Commander** in the app): the classic Directory
-  Opus/Commander-style two-panel workflow. The active panel supplies the selected
-  files and the other panel is the destination for direct panel Copy/Move.
-  Action buttons keep common file operations close at hand; clipboard Paste
-  still targets the active panel. DOpus is our chosen workspace name, not a claim
-  that Listi is Directory Opus or an affiliated product.
-- **Workbench, becoming Smiðja:** the current alpha's expanded working layout,
-  with two file panels, folder trees, image preview, filters and action buttons.
-  Search and operation details are available on demand. Tree and preview choices
-  are remembered separately from DOpus/Commander. **Smiðja** means "smithy";
-  this is the chosen name for the workspace as it develops into a more
-  customizable workbench. The app still labels it Workbench today.
+- **Einn** (`einn`): a simple, Tracker-like view with one file panel. Folders open
+  in the same window by default. Clipboard and context-menu actions remain available.
+- **Askr** (`askr`): a folder tree on the left and a file list on the right,
+  for browsing a hierarchy without the two-panel transfer workflow.
+- **Tvískipt** (`tviskipt`): two file panels side by side, inspired by Directory
+  Opus. Direct Copy/Move targets the other panel; clipboard Paste targets the
+  active panel. Folder trees and preview can be toggled.
+- **Smiðja** (`smidja`): the workbench, with more tools and choices: file panels,
+  trees, image preview, filters and action buttons. Search and job details are
+  available on demand. Tree/preview settings are separate from Tvískipt.
 
-The expanded Smiðja plans include broader file previews, an Edit action for
-text-editable content, configurable modules and an optional terminal. **Those
-extensions are planned, not implemented in this alpha.**
+Broader previews and text editing, freely configurable buttons/modules and an
+optional terminal are **planned**, not implemented by the naming update.
 
-Changing workspace reuses the existing panels and preserves their locations,
-selections and running jobs. Simple and Explorer use the active file panel;
-the other panel is hidden rather than discarded. This is live workspace
-switching, not a promise to restore every folder after restarting the app.
+Switching workspace preserves panel locations, selections and running jobs.
+Einn and Askr use the active panel; the other panel is hidden, not discarded.
+Existing settings load without manual migration. The former names were Simple,
+Explorer, Commander (briefly called DOpus in documentation), and Workbench.
+Historical release notes retain their original terminology.
 
 ## Workflow
 
@@ -217,15 +215,20 @@ is a local view filter, not recursive search or wildcard expansion.
 
 ## Install and build
 
-Install the privately supplied candidate in Haiku:
+Download the HPKG from the [0.31.1 alpha release](https://github.com/kambuziarendal/listi/releases/tag/v0.31.1), then install in Haiku:
 
-    pkgman install ./Listi-0.6.0-1-x86_64.hpkg
+    pkgman install ./Listi-0.31.1-1-x86_64.hpkg
 
-Listi replaces Lister in Apps and Deskbar. The package identity (`lister`),
-application signature (`application/x-vnd.Kambuzi-Lister`), scripting suite and
-preferences (`~/config/settings/Lister_settings`) intentionally remain compatible.
-There is no settings migration or duplicate Lister launcher. Keep the old HPKG
-for application rollback; the GitHub repository name has not changed.
+The project, executable, launcher and package are named **Listi** (`listi` for
+repository/package IDs). The repository is [kambuziarendal/listi](https://github.com/kambuziarendal/listi).
+The C++ namespace is `Listi` and workspace identifiers are `einn`, `askr`,
+`tviskipt` and `smidja`.
+
+Compatibility-only identifiers retain their historical spelling: the application
+signature `application/x-vnd.Kambuzi-Lister`, scripting suite, settings/recovery
+paths and package aliases. Numeric workspace values stay unchanged, and legacy
+settings keys are read and written alongside the new ASCII names. No manual
+settings migration is required. See [naming and compatibility](docs/DESIGN.md#names-and-compatibility).
 
 Build the current native application **inside Haiku x86_64**. A future portable
 C core will have separate POSIX tests; it does not exist in this release.
@@ -272,7 +275,7 @@ Tree branches are refreshed by closing/reopening their tree. New uncached paths
 rebuild the route automatically. Thumbnail replies/caches, preview decoding,
 folder preferences, tree nodes and operation history have explicit bounds.
 
-This is a private candidate, not a Dolphin-parity or performance claim. See
+This is a development alpha, not a Dolphin-parity or performance claim. See
 [the current qualification](docs/INTERNAL-CANDIDATE.md) for exact tested scope,
 recovery and limitations. Dependency licenses remain their own; MIT covers Listi's
 source, not every library provided by Haiku packages.
@@ -285,24 +288,24 @@ Private 0.12.0 adds explicit Copy here / Move here / Cancel for local drops.
 The destination is always the receiving panel's current folder, shown before
 transfer. Network/archive drops retain explicit copy only. See docs/DROP-0.12.0.md.
 
-Workspace candidate: View > Workspace > Simple or Commander. Simple keeps one
+Workspace candidate: View > Workspace > Einn or Tvískipt. Einn keeps one
 file panel without the action bank; clipboard and right-click actions remain
 available. See [workspace behavior](docs/WORKSPACES-0.15.0.md).
 
 ## Minimal workspace and mouse selection (0.16.0)
 
-Simple shows the address, file list and compact status only. Go, the pane view
+Einn shows the address, file list and compact status only. Go, the pane view
 selector, filter and navigation buttons are hidden. Use View > File view for
-Details/Icons/Large icons/Thumbnails. Hidden Commander filters are suspended in
-Simple and restored when returning to Commander. No function keys are assigned.
+Details/Icons/Large icons/Thumbnails. Hidden Tvískipt filters are suspended in
+Einn and restored when returning to Tvískipt. No function keys are assigned.
 
 Drag from empty list space to select a rectangle in either renderer. Ctrl or
 Shift adds to the original selection. Escape restores that original selection.
 Dragging an item still starts file drag-and-drop. Selection scrolls at the edges.
 
-Commander identifies the active panel with a thin themed outline and subtle
+Tvískipt identifies the active panel with a thin themed outline and subtle
 address/file-area tint, without left/right labels. Only the outline briefly
-animates on panel switches; Simple stays neutral.
+animates on panel switches; Einn stays neutral.
 
 ### Password-protected archives
 

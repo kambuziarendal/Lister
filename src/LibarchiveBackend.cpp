@@ -16,7 +16,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
-namespace Lister {
+namespace Listi {
 namespace {
 DynamicLibrary &Library() {
   // An optional system package may be installed while Listi is running.
@@ -374,4 +374,4 @@ void LibarchiveRead(const Location &location, const DataSink &sink,
     throw;
   }
 }
-} // namespace Lister
+} // namespace Listi

@@ -12,7 +12,7 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 static std::string deniedFolder;
 extern "C" DIR *__real_opendir(const char *);
 extern "C" DIR *__wrap_opendir(const char *path) {

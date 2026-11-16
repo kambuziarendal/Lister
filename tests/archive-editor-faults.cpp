@@ -14,7 +14,7 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <unistd.h>
-using namespace Lister;
+using namespace Listi;
 namespace {
 enum Fault { None, Publication, Journal } fault = None;
 std::string archivePath, journalPath;

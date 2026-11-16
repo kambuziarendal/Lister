@@ -3,7 +3,7 @@
 #include "ArchivePasswords.h"
 #include "FileOperation.h"
 #include "VirtualFile.h"
-namespace Lister {
+namespace Listi {
 // Bounded, worker-local metadata reuse during one archive job. Contents are
 // still decoded from disk; fingerprints and password generations guard hits.
 class ArchiveListingScope {
@@ -39,4 +39,4 @@ std::vector<FileEntry> LibarchiveList(const Location &,
                                       const TransferControl &);
 void LibarchiveRead(const Location &, const DataSink &,
                     const TransferControl &);
-} // namespace Lister
+} // namespace Listi

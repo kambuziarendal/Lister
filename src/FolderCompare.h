@@ -3,7 +3,7 @@
 #include "VirtualFile.h"
 #include <string>
 #include <vector>
-namespace Lister {
+namespace Listi {
 enum class CompareState {
   OnlyLeft,
   OnlyRight,
@@ -37,5 +37,5 @@ CompareResult CompareFolders(const CompareRequest &,
                              const TransferControl & = {});
 const char *CompareLabel(CompareState);
 bool CompareMatch(CompareState);
-} // namespace Lister
+} // namespace Listi
 void OpenFolderCompare(const std::string &left, const std::string &right);
