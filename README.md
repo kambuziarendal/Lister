@@ -172,14 +172,16 @@ the other panel as destination; clipboard Paste uses the active panel. Click a p
 a directory to enter it; Backspace goes up. Use Haiku's **Command modifier**
 (normally **Alt**, following your system keymap) plus **C/X/V** to copy/cut/paste
 local files using the system clipboard, including Tracker. The mouse route is
-**Files > Clipboard**. **Shift+C** copies directly to the other panel;
-**Shift+V** opens the viewer. **E** edits, **M** moves to the other panel,
-**R** renames, **N** creates a folder, **D** trashes and **F** filters.
-Buttons and menus show their shortcuts. See [clipboard behavior and limits](docs/CLIPBOARD-0.9.0.md). Bare letters remain
+**Files > Clipboard**. The following shortcuts also use the **Command modifier**:
+**Command+Shift+C** copies directly to the other panel; **Command+Shift+V** opens
+the viewer. **Command+E** edits, **Command+M** moves to the other panel,
+**Command+R** renames, **Command+N** creates a folder, **Command+D** trashes and
+**Command+F** filters. Buttons abbreviate these labels; menus show the shortcuts.
+See [clipboard behavior and limits](docs/CLIPBOARD-0.9.0.md). Bare letters remain
 available for list type-ahead. In path, filter, command and name fields,
 Command+A/C/X/V selects/copies/cuts/pastes text, never files. Press Enter after
 editing a path or filter to return to the list. Escape cancels a name dialog.
-Function keys are unassigned. Alt+W follows Haiku’s window-close behavior;
+**Function keys are deliberately unassigned.** Alt+W follows Haiku’s window-close behavior;
 Alt+Q quits Listi. Escape cancels an inline question.
 
 Each panel has its own **< Back / > Forward** path buttons. **Command+[ / ]**
