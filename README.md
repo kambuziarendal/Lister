@@ -17,6 +17,21 @@ include passwords or private files in a public report.
 Latest development source: [0.31.0 working branch](https://github.com/kambuziarendal/Lister/tree/work/stability-fixes-20261115).
 The documentation below describes the historical 0.2.0 version on this branch.
 
+## Screenshots: development alpha 0.31.0
+
+Actual captures from native Haiku testing, using test files. These show the
+0.31.0 development version, not the older downloadable releases. The interface
+is work in progress. The expanded Smiðja workspace is planned, not shown here;
+the preview in this version displays images.
+
+### Light appearance: thumbnails and image preview
+
+![Listi 0.31.0 alpha showing two file panels, thumbnails and an image preview in Haiku's light appearance](docs/screenshots/listi-0.31.0-preview-light.png)
+
+### Dark appearance: archive and local file panels
+
+![Listi 0.31.0 alpha showing an archive beside a local folder in Haiku's dark appearance](docs/screenshots/listi-0.31.0-archive-dark.png)
+
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
 replacement. Historical alpha preview on this branch: **0.2.0**.
