@@ -14,20 +14,24 @@ GitHub](https://github.com/kambuziarendal/listi/issues). Include the version,
 Haiku version, what happened and reproduction steps where possible. Do not
 include passwords or private files in a public report.
 
-## Screenshots: development alpha 0.31.0
+## Screenshots: DOpus view
 
-Actual captures from native Haiku testing, using test files. These show the
-0.31.0 development version, not the older downloadable releases. The interface
-is work in progress. The expanded Smiðja workspace is planned, not shown here;
-the preview in this version displays images.
+**DOpus** is our chosen name for Listi's dual-panel workspace, previously called
+**Commander**. Existing builds still use the Commander menu label; the in-app
+rename is planned, not implemented. Listi is an independent implementation,
+not Directory Opus or an affiliated product.
 
-### Light appearance: thumbnails and image preview
+These are actual Commander-view captures from earlier native Haiku tests,
+labelled with their original versions. They are not screenshots of 0.31.0.
+Folder trees and preview are optional in this workspace and are enabled here.
 
-![Listi 0.31.0 alpha showing two file panels, thumbnails and an image preview in Haiku's light appearance](docs/screenshots/listi-0.31.0-preview-light.png)
+### DOpus view: light appearance, Listi 0.24.0
 
-### Dark appearance: archive and local file panels
+![Listi 0.24.0 Commander workspace, now named DOpus in the plan, with two file panels in light appearance](docs/screenshots/listi-dopus-light-0.24.0.png)
 
-![Listi 0.31.0 alpha showing an archive beside a local folder in Haiku's dark appearance](docs/screenshots/listi-0.31.0-archive-dark.png)
+### DOpus view: dark appearance, Listi 0.16.2
+
+![Listi 0.16.2 Commander workspace, now named DOpus in the plan, with two file panels in dark appearance](docs/screenshots/listi-dopus-dark-0.16.2.png)
 
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
