@@ -45,6 +45,42 @@ name/size/date columns, multiselection, drag-copy, node monitoring, a command
 button bank, viewer, editor and terminal launch, and saved display preferences.
 Native Haiku controls and system colours, including dark themes.
 
+## Workspaces in the development alpha
+
+Listi offers four implemented workspaces in the **0.31.0 development alpha**,
+selected through **View > Workspace**. These descriptions do not apply to the
+historical 0.1.0 and 0.2.0 downloads. The comparisons below describe workflows,
+not full compatibility with Tracker, Windows Explorer or Directory Opus.
+
+- **Simple:** a minimal, Tracker-like single-folder view. Opening a folder
+  navigates in the same window by default rather than opening a new window for
+  each folder. It keeps the editable path and file view without the folder tree
+  or bottom action bank. Use Copy/Cut and Paste to transfer files.
+- **Explorer:** the familiar Explorer-style layout: a folder tree alongside one
+  file panel, with an editable path, back/forward navigation, view controls and
+  filtering. Useful for browsing a hierarchy without a second destination panel.
+- **DOpus** (currently labelled **Commander** in the app): the classic Directory
+  Opus/Commander-style two-panel workflow. The active panel supplies the selected
+  files and the other panel is the destination for direct panel Copy/Move.
+  Action buttons keep common file operations close at hand; clipboard Paste
+  still targets the active panel. DOpus is our chosen workspace name, not a claim
+  that Listi is Directory Opus or an affiliated product.
+- **Workbench, becoming Smiðja:** the current alpha's expanded working layout,
+  with two file panels, folder trees, image preview, filters and action buttons.
+  Search and operation details are available on demand. Tree and preview choices
+  are remembered separately from DOpus/Commander. **Smiðja** means "smithy";
+  this is the chosen name for the workspace as it develops into a more
+  customizable workbench. The app still labels it Workbench today.
+
+The expanded Smiðja plans include broader file previews, an Edit action for
+text-editable content, configurable modules and an optional terminal. **Those
+extensions are planned, not implemented in this alpha.**
+
+Changing workspace reuses the existing panels and preserves their locations,
+selections and running jobs. Simple and Explorer use the active file panel;
+the other panel is hidden rather than discarded. This is live workspace
+switching, not a promise to restore every folder after restarting the app.
+
 ## Workflow
 
 The bold **SOURCE** panel supplies selected files; the other panel is the
