@@ -38,6 +38,31 @@ the names below. [Screenshot versions and credits](docs/screenshots/CREDITS.md).
 Switching workspace retains panel locations, selections and running jobs. Einn
 and Askr show the active panel; the other panel is hidden, not discarded.
 
+### About the names
+
+A little Norse character, with meanings that fit the job. The names mix Old
+Norse words and modern Icelandic forms; they are not all medieval vocabulary.
+
+- **Listi** is Icelandic for a *list* or *catalogue*: a straightforward name for
+  an application built around lists of files. The word is a later borrowing,
+  not an Old Norse term.
+- **Einn** means *one* in Old Norse and Icelandic. One panel, one place to focus.
+- **Askr** is Old Norse for an *ash tree*. Here, the connection is the folder
+  tree beside the file list—not a claim that it literally means “file tree.”
+- **Tvískipt** means *divided in two* in Icelandic, built from **tví-** (*two*,
+  *double*) and **skipta** (*divide*). Two panels, side by side.
+- **Smiðja** means a *smithy* in Old Norse and Icelandic: a place for tools and
+  making things. That is the idea behind the workbench layout.
+
+*If the names seem a little odd—fair enough. Whatever. I like them.*
+
+Word references: [listi](https://en.wiktionary.org/wiki/listi#Icelandic),
+[einn](https://en.wiktionary.org/wiki/einn#Old_Norse),
+[askr](https://en.wiktionary.org/wiki/askr#Old_Norse),
+[tví-](https://en.wiktionary.org/wiki/tv%C3%AD-),
+[skipta](https://en.wiktionary.org/wiki/skipta#Icelandic) and
+[smiðja](https://en.wiktionary.org/wiki/smi%C3%B0ja#Old_Norse).
+
 ## Available in the alpha
 
 ### Browse, select and organise
