@@ -151,6 +151,32 @@ Cropped feature captures from 0.10.0 and 0.11.0. Only the application windows ar
 shown; no UI content has been retouched. See the [workflow guide](docs/GUIDE.md)
 for scope and limitations across all these features.
 
+## Little things that make file work easier
+
+- **Choose what a right-click acts on:** switch between **Selected files** and
+  **This folder**. The latter means the panel's current folder, not the clicked
+  subfolder.
+- **Select matching types:** right-click a file to select visible files with the
+  same extension, including recognised compound suffixes such as `.tar.gz`.
+- **Sort without changing the task:** Name, Size or Modified, ascending or
+  descending. This is separate from same-type selection; sorting by file type
+  is not implemented in this alpha.
+- **Remember a folder's view:** choose Details, Icons, Large icons or Thumbnails,
+  save that display mode for the folder, or return it to the default.
+- **Get somewhere quickly:** per-panel Back/Forward, editable paths, Go shortcuts,
+  named saved places, and **Same folder in other panel**.
+- **See what is selected:** counts and known byte sizes, with folders, links and
+  unavailable sizes distinguished rather than silently counted as zero.
+- **Keep useful tools close:** Terminal here, one-time Open with, explicit
+  attribute edits, optional action buttons and a command field that runs in
+  Terminal.
+- **Reuse archive choices:** favourite/default formats, compression level,
+  supported password protection, explicit password forgetting and resumable
+  archive-edit sessions.
+
+See the [small-feature checklist](docs/GUIDE.md#small-features-at-a-glance) for
+where to find these controls and their scope.
+
 ## Install
 
 The public alpha targets **Haiku x86_64**. The release includes an HPKG, a ZIP

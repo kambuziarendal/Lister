@@ -3,6 +3,96 @@
 This guide describes the 0.31.1 alpha. Test with disposable copies and keep
 independent backups: file operations can fail or complete only partially.
 
+## Small features at a glance
+
+These are implemented conveniences in the 0.31.1 alpha. Availability depends on
+whether the location is local, an archive or a network provider; disabled menu
+items are not promises of support.
+
+### Right-click: the selection or the current folder
+
+- **Selected files / This folder:** change the menu's target without leaving it.
+  **This folder** is the panel's current directory, not a selected child folder.
+- Right-clicking an unselected entry selects that entry. Right-clicking an
+  already selected entry retains the multi-selection.
+- **Selected files:** Open, applicable Open with/View/Edit, Copy/Cut, direct
+  Copy/Move to the other panel, Rename, Duplicate, symbolic links, Trash or
+  archive removal, archive actions and Properties as supported by the target.
+- **This folder:** Sort by, View, New folder, Paste here, Refresh, Terminal here
+  and Properties where applicable.
+- **Select same file type:** replace the selection with visible ordinary files
+  sharing the clicked file's case-insensitive extension. Folders and links are
+  excluded; it is not MIME detection. Recognised compressed-TAR suffixes remain
+  distinct from a plain compressed stream.
+
+**Sorting and type selection are different:** sorting supports **Name, Size and
+Modified**, each ascending or descending. **Sort by file type is not implemented**
+in this alpha.
+
+### Navigation, views and selection
+
+- Independent Back/Forward history per panel; double-click folders, use an
+  editable path, or go up with Backspace while browsing the list.
+- **Go:** Parent, Root, Home, Desktop, Disks and Trash on the current volume.
+- **Places:** save the current location under a name, rename it, forget it or
+  reopen it. Saving a place is not saving credentials.
+- **Same folder in other panel:** open the active location on the other side.
+- **View:** Details, Icons, Large icons and Thumbnails; optional folder tree per
+  panel. Details columns can also be used to choose sort order.
+- **Remember view for this folder / Use default for this folder:** save or clear
+  a folder-specific display-mode override. This is not a saved workspace or a
+  promise to remember every column, tree or sort setting per folder.
+- **All, None, Invert:** apply to the visible list; filtered-out entries do not
+  silently rejoin the selection when revealed.
+- **Selection summary:** selected file bytes, folder/link counts and unavailable
+  sizes are distinguished. Folder contents and link targets are not recursively
+  included in that byte total.
+- **Filter:** Clear or Escape removes the filter; Enter returns to the list.
+  The filter is a literal name match, not a wildcard expression.
+- **Keyboard selection:** Space toggles the focused entry; icon views also
+  support arrows, Shift+arrows for range selection, Home/End and Enter to open.
+  Tab switches panels in the dual-panel workspaces.
+
+### Search and comparison conveniences
+
+- **Save / Forget search:** keep named criteria rather than frozen result rows.
+- **Show original in panel:** navigate from a search hit back to its location.
+- **Use creation date / Include Trash / Live:** explicit search choices where
+  applicable. Clear filters removes the extension/size/date conditions without
+  clearing the name, BFS formula or search root.
+- **Show matching entries:** include matches in folder-comparison results rather
+  than displaying differences alone. Select a result for paths, digests and
+  error details. Size-only equality is not content verification.
+
+### Tools and preferences
+
+- **Terminal here:** launch the configured terminal for a local working folder.
+- **Open with:** choose a native application once without rewriting associations.
+- **Properties:** inspect metadata and explicitly save supported local typed
+  attributes or ordinary permissions; opening the window alone changes nothing.
+- **Preferences:** show/hide file icons, Size/Modified columns, the action button
+  bank and the command field where the workspace exposes them; choose list font,
+  file/folder/link colours, editor and terminal applications.
+- **Command field:** explicitly runs a shell command in Terminal for the active
+  local folder. It is not an embedded terminal; do not paste untrusted commands.
+- **Operations:** reopen the progress window after hiding it; pause/resume,
+  cancel and choose Replace/Skip/Abort when conflicts occur.
+
+### Archive conveniences
+
+- Favourite formats appear directly; others are grouped under **More formats**.
+  Choose a default, **Ask for a format every time** and a compression level per
+  format where supported. Changing format updates the proposed extension.
+- Choose an output folder and name. Extraction proposes a new “... extracted”
+  folder rather than merging silently into an existing destination.
+- AES-256 protection for supported ZIP/7z creation, with optional filename
+  encryption for 7z.
+- **Forget archive passwords:** explicitly clear the in-memory password cache
+  and pending creation tokens; this does not delete decrypted working copies.
+- **Resume archive edits**, **Save now**, **Open working folder** and **Start
+  from current archive:** manage retained external-editor sessions. Decrypted
+  working copies may remain on disk; read the recovery notes below.
+
 ## Panels and jobs
 
 The highlighted panel is the source. Direct Copy or Move uses the other panel
