@@ -1,8 +1,25 @@
 # Lister
 
+## Alpha / WIP: risk of data loss
+
+**Listi is under active development and testing. It is not a stable release.**
+It operates on files on your computer, and bugs can cause data loss or corruption,
+including during copying, moving, editing or deleting files. **All use is at your
+own risk. We do not recommend using it unless you understand and accept these
+risks.** Test only on disposable copies of data and keep independent backups.
+
+Binaries are primarily intended for bug testing, not dependable everyday use.
+You are welcome to test, but please [contact us by reporting serious bugs on
+GitHub](https://github.com/kambuziarendal/Lister/issues). Include the version,
+Haiku version, what happened and reproduction steps where possible. Do not
+include passwords or private files in a public report.
+
+Latest development source: [0.31.0 working branch](https://github.com/kambuziarendal/Lister/tree/work/stability-fixes-20261115).
+The documentation below describes the historical 0.2.0 version on this branch.
+
 A native Haiku file commander by Kambuzi EDB, inspired by the source/destination
 workflow of Directory Opus 5. New MIT implementation, not a port or a compatible
-replacement. Current preview: **0.2.0**.
+replacement. Historical alpha preview on this branch: **0.2.0**.
 
 Two independent resizable panels, editable paths and location menus, sortable
 name/size/date columns, multiselection, drag-copy, node monitoring, a command
