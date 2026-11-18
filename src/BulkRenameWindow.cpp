@@ -18,7 +18,8 @@
 
 namespace {
 constexpr uint32 kOptionsChanged = 'broc', kPreview = 'brpv', kApply = 'brap',
-                 kSelectRow = 'brsr', kSetName = 'brsn', kResetName = 'brrn';
+                 kSelectRow = 'brsr', kSetName = 'brsn', kResetName = 'brrn',
+                 kRowNameChanged = 'brne';
 
 unsigned Number(const BTextControl *field, const char *error) {
   unsigned value;
@@ -42,7 +43,8 @@ class BulkRenameWindow : public BWindow {
   BColumnListView *rows;
   BStringView *status;
   BButton *apply;
-  bool queued = false;
+  int32 editedRow = -1;
+  bool queued = false, previewInvalidated = false;
 
   BTextControl *Field(const char *label, const char *initial = "") {
     auto field = new BTextControl(label, label, initial, nullptr);
@@ -66,6 +68,8 @@ class BulkRenameWindow : public BWindow {
   }
 
   bool HasCurrentPreview() const {
+    if (previewInvalidated)
+      return false;
     try {
       const auto current = Options();
       return current.prefix == previewOptions.prefix &&
@@ -87,17 +91,43 @@ class BulkRenameWindow : public BWindow {
   }
 
   void UpdateRowEditor() {
-    const auto index = SelectedRow();
-    const bool selected = index >= 0 && size_t(index) < preview.rows.size();
-    rowName->SetText(selected ? preview.rows[index].after.c_str() : "");
+    editedRow = SelectedRow();
+    const bool selected = editedRow >= 0 && size_t(editedRow) < preview.rows.size();
+    rowName->SetText(selected ? preview.rows[editedRow].after.c_str() : "");
     rowName->SetEnabled(selected);
     setName->SetEnabled(selected);
-    resetName->SetEnabled(selected && overrides.count(frozen.sources[index]));
+    resetName->SetEnabled(selected &&
+                          overrides.count(frozen.sources[editedRow]));
+  }
+
+  bool HasPendingName() const {
+    return editedRow >= 0 && size_t(editedRow) < preview.rows.size() &&
+           preview.rows[editedRow].after != rowName->Text();
+  }
+
+  void UpdateApplyState() {
+    const bool current = HasCurrentPreview();
+    const bool pending = HasPendingName();
+    apply->SetEnabled(!queued && current && !pending && preview.CanApply());
+    if (!preview.error.empty()) {
+      status->SetText(preview.error.c_str());
+    } else if (!current) {
+      status->SetText("Update the preview to check the new names.");
+    } else if (pending) {
+      status->SetText("Click Set name to include the edit in the preview.");
+    } else {
+      BString summary;
+      summary << int32(preview.changed) << " name changes";
+      if (preview.blocked)
+        summary << ", " << int32(preview.blocked) << " blocked rows";
+      status->SetText(summary.String());
+    }
   }
 
   void Render(int32 selected = -1) {
     rows->Clear();
     preview = {};
+    previewInvalidated = false;
     try {
       previewOptions = Options();
       preview = Listi::PreviewBulkRename(frozen, previewOptions);
@@ -118,16 +148,7 @@ class BulkRenameWindow : public BWindow {
     if (selected >= 0 && size_t(selected) < preview.rows.size())
       rows->AddToSelection(rows->RowAt(selected));
     UpdateRowEditor();
-    apply->SetEnabled(preview.CanApply());
-    if (!preview.error.empty()) {
-      status->SetText(preview.error.c_str());
-      return;
-    }
-    BString summary;
-    summary << int32(preview.changed) << " name changes";
-    if (preview.blocked)
-      summary << ", " << int32(preview.blocked) << " blocked rows";
-    status->SetText(summary.String());
+    UpdateApplyState();
   }
 
 public:
@@ -158,10 +179,12 @@ public:
     rows->SetTarget(this);
     rows->SetExplicitMinSize(BSize(630, 200));
     rowName = new BTextControl("row-name", "Selected new name:", "", nullptr);
-    setName = new BButton("Set name", new BMessage(kSetName));
-    resetName = new BButton("Use rules", new BMessage(kResetName));
+    rowName->SetModificationMessage(new BMessage(kRowNameChanged));
+    setName = new BButton("set-row-name", "Set name", new BMessage(kSetName));
+    resetName = new BButton("reset-row-name", "Use rules",
+                            new BMessage(kResetName));
     status = new BStringView("rename status", "");
-    apply = new BButton("Apply rename", new BMessage(kApply));
+    apply = new BButton("apply-rename", "Apply rename", new BMessage(kApply));
     BLayoutBuilder::Group<>(this, B_VERTICAL, 8)
         .SetInsets(10)
         .Add(new BStringView("rename folder", frozen.destinationFolder.c_str()))
@@ -189,7 +212,8 @@ public:
         .End()
         .Add(status)
         .AddGroup(B_HORIZONTAL, 8)
-            .Add(new BButton("Update preview", new BMessage(kPreview)))
+            .Add(new BButton("update-preview", "Update preview",
+                             new BMessage(kPreview)))
             .AddGlue()
             .Add(new BButton("Cancel", new BMessage(B_QUIT_REQUESTED)))
             .Add(apply)
@@ -209,22 +233,29 @@ public:
       start->SetEnabled(number->Value() == B_CONTROL_ON);
       digits->SetEnabled(number->Value() == B_CONTROL_ON);
       if (!HasCurrentPreview()) {
+        previewInvalidated = true;
+        preview.error.clear();
         rows->Clear();
         UpdateRowEditor();
-        apply->SetEnabled(false);
-        status->SetText("Update the preview to check the new names.");
       }
+      UpdateApplyState();
       break;
     case kPreview:
       Render();
       break;
     case kSelectRow:
-      UpdateRowEditor();
+      if (editedRow != SelectedRow())
+        UpdateRowEditor();
+      UpdateApplyState();
+      break;
+    case kRowNameChanged:
+      UpdateApplyState();
       break;
     case kSetName:
     case kResetName: {
       const auto index = SelectedRow();
-      if (index >= 0 && size_t(index) < preview.rows.size()) {
+      if (HasCurrentPreview() && index == editedRow && index >= 0 &&
+          size_t(index) < preview.rows.size()) {
         const auto &source = frozen.sources[index];
         if (message->what == kSetName)
           overrides[source] = rowName->Text();
@@ -235,6 +266,10 @@ public:
       break;
     }
     case kApply:
+      if (HasPendingName()) {
+        UpdateApplyState();
+        break;
+      }
       if (!queued && preview.CanApply() && HasCurrentPreview()) {
         auto accepted = Listi::EncodeJob(preview.job, kBulkRenameAccepted);
         if (target.SendMessage(&accepted) == B_OK) {
