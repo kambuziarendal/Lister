@@ -903,8 +903,15 @@ void Pane::MessageReceived(BMessage *m) {
   case kColumnNavigate: {
     if (mode != MillerMode || m->GetInt64("serial", -1) != serial)
       break;
+    const char *destination = m->GetString("path", path.String());
+    if (path == destination && (locationValid || scanning) &&
+        !m->GetString("selection", "")[0] && !m->GetBool("context", false) &&
+        !m->GetBool("invoke", false)) {
+      FocusList();
+      break;
+    }
     auto before = serial;
-    Navigate(m->GetString("path", path.String()));
+    Navigate(destination);
     if (serial != before && scanning)
       columnAction = *m;
     FocusList();

@@ -366,6 +366,7 @@ struct MillerColumns::State {
   BFont font;
   bool active = false, enabled = false, attached = false;
   std::string location, reading;
+  PaneModel incoming;
   BLooper *scanner = nullptr;
   std::shared_ptr<std::atomic<int64>> generation =
       std::make_shared<std::atomic<int64>>(0);
@@ -404,6 +405,7 @@ struct MillerColumns::State {
     ++*generation;
     timer.reset();
     reading.clear();
+    incoming.Clear();
   }
 
   void ReadNext(MillerColumns *owner) {
@@ -440,9 +442,11 @@ struct MillerColumns::State {
     rows->complete = true;
     rows->failed = failed;
     if (failed)
-      rows->entries.Clear();
+      incoming.Clear();
     else
-      rows->entries.Filter("");
+      incoming.Filter("");
+    rows->entries = std::move(incoming);
+    incoming.Clear();
     rows->Refresh(true);
   }
 };
@@ -485,8 +489,6 @@ void MillerColumns::SetLocation(const std::string &path) {
   const bool focus = Window() && !state->columns.empty() &&
                      state->columns[state->current].rows->IsFocus();
   state->CancelRead();
-  while (!state->columns.empty())
-    state->Pop();
   state->location = path;
   std::vector<std::string> paths{path};
   if (path != "@disks") {
@@ -501,8 +503,25 @@ void MillerColumns::SetLocation(const std::string &path) {
     }
   }
   std::reverse(paths.begin(), paths.end());
+  // Keep shared ancestor views attached, including their rows and scroll
+  // positions, while the scanner revalidates their directory contents.
+  size_t shared = 0;
+  while (shared + 1 < paths.size() && shared < state->columns.size()) {
+    auto rows = state->columns[shared].rows;
+    if (rows->Current() || rows->location != paths[shared])
+      break;
+    const auto branch = BranchRow(paths[shared], paths[shared + 1]);
+    if (rows->branch != branch) {
+      rows->branch = branch;
+      rows->Refresh(true);
+    }
+    rows->complete = false;
+    ++shared;
+  }
+  while (state->columns.size() > shared)
+    state->Pop();
   state->current = paths.size() - 1;
-  for (size_t i = 0; i < paths.size(); ++i) {
+  for (size_t i = shared; i < paths.size(); ++i) {
     state->Add(this, paths[i], i == state->current);
     if (i < state->current)
       state->columns.back().rows->branch = BranchRow(paths[i], paths[i + 1]);
@@ -545,16 +564,8 @@ void MillerColumns::SyncSelection() {
     state->Pop();
   }
   if (!preview.empty()) {
-    if (!state->reading.empty()) {
-      for (const auto &column : state->columns)
-        if (!column.rows->Current() &&
-            column.rows->location == state->reading) {
-          // Preserve the column, not its partial batch, when preempting it.
-          column.rows->entries.Clear();
-          break;
-        }
+    if (!state->reading.empty())
       state->CancelRead();
-    }
     state->Add(this, preview, false);
   }
   if (hasPreview || !preview.empty()) {
@@ -629,7 +640,7 @@ void MillerColumns::MessageReceived(BMessage *message) {
       row->path = item.GetString("path", "");
       row->directory = item.GetBool("directory", false);
       row->kind = item.GetInt32("kind", 0);
-      rows->entries.Add(std::move(row));
+      state->incoming.Add(std::move(row));
     }
     return;
   }
