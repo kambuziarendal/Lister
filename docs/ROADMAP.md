@@ -80,33 +80,64 @@ For an image, offer the existing PNG save flow. Keep ordinary text paste in
 editable fields unchanged. Check cancellation creates nothing and an existing
 file is never overwritten. No submenu should be necessary.
 
-### Directory Opus workflows to tackle first
+### Next workflows, in priority order
 
-Prioritise the everyday reason to use two panels: assemble the right selection,
-keep the destination in sight and reuse the setup tomorrow. The order below is
-a proposed implementation sequence, not a list of shipped features.
+1. **Directory Opus-style Flat View.** Start with files only under a chosen
+   local root. Show each file's relative parent as a column; filtering the list
+   must not hide its origin. Enumerate off the UI thread, allow cancellation,
+   bound result count and mark incomplete results. Test duplicate basenames,
+   unreadable branches and directory-link cycles. Switching back restores the
+   ordinary view. Start read-only with selection and Add to Shelf; multi-folder
+   rename comes only once preview and job results identify every original.
+2. **Bulk rename chains, then guarded undo.** The current preflight deliberately
+   rejects an occupied target, even within the batch. Permit chains by ordering
+   dependent renames; use collision-checked temporary names for cycles such as
+   a swap. Never replace an unrelated entry. Inject a failure between steps:
+   either restore the originals safely or report where each entry remains.
+   Offer undo of the last batch only when identities and destinations still
+   match; job history alone is not sufficient. Later add regex and date/time
+   or typed BFS attribute placeholders with per-row previews. External-editor
+   name lists can wait until row identity survives edits and reordering.
+3. **BFS attribute columns, then searchable attributes.** Let users choose
+   typed columns in Details and distinguish missing values from empty ones.
+   Start with existing indexes and live queries, including tag searches.
+   Prototype “Make searchable” separately: show the affected volume, check
+   type, index support and permissions, and verify whether existing files
+   actually appear in a query. Never silently create a volume-wide index.
+4. **Saved collections on the Shelf.** Save named sets of references, not
+   copies; removing a member never removes the original. Verify identity on
+   Haiku across rename, same-volume move, restart, unmount and path reuse.
+   A stored path or node_ref alone is not proof that a rediscovered file is
+   the same entry. Show missing or ambiguous members and allow explicit relink.
+5. **Faster selection and paired navigation.** Add wildcard selection with a
+   visible match count, separate from the literal filter. In Tvískipt, offer
+   linked browsing relative to two independently chosen roots. If the peer
+   subfolder is missing, show that and leave the other panel in place; never
+   create or synchronise files just because someone navigates. Follow with
+   independent panel tabs and named paired sets that restore locations and
+   view state, never file jobs.
+6. **Quick view and reusable buttons.** Reuse the Smiðja preview from every
+   workspace, temporarily in the opposite panel when available. Closing it
+   restores the panel, focus and selection; Space still selects. Let the
+   workspace editor save presets for existing commands, starting with rename
+   previews rather than a scripting language.
 
-1. **Select by pattern.** Start with an explicit wildcard selection command in
-   the current panel, separate from the existing literal name filter. Preview the
-   match count and support adding or removing matches. In a filtered folder,
-   verify that selecting `*.jpg` and copying to the other panel copies only
-   the visible matches and leaves the destination panel's selection alone.
-2. **Paired folder tabs and saved tab groups.** Start with local tabs: switching
-   tabs should restore each tab's location, selection and scroll position.
-   Then let a named group reopen both sides for a recurring task. A missing
-   folder must be identified, not silently replaced as a transfer destination.
-   Reopening a group should never resume a file operation.
-3. **Flat view and file collections.** Offer a read-only recursive view for
-   gathering files without repeatedly changing folders. Show the original path
-   alongside each name; allow cancellation and avoid following directory-link
-   cycles. Add chosen references to the existing Shelf instead of inventing a
-   second collection window. Two identically named files in different folders
-   must remain distinguishable; removing a reference must leave the file alone.
-4. **Reusable command buttons.** Extend the workspace editor with named presets
-   for existing commands, starting with a saved rename transformation. A button
-   should open the ordinary preview on the current selection, not bypass it.
-   Defer a scripting language and background triggers until concrete tasks
-   cannot be expressed with these presets.
+### Focused follow-ups, not prerequisites
+
+- Feed a panel from a saved BFS query before considering arbitrary command
+  output. Show origins and distinguish a live result from a saved collection.
+- Add an on-demand, cancellable folder-size scan. Distinguish logical bytes
+  from allocated space, define hard-link counting and flag unreadable subtrees.
+  Do not slow down ordinary selection summaries.
+- Investigate Tracker add-on discovery, MIME matching and invocation from a
+  non-Tracker host on Haiku, using a frozen selection. Prefer proven native
+  compatibility to a new plugin API; defer execution until that contract works.
+- Extend folder comparison into a reviewable one-way sync plan before two-way
+  or remote writes. Distinguish new, changed and equal entries; absence alone
+  cannot distinguish a deletion from a new file without prior sync state.
+- Consider per-transfer network rate limits after measuring contention.
+  After rename undo is proven, evaluate undo for creating a still-empty folder
+  or restoring an unchanged Trash entry; do not promise general undo.
 
 ### Engineering work that supports this sequence
 
