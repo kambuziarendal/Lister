@@ -5,6 +5,9 @@
 #include <Button.h>
 #include <CheckBox.h>
 #include <ListView.h>
+#include <Menu.h>
+#include <MenuField.h>
+#include <MenuItem.h>
 #include <StringItem.h>
 #include <atomic>
 #include <TextControl.h>
@@ -80,7 +83,11 @@ int main() {
     tabs->Select(1);
     auto *adaptive = Control<BCheckBox>(window, "adaptive workspace");
     Check(adaptive->Value() == B_CONTROL_OFF, "adaptation defaults to off");
+
     adaptive->SetValue(B_CONTROL_ON);
+    auto sidebar = Control<BMenuField>(window, "Smiðja first sidebar:");
+    sidebar->Menu()->ItemAt(static_cast<int32>(SidebarMode::Favorites))
+        ->SetMarked(true);
     tabs->Select(2);
     Control<BTextControl>(window, "profile name")->SetText("Small screen");
     BMessage add(*Control<BButton>(window, "create profile")->Message());
@@ -123,6 +130,9 @@ int main() {
         "saved layout preserves reordered actions and explicit adaptation");
   const auto *profile = profiles.Find("Small screen");
   Check(profile && profile->layout.adaptive &&
+            layout.smidjaSidebar[0] == SidebarMode::Favorites &&
+            profile->layout.smidjaSidebar[0] == SidebarMode::Favorites &&
+            profile->layout.smidjaSidebar[1] == SidebarMode::FolderTree &&
             profile->layout.actionButtons == layout.actionButtons,
         "named snapshot captures controls edited before creation");
   return failures ? 1 : 0;

@@ -28,6 +28,7 @@
 #include "InlineAction.h"
 #include "OperationQueue.h"
 #include "Pane.h"
+#include "TerminalPanel.h"
 #include "VirtualFile.h"
 #include "WorkspaceEditor.h"
 #include "WorkspaceActions.h"
@@ -51,11 +52,9 @@
 #include <Path.h>
 #include <PropertyInfo.h>
 #include <Roster.h>
-#include <ScrollView.h>
 #include <SplitView.h>
 #include <TextControl.h>
 #include <TextView.h>
-#include "ThemeTextView.h"
 #include <Window.h>
 #include <chrono>
 #include <cstdio>
@@ -99,7 +98,7 @@ constexpr uint32 kImageDropProbe = 'dimg', kImageDropOutputs = 'dfmt',
 constexpr uint32 kClipboardFileAccepted = 'ctac';
 constexpr uint32 kClipboardSaveImage = 'cpsg';
 constexpr uint32 kNamedEntryAccepted = 'nacc', kDropAccepted = 'dacc',
-                 kConfirm = 'cfir', kViewLoaded = 'vloa',
+                 kConfirm = 'cfir',
                  kServiceError = 'serr', kSavePreferences = 'save',
                  kNetwork = 'netw', kOpenSystem = 'osys',
                  kInlineNotice = 'inot', kInlineCancel = 'ican',
@@ -219,30 +218,6 @@ public:
           return;
         }
       }
-      if (mode == "view") {
-        std::string text;
-        struct PreviewFull {};
-        bool truncated = false;
-        try {
-          Listi::ReadFile(path.String(), [&](const char *p, size_t n) {
-            size_t available = 1024 * 1024 - text.size();
-            text.append(p, std::min(n, available));
-            if (n > available)
-              throw PreviewFull();
-          });
-        } catch (const PreviewFull &) {
-          truncated = true;
-        }
-        if (text.find('\0') != std::string::npos)
-          throw std::runtime_error(
-              "Binary file. Open it with its associated application.");
-        BMessage done(kViewLoaded);
-        done.AddString("path", path);
-        done.AddString("text", text.c_str());
-        done.AddBool("truncated", truncated);
-        app.SendMessage(&done);
-        return;
-      }
       if (Listi::IsVirtual(path.String()))
         throw std::runtime_error(
             "Copy this entry locally before editing or opening it with an application. Remote edits are not uploaded automatically.");
@@ -252,14 +227,19 @@ public:
             m->GetString("application", "/boot/system/apps/Terminal");
         entry_ref ref;
         s = get_ref_for_path(application, &ref);
-        if (s == B_OK) {
+        if (s == B_OK && mode == "terminal" &&
+            application == "/boot/system/apps/Terminal") {
+          const char *args[] = {"-t", "Listi CLI", "-w", path.String()};
+          s = be_roster->Launch(&ref, 4, args);
+        } else if (s == B_OK) {
           std::string script = "cd -- " + Quote(path.String()) + " || exit 1\n";
           if (mode == "command") {
             script += m->GetString("command", "");
             script += '\n';
           }
           script += "exec /bin/bash";
-          const char *args[] = {"-t", "Listi", "/bin/bash", "-c", script.c_str()};
+          const char *args[] = {"-t", "Listi CLI", "/bin/bash", "-c",
+                                script.c_str()};
           s = be_roster->Launch(&ref, 5, args);
         }
       } else {
@@ -301,6 +281,14 @@ public:
   filter_result Filter(BMessage *m, BHandler **target) override {
     const char *bytes = m->GetString("bytes", "");
     auto window = dynamic_cast<BWindow *>(Looper());
+    for (auto view = window ? window->CurrentFocus() : nullptr; view;
+         view = view->Parent()) {
+      if (auto panel = dynamic_cast<Listi::TerminalPanel *>(view)) {
+        if (panel->HasFocus())
+          return panel->HandleKey(m) ? B_SKIP_MESSAGE : B_DISPATCH_MESSAGE;
+        break;
+      }
+    }
     auto text =
         window ? dynamic_cast<BTextView *>(window->CurrentFocus()) : nullptr;
     // Window menu accelerators otherwise claim Command+A/C/V before the text
@@ -450,6 +438,8 @@ class MainWindow : public BWindow {
   BMenu *fileView;
   BMenuItem *saveClipboardTextItem, *saveClipboardImageItem;
   BSplitView *split;
+  BSplitView *terminalSplit;
+  Listi::TerminalPanel *terminalPanel;
   BGroupView *topTools, *bottomTools;
   bool inspectorOnLeft = false;
   bool bankOnTop = false, commandOnTop = false;
@@ -1046,13 +1036,25 @@ class MainWindow : public BWindow {
       Notice("Select exactly one file.");
       return;
     }
+    if (action == kView) {
+      auto window = new BWindow(BRect(120, 100, 900, 650), selected[0].c_str(),
+                                B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS);
+      auto inspector = new ImagePreview(true);
+      inspector->ShowFile(selected[0]);
+      BLayoutBuilder::Group<>(window, B_VERTICAL, 0).Add(inspector);
+      window->AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY,
+                          new BMessage(B_QUIT_REQUESTED));
+      window->AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
+      window->Show();
+      return;
+    }
     if (action == kEdit && Listi::ParseLocation(selected[0]).Archive()) {
       OpenArchiveEditor(selected[0], prefs.editor.String());
       return;
     }
     BMessage m(kOpenPaths);
     m.AddString("path", selected[0].c_str());
-    m.AddString("mode", action == kView ? "view" : "edit");
+    m.AddString("mode", "edit");
     m.AddString("application", prefs.editor);
     service.SendMessage(&m);
   }
@@ -1061,7 +1063,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Listi::SavedPlaces &saved, bool writable,
              const Listi::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.32.1", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.33.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable),
         places(saved), placesWritable(writable), service(svc) {
@@ -1185,7 +1187,7 @@ public:
     view->AddItem(new BMenuItem("Same folder in other panel",
                                 new BMessage(kSame), 'S', B_SHIFT_KEY));
     previewMenu =
-        new BMenuItem("Image preview panel", new BMessage(kPreviewToggle), 'P');
+        new BMenuItem("Inspector panel", new BMessage(kPreviewToggle), 'P');
     view->AddItem(previewMenu);
     view->AddItem(
         new BMenuItem("Connect to server...", new BMessage(kNetwork), 'K'));
@@ -1195,7 +1197,14 @@ public:
                                 B_SHIFT_KEY));
     view->AddItem(
         new BMenuItem("Compare folders...", new BMessage(kCompareFolders)));
-    view->AddItem(new BMenuItem("Terminal here", new BMessage(kTerminal), 'T'));
+    auto terminalMenu = new BMenu("Terminal here");
+    terminalMenu->AddItem(new BMenuItem(
+        "Below file panels", new BMessage(Listi::kTerminalBelow), 'T'));
+    terminalMenu->AddItem(new BMenuItem(
+        "Beside file panels", new BMessage(Listi::kTerminalBeside)));
+    terminalMenu->AddItem(new BMenuItem(
+        "Separate window", new BMessage(Listi::kTerminalWindow)));
+    view->AddItem(terminalMenu);
     view->AddItem(new BMenuItem("Operations", new BMessage(kShowJobs), 'O'));
     view->AddItem(new BMenuItem("Show Shelf", new BMessage(Listi::kShowShelf)));
     view->AddSeparatorItem();
@@ -1214,6 +1223,12 @@ public:
     split->SetItemWeight(2, 0.22, true);
     split->SetCollapsible(0, false);
     split->SetCollapsible(1, false);
+    terminalSplit = new BSplitView(B_VERTICAL, 6);
+    terminalPanel = new Listi::TerminalPanel();
+    terminalSplit->AddChild(split, 0.68f);
+    terminalSplit->AddChild(terminalPanel, 0.32f);
+    terminalSplit->SetCollapsible(0, false);
+    terminalSplit->SetItemCollapsed(1, true);
     bank = new BGroupView(B_VERTICAL, 5);
     auto shortcuts = new BStringView(
         "shortcuts",
@@ -1245,7 +1260,7 @@ public:
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
         .Add(menu)
         .Add(topTools, 0)
-        .Add(split)
+        .Add(terminalSplit)
         .Add(actionArea, 0)
         .Add(queue->View(), 0)
         .Add(bottomTools, 0);
@@ -1545,7 +1560,7 @@ public:
       if (!actionArea->Pending() && archiveClipboardPending)
         CloseAction();
       ShowBank(prefs.buttons && !actionArea->Pending());
-      if (!actionArea->Pending())
+      if (!actionArea->Pending() && !terminalPanel->HasFocus())
         panes[source]->FocusList();
       break;
     case kInlineCancel:
@@ -1571,10 +1586,10 @@ public:
       }
       break;
     case kPaneDisplay:
-      prefs.SetTree(0, panes[0]->TreeVisible());
-      prefs.SetTree(1, panes[1]->TreeVisible());
-      for (int i = 0; i < 2; ++i)
+      for (int i = 0; i < 2; ++i) {
+        prefs.SetSidebar(i, panes[i]->Sidebar());
         prefs.SetPaneMode(i, panes[i]->PaneOverride());
+      }
       if (m->HasString("folder")) {
         std::string folder = m->GetString("folder", "");
         if (m->GetBool("forget", false))
@@ -2118,14 +2133,59 @@ public:
       service.SendMessage(m);
       break;
     case kTerminal:
+    case Listi::kTerminalBelow:
+    case Listi::kTerminalBeside: {
+      const char *path = m->GetString("folder", panes[source]->Path());
+      if (!strcmp(path, "@disks") || Listi::IsVirtual(path)) {
+        Notice("Open a local folder first.");
+        break;
+      }
+      if (terminalPanel->Active() && terminalPanel->StartFolder() != path) {
+        if (!m->HasString("folder")) {
+          BMessage accepted(m->what);
+          accepted.AddString("folder", path);
+          accepted.AddInt64("session", terminalPanel->SessionId());
+          BString prompt("Close the current CLI and start a new shell in ");
+          prompt << path << "? Any running command will stop.";
+          AskInline(prompt.String(), "Start new CLI", accepted);
+          break;
+        }
+        if (m->GetInt64("session", -1) != terminalPanel->SessionId())
+          break;
+        terminalPanel->Stop();
+      }
+      terminalSplit->SetOrientation(m->what == Listi::kTerminalBeside
+                                        ? B_HORIZONTAL
+                                        : B_VERTICAL);
+      terminalSplit->SetItemCollapsed(1, false);
+      if (!terminalPanel->Active()) {
+        if (const int error = terminalPanel->Start(path)) {
+          terminalSplit->SetItemCollapsed(1, true);
+          BString detail("Could not open Listi CLI: ");
+          detail << strerror(error);
+          Notice(detail);
+          break;
+        }
+      }
+      terminalPanel->Focus();
+      break;
+    }
+    case Listi::kCloseTerminal:
+      panes[source]->FocusList();
+      terminalPanel->Stop();
+      terminalSplit->SetItemCollapsed(1, true);
+      break;
+    case Listi::kTerminalWindow:
     case kCommand: {
-      if (!strcmp(panes[source]->Path(), "@disks")) {
-        Notice("Open a folder first.");
+      if (!strcmp(panes[source]->Path(), "@disks") ||
+          Listi::IsVirtual(panes[source]->Path())) {
+        Notice("Open a local folder first.");
         break;
       }
       BMessage launch(kOpenPaths);
       launch.AddString("path", panes[source]->Path());
-      launch.AddString("mode", m->what == kTerminal ? "terminal" : "command");
+      launch.AddString("mode", m->what == Listi::kTerminalWindow ? "terminal"
+                                                               : "command");
       launch.AddString("command", command->Text());
       launch.AddString("application", prefs.terminal);
       service.SendMessage(&launch);
@@ -2272,29 +2332,6 @@ public:
       BMessage error(*m);
       error.what = kInlineNotice;
       mainWindow.SendMessage(&error);
-      return;
-    }
-    if (m->what == kViewLoaded) {
-      BString title = m->GetString("path", "");
-      if (m->GetBool("truncated", false))
-        title << " (first 1 MiB)";
-      auto window = new BWindow(BRect(120, 100, 900, 650), title,
-                                B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS);
-      auto text = new ThemeTextView("document", B_DOCUMENT_BACKGROUND_COLOR,
-                                    B_DOCUMENT_TEXT_COLOR);
-      text->SetText(m->GetString("text", ""));
-      text->MakeEditable(false);
-      text->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
-      text->SetLowUIColor(B_DOCUMENT_BACKGROUND_COLOR);
-      text->SetHighUIColor(B_DOCUMENT_TEXT_COLOR);
-      text->SetFontAndColor(be_fixed_font, B_FONT_ALL);
-      auto scroll = new BScrollView("scroll", text, 0, false, true);
-      scroll->SetExplicitMinSize(BSize(300, 200));
-      BLayoutBuilder::Group<>(window, B_VERTICAL, 0).Add(scroll);
-      window->AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY,
-                          new BMessage(B_QUIT_REQUESTED));
-      window->AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
-      window->Show();
       return;
     }
     BApplication::MessageReceived(m);

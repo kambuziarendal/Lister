@@ -43,7 +43,7 @@ the names below. [Screenshot versions and credits](docs/screenshots/CREDITS.md).
 | **Einn** (`einn`) | One file panel with Miller columns by default | Simple, Tracker-like browsing |
 | **Askr** (`askr`) | Folder tree on the left, file list on the right | Navigating a folder hierarchy |
 | **Tvískipt** (`tviskipt`) | Two file panels side by side | Copying, moving and comparing locations |
-| **Smiðja** (`smidja`) | Panels, trees, image preview and action controls | Keeping several tools close at hand |
+| **Smiðja** (`smidja`) | Panels, configurable sidebars, file preview and action controls | Keeping several tools close at hand |
 
 Switching workspace retains panel locations, selections and running jobs. Einn
 and Askr show the active panel; the other panel is hidden, not discarded.
@@ -177,7 +177,7 @@ for scope and limitations across all these features.
   named saved places, and **Same folder in other panel**.
 - **See what is selected:** counts and known byte sizes, with folders, links and
   unavailable sizes distinguished rather than silently counted as zero.
-- **Keep useful tools close:** Terminal here, one-time Open with, explicit
+- **Keep useful tools close:** a terminal below or beside the file panels or in its own window, one-time Open with, explicit
   attribute edits, optional action buttons and a command field that runs in
   Terminal.
 - **Reuse archive choices:** favourite/default formats, compression level,

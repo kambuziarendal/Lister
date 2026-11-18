@@ -66,7 +66,9 @@ in this alpha.
 
 ### Tools and preferences
 
-- **Terminal here:** launch the configured terminal for a local working folder.
+- **Terminal here:** start an interactive shell in the active local folder.
+  Choose **Below file panels** or **Beside file panels** to keep the shell in
+  the Listi window, or **Separate window** to launch the configured terminal.
 - **Open with:** choose a native application once without rewriting associations.
 - **Properties:** inspect metadata and explicitly save supported local typed
   attributes or ordinary permissions; opening the window alone changes nothing.
@@ -77,8 +79,10 @@ in this alpha.
 - **Settings:** show/hide file icons, Size/Modified columns, the action button
   bank and the command field where the workspace exposes them; choose list font,
   file/folder/link colours, editor and terminal applications.
-- **Command field:** explicitly runs a shell command in Terminal for the active
-  local folder. It is not an embedded terminal; do not paste untrusted commands.
+- **Command field:** type a command and press Enter to run it in a separate
+  terminal, starting in the active local folder. For example, `pwd` prints
+  that folder’s path. The shell stays open after the command finishes.
+  Showing the field does not start a shell or run anything.
 - **Operations:** reopen the progress window after hiding it; pause/resume,
   cancel and choose Replace/Skip/Abort when conflicts occur.
 
@@ -98,6 +102,13 @@ still work without changing any settings.
   standard grid. Resizing does not choose another folder or file view. Stacked
   panels with a preview and both toolbars need more vertical space; side-by-side
   panels are a better fit for shorter screens.
+- **Smiðja sidebars:** choose a folder tree, favourite destinations, or no
+  sidebar independently for each file panel under **Modules**. To change one
+  panel directly, use **Sidebar** in its display menu.
+- **Smiðja preview:** select a file to inspect an image, plain text, source
+  code, Markdown or HTML source, a PDF page, or audio/video supported by the
+  installed decoders. Use the page buttons for PDFs or **Play preview** for a
+  media sample of up to 15 seconds. Selecting media does not start playback.
 - **Profiles:** name the current draft and choose **Create**. Later, select a
   profile and choose **Load** to use it or **Update** to replace its saved
   layout. Profiles remember layout, not open directories or selected files.

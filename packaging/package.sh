@@ -20,6 +20,8 @@ mkdir -p "$docdir/docs/screenshots" "$docdir/reference"
 cp docs/*.md "$docdir/docs/"
 cp docs/screenshots/CREDITS.md docs/screenshots/*.png "$docdir/docs/screenshots/"
 cp -R src/vendor/p7zip "$docdir/reference/p7zip"
+mkdir "$docdir/reference/libvterm"
+cp src/vendor/libvterm/LICENSE src/vendor/libvterm/README.listi "$docdir/reference/libvterm/"
 ln -s /boot/system/apps/Listi "$stage/data/deskbar/menu/Applications/Listi"
 # Normalize mtimes. Haiku package also records filesystem atime/creation time,
 # so package-container bytes are not guaranteed identical across rebuilds.

@@ -44,10 +44,19 @@ void WorkspaceLayout::Load(const BMessage &m) {
   }
   paneTree[0] = m.GetBool("leftTree", false);
   paneTree[1] = m.GetBool("rightTree", false);
-  smidjaTree[0] =
-      m.GetBool("workbenchLeftTree", m.GetBool("smidjaLeftTree", true));
-  smidjaTree[1] =
-      m.GetBool("workbenchRightTree", m.GetBool("smidjaRightTree", true));
+  const char *favoriteKeys[] = {"smidjaLeftFavorites", "smidjaRightFavorites"};
+  const char *workbenchKeys[] = {"workbenchLeftTree", "workbenchRightTree"};
+  const char *treeKeys[] = {"smidjaLeftTree", "smidjaRightTree"};
+  for (int pane = 0; pane < 2; ++pane) {
+    const bool shown =
+        m.GetBool(workbenchKeys[pane], m.GetBool(treeKeys[pane], true));
+    const bool favorite = m.GetBool(favoriteKeys[pane], false);
+    // The legacy switch remains authoritative after an older app changes it.
+    if (!shown)
+      smidjaSidebar[pane] = SidebarMode::Hidden;
+    else if (favorite)
+      smidjaSidebar[pane] = SidebarMode::Favorites;
+  }
   preview = m.GetBool("preview", false);
   smidjaPreview =
       m.GetBool("workbenchPreview", m.GetBool("smidjaPreview", true));
@@ -115,11 +124,16 @@ void WorkspaceLayout::Archive(BMessage &m) const {
   }
   m.AddBool("leftTree", paneTree[0]);
   m.AddBool("rightTree", paneTree[1]);
-  m.AddBool("smidjaLeftTree", smidjaTree[0]);
-  m.AddBool("smidjaRightTree", smidjaTree[1]);
+  m.AddBool("smidjaLeftFavorites", smidjaSidebar[0] == SidebarMode::Favorites);
+  m.AddBool("smidjaRightFavorites", smidjaSidebar[1] == SidebarMode::Favorites);
+  // Older versions show a tree in place of favorites, without changing files.
+  const bool leftVisible = smidjaSidebar[0] != SidebarMode::Hidden;
+  const bool rightVisible = smidjaSidebar[1] != SidebarMode::Hidden;
+  m.AddBool("smidjaLeftTree", leftVisible);
+  m.AddBool("smidjaRightTree", rightVisible);
   m.AddBool("smidjaPreview", smidjaPreview);
-  m.AddBool("workbenchLeftTree", smidjaTree[0]);
-  m.AddBool("workbenchRightTree", smidjaTree[1]);
+  m.AddBool("workbenchLeftTree", leftVisible);
+  m.AddBool("workbenchRightTree", rightVisible);
   m.AddBool("preview", preview);
   m.AddBool("workbenchPreview", smidjaPreview);
 

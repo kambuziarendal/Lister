@@ -41,16 +41,18 @@ int main() {
   check(restored.PaneMode(0)==3 && restored.PaneMode(1)==2,"stale dialog preserves current pane modes");
   check(live.paneTree[0] && live.paneTree[1],"stale dialog preserves both trees");
   check(live.preview && live.folderModes["/synthetic"]==1,"stale dialog preserves preview and folder overrides");
-  live.workspace=Workspace::smidja;live.smidjaTree[0]=false;
-  live.smidjaTree[1]=true;live.smidjaPreview=false;
+  live.workspace=Workspace::smidja;live.smidjaSidebar[0]=SidebarMode::Hidden;
+  live.smidjaSidebar[1]=SidebarMode::Favorites;live.smidjaPreview=false;
   live.ApplyDialog(stale);
   check(live.IsSmidja() && !live.SinglePane(),"stale dialog preserves Smidja");
   restored.Load(live.Save());
-  check(restored.IsSmidja() && !restored.smidjaTree[0] && restored.smidjaTree[1] &&
+  check(restored.IsSmidja() && restored.smidjaSidebar[0] == SidebarMode::Hidden &&
+        restored.smidjaSidebar[1] == SidebarMode::Favorites &&
         !restored.smidjaPreview,"Smidja customization survives restart");
   check(!live.Save().GetBool("simpleWorkspace",true),"Smidja rolls back safely to Tviskipt");
   BMessage oldSmidja;oldSmidja.AddInt32("workspace",3);restored.Load(oldSmidja);
-  check(restored.IsSmidja() && restored.smidjaTree[0] && restored.smidjaTree[1] &&
+  check(restored.IsSmidja() && restored.smidjaSidebar[0] == SidebarMode::FolderTree &&
+        restored.smidjaSidebar[1] == SidebarMode::FolderTree &&
         restored.smidjaPreview,"Smidja defaults expose both trees and preview");
   // Numeric identities from existing installations must not change.
   for (int32 id = 0; id < 4; ++id) {
@@ -61,7 +63,8 @@ int main() {
     old.AddBool("workbenchPreview", false);
     restored.Load(old);
     check(restored.workspace == expected, "legacy workspace number preserves layout");
-    check(!restored.smidjaTree[0] && restored.smidjaTree[1] && !restored.smidjaPreview,
+    check(restored.smidjaSidebar[0] == SidebarMode::Hidden &&
+        restored.smidjaSidebar[1] == SidebarMode::FolderTree && !restored.smidjaPreview,
           "legacy Smidja layout survives upgrade");
     auto saved = restored.Save();
     check(saved.GetInt32("workspace", -1) == id &&
@@ -72,15 +75,15 @@ int main() {
     BMessage canonical; canonical.AddString("workspaceId", WorkspaceId(expected));
     canonical.AddBool("smidjaLeftTree", false); canonical.AddBool("smidjaRightTree", true);
     canonical.AddBool("smidjaPreview", false); restored.Load(canonical);
-    check(restored.workspace == expected && !restored.smidjaTree[0] &&
-          restored.smidjaTree[1] && !restored.smidjaPreview, "canonical-only settings load");
+    check(restored.workspace == expected && restored.smidjaSidebar[0] == SidebarMode::Hidden &&
+          restored.smidjaSidebar[1] == SidebarMode::FolderTree && !restored.smidjaPreview, "canonical-only settings load");
     // Simulate an older version modifying fields while newer aliases remain.
     saved.ReplaceInt32("workspace", (id + 1) % 4);
     saved.ReplaceBool("workbenchLeftTree", true);
     saved.ReplaceBool("workbenchPreview", true);
     restored.Load(saved);
     check(static_cast<int32>(restored.workspace) == (id + 1) % 4 &&
-          restored.smidjaTree[0] && restored.smidjaPreview,
+          restored.smidjaSidebar[0] == SidebarMode::FolderTree && restored.smidjaPreview,
           "rollback edits override stale canonical aliases");
   }
   BMessage unknown; unknown.AddString("workspaceId", "unknown"); restored.Load(unknown);

@@ -80,7 +80,7 @@ not the same as a finished feature.
 | Miller columns and adaptive views | Four presets, Miller columns (default in Einn) and opt-in compact buttons | Automatic file-view changes remain exploratory |
 | Directory synchronisation | Read-only recursive size/SHA-256 comparison | Previewed, conflict-aware one-way or two-way synchronisation |
 | Clipboard contents to a new file | Copy/Cut/Paste of file references; save clipboard text or PNG images as a new file | Explore additional clipboard formats when useful |
-| Rich built-in inspectors | Image preview/thumbnails, a basic text viewer, archive browsing, local properties | Broader code/document inspection, detailed images and camera EXIF/GPS metadata |
+| Rich built-in inspectors | Smiðja file inspector, image thumbnails, archive browsing, local properties | Detailed image navigation and camera EXIF/GPS metadata |
 | Copy queues and pause | Per-job results, pause/resume and targeted cancellation | Persistent history is not implemented |
 | Automatic rules and drop folders | Manual file actions, search filters and live BFS queries | Opt-in sorting rules and configured drop targets for extract/rename/move workflows |
 | Colour coding and tags | Configurable file/folder/link colours and typed BFS attribute editing | Dedicated per-item labels, tag editing/filtering and optional colour rules |
@@ -117,17 +117,16 @@ must not replay old file jobs or store credentials in plain layout files.
 
 ### Inspect files without leaving the task
 
-Expand the optional Smiðja inspector to suitable code, text, Markdown, HTML, PDF,
-audio and video formats through appropriate components. Add useful high-resolution
+The optional Smiðja inspector shows images, code, text, Markdown and HTML
+source, PDF pages, and supported audio/video previews. Next, add high-resolution
 image navigation and camera EXIF metadata, including GPS coordinates where
 present. Decoding an image today does not mean those inspection tools already
 exist. Location display must not contact map services or expose coordinates
 without an explicit choice.
 
 Preview must not execute scripts or modify files. Explicit editing, read-only
-states and unsaved-change handling remain important. An optional terminal should
-follow the active folder, clearly distinguishing an integrated view from a
-separate application window.
+states and unsaved-change handling remain important. **Terminal here** offers
+an integrated shell or a separate terminal window for a local working folder.
 
 Built-in text/file diff should complement existing folder comparison with
 readable side-by-side differences. Comparison and editing/merging are separate
