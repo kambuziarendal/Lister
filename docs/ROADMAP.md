@@ -150,6 +150,36 @@ trust and lifecycle requirements; none is implicitly enabled by this roadmap.
 Offer a name, destination and supported output format, with normal conflict
 handling. Pasted text must not be executed as a command.
 
+### Collect files from several folders on a Shelf
+
+Plan a small **Shelf** window that can float on its own or join a Listi window
+using Haiku's Stack & Tile. Drop files on it, or use a dedicated **Add to Shelf**
+keyboard shortcut on the current selection without leaving the folder. Choose
+the key binding after checking existing Listi and Haiku shortcuts.
+
+The Shelf collects references, not copies: adding or removing an item must not
+move or delete the original. Show the source folder so identically named files
+can be told apart. Review the collection, flag missing or changed entries,
+then move, zip or share the selection as one operation with an explicit target.
+
+### Send a selection to a phone
+
+Plan a **Send to mobile** context-menu action. On request, start a temporary
+local web server for the selected files and show a QR code. A phone on the same
+network scans the code to download them in its browser, without a cloud account.
+Serve only the selection through an unguessable, short-lived link, not its
+parent folders. Show when sharing is active, when it expires and how to stop it.
+
+### Use Haiku's desktop tools
+
+- Let tool windows such as the Shelf participate in native **Stack & Tile** or
+  remain independent, rather than implementing Listi's own docking system.
+- Explore **drag-and-convert** with the Translation Kit: offer output formats
+  supported by installed translators and write a new file without replacing the
+  source. An ordinary drag should keep its normal meaning.
+- Explore an optional desktop **Replicant** as a drop zone. A first use could be
+  adding files to the Shelf without bringing a Listi window to the front.
+
 ### Organise and inspect project context
 
 Explore optional file labels/tags, colour coding and filtering using native
