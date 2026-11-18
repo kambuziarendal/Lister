@@ -14,6 +14,7 @@
 class FileDetails;
 class FileGrid;
 class FolderTree;
+class MillerColumns;
 class BCardView;
 class BGroupView;
 class BSplitView;
@@ -28,6 +29,10 @@ public:
   void Draw(BRect) override;
   void MessageReceived(BMessage *) override;
   void Navigate(const char *path);
+  void NavigateFromColumn(const std::string &folder,
+                          const std::string &selection = {},
+                          bool invoke = false, bool context = false,
+                          BPoint at = {});
   void Reload();
   void SetPlaces(const Listi::SavedPlaces &, bool writable);
   void SetSource(bool);
@@ -52,7 +57,9 @@ public:
   PaneSort Sorting();
   void Sort(PaneSort);
   int32 CurrentView() const { return mode; }
-  int32 DisplayMode() const { return prefs.paneMode[id]; }
+  int32 PaneOverride() const {
+    return prefs.HasPaneMode(id) ? prefs.PaneMode(id) : -1;
+  }
   bool TreeVisible() const { return prefs.Tree(id); }
   void FolderModes(const std::map<std::string, int32> &modes) {
     prefs.folderModes = modes;
@@ -66,6 +73,7 @@ private:
   IconCache icons;
   FileDetails *list;
   FileGrid *grid;
+  MillerColumns *columns;
   FolderTree *tree;
   bool treeVisible = true, einn = false;
   BCardView *cards;
@@ -76,6 +84,8 @@ private:
   BMenuField *display;
   int32 mode = 0;
   void SetDisplayMode(int32);
+  int32 LocationMode() const;
+  void UpdateTreeVisibility();
   void PublishDisplay(bool folder = false, bool forget = false);
   BMenu *placesMenu;
   Listi::SavedPlaces places;
@@ -114,6 +124,7 @@ private:
   int64 serial = 0;
   bool scanning = false, refreshPending = false;
   std::vector<std::string> savedSelection;
+  BMessage columnAction;
   Listi::SearchHit reveal;
   void ApplyFilter();
   void ClearRows();

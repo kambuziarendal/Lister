@@ -30,7 +30,7 @@ the names below. [Screenshot versions and credits](docs/screenshots/CREDITS.md).
 
 | Workspace | Layout | Useful for |
 |---|---|---|
-| **Einn** (`einn`) | One file panel; folders open in the same window by default | Simple, Tracker-like browsing |
+| **Einn** (`einn`) | One file panel with Miller columns by default | Simple, Tracker-like browsing |
 | **Askr** (`askr`) | Folder tree on the left, file list on the right | Navigating a folder hierarchy |
 | **Tvískipt** (`tviskipt`) | Two file panels side by side | Copying, moving and comparing locations |
 | **Smiðja** (`smidja`) | Panels, trees, image preview and action controls | Keeping several tools close at hand |
@@ -161,7 +161,7 @@ for scope and limitations across all these features.
 - **Sort without changing the task:** Name, Size or Modified, ascending or
   descending. This is separate from same-type selection; sorting by file type
   is not implemented in this alpha.
-- **Remember a folder's view:** choose Details, Icons, Large icons or Thumbnails,
+- **Remember a folder's view:** choose Details, Icons, Large icons, Thumbnails or Miller columns,
   save that display mode for the folder, or return it to the default.
 - **Get somewhere quickly:** per-panel Back/Forward, editable paths, Go shortcuts,
   named saved places, and **Same folder in other panel**.
@@ -247,7 +247,7 @@ arrange the interface around a task, and save personal layouts. The current
 alpha offers preset layouts and visibility options, not a free-form layout editor.
 
 The [roadmap](docs/ROADMAP.md) puts file safety and job clarity first, then
-explores duplicate search, bulk rename, optional Miller columns, synchronisation,
+explores duplicate search, bulk rename, adaptive views, synchronisation,
 clipboard-to-file, richer inspectors, tags, rules, saved project sessions, Git
 status and text/file diff. Its status table separates existing foundations from
 future work. There are no feature-parity or performance claims without supporting

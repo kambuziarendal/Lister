@@ -114,7 +114,8 @@ public:
         }
         if (outputs.empty())
           reply.AddString(
-              "error", "No installed translator can encode another image format.");
+              "error",
+              "No installed translator can encode another image format.");
       } catch (const std::exception &e) {
         reply.AddString("error", e.what());
       }
@@ -373,7 +374,8 @@ class MainWindow : public BWindow {
       const auto added = shelf->Add(panes[source]->Selected());
       BString status;
       if (added)
-        status << int32(added) << " added to Shelf. Open it from the Listi menu.";
+        status << int32(added)
+               << " added to Shelf. Open it from the Listi menu.";
       else
         status = "Already on the Shelf.";
       panes[source]->ShowStatus(status);
@@ -405,6 +407,7 @@ class MainWindow : public BWindow {
   ImagePreview *preview;
   BMenuItem *previewMenu, *einnMenu, *askrMenu, *tviskiptMenu, *smidjaMenu;
   BMenuBar *menu;
+  BMenu *fileView;
   BMenuItem *saveClipboardTextItem;
   BSplitView *split;
   BGroupView *footer;
@@ -793,7 +796,7 @@ class MainWindow : public BWindow {
       return;
     try {
       auto job = Listi::FreezeBulkRename(panes[source]->Path(),
-                                       panes[source]->Selected());
+                                         panes[source]->Selected());
       bulkRenameWindow =
           Listi::OpenBulkRenameWindow(std::move(job), BMessenger(this));
     } catch (const std::exception &e) {
@@ -985,8 +988,8 @@ public:
                                  B_SHIFT_KEY));
     files->AddItem(new BMenuItem("Open with system application",
                                  new BMessage(kOpenSystem)));
-    files->AddItem(new BMenuItem("Add to Shelf", new BMessage(Listi::kAddToShelf),
-                                 'Y', B_SHIFT_KEY));
+    files->AddItem(new BMenuItem(
+        "Add to Shelf", new BMessage(Listi::kAddToShelf), 'Y', B_SHIFT_KEY));
     auto more = new BMenu("More file actions");
     more->AddItem(new BMenuItem("Duplicate...", new BMessage(kDuplicate), 'D',
                                 B_SHIFT_KEY));
@@ -1040,13 +1043,16 @@ public:
     workspace->AddItem(tviskiptMenu);
     workspace->AddItem(smidjaMenu);
     viewMenu->AddItem(workspace);
-    auto fileView = new BMenu("File view");
-    const char *viewNames[] = {"Details", "Icons", "Large icons", "Thumbnails"};
-    for (int32 i = 0; i < 4; ++i) {
+    fileView = new BMenu("File view");
+    for (int32 i = 0; i < ViewModeCount; ++i) {
       auto choice = new BMessage(kGridMode);
       choice->AddInt32("mode", i);
-      fileView->AddItem(new BMenuItem(viewNames[i], choice));
+      fileView->AddItem(new BMenuItem(ViewModeLabel(i), choice));
     }
+    auto resetView = new BMessage(kGridMode);
+    resetView->AddInt32("mode", -1);
+    fileView->AddSeparatorItem();
+    fileView->AddItem(new BMenuItem("Use workspace default", resetView));
     viewMenu->AddItem(fileView);
     menu->AddItem(viewMenu);
     auto view = new BMenu("Listi");
@@ -1068,8 +1074,7 @@ public:
     view->AddItem(new BMenuItem("Operations", new BMessage(kShowJobs), 'O'));
     view->AddItem(new BMenuItem("Show Shelf", new BMessage(Listi::kShowShelf)));
     view->AddSeparatorItem();
-    view->AddItem(
-        new BMenuItem("Preferences", new BMessage(kPreferences), ','));
+    view->AddItem(new BMenuItem("Settings…", new BMessage(kPreferences), ','));
     menu->AddItem(view);
     panes[0] = new Pane(0, prefs);
     panes[1] = new Pane(1, prefs);
@@ -1189,6 +1194,8 @@ public:
   ~MainWindow() { delete queue; }
   void MenusBeginning() override {
     BWindow::MenusBeginning();
+    for (int32 i = 0; i < ViewModeCount; ++i)
+      fileView->ItemAt(i)->SetMarked(i == panes[source]->CurrentView());
     saveClipboardTextItem->SetEnabled(
         !actionArea->Pending() &&
         Listi::CanSaveClipboardTextIn(panes[source]->Path()));
@@ -1454,8 +1461,8 @@ public:
     case kPaneDisplay:
       prefs.SetTree(0, panes[0]->TreeVisible());
       prefs.SetTree(1, panes[1]->TreeVisible());
-      prefs.paneMode[0] = panes[0]->DisplayMode();
-      prefs.paneMode[1] = panes[1]->DisplayMode();
+      for (int i = 0; i < 2; ++i)
+        prefs.SetPaneMode(i, panes[i]->PaneOverride());
       if (m->HasString("folder")) {
         std::string folder = m->GetString("folder", "");
         if (m->GetBool("forget", false))
@@ -1824,19 +1831,17 @@ public:
       }
       try {
         ++dropSerial;
-        auto job = Listi::PrepareFileDrop(
-            *m, m->GetString("destination", ""), true);
+        auto job =
+            Listi::PrepareFileDrop(*m, m->GetString("destination", ""), true);
         if (job.action == Listi::Action::EditArchive) {
           ConfirmArchiveAddition(job);
           break;
         }
         const bool canConvert = Listi::CanProbeImageDrop(job);
-        const bool sameFolder =
-            std::any_of(job.sources.begin(), job.sources.end(),
-                        [&](const auto &path) {
-                          return Listi::Join(job.destination,
-                                             Listi::Leaf(path)) == path;
-                        });
+        const bool sameFolder = std::any_of(
+            job.sources.begin(), job.sources.end(), [&](const auto &path) {
+              return Listi::Join(job.destination, Listi::Leaf(path)) == path;
+            });
         auto accepted = Listi::EncodeJob(job, kDropAccepted);
         accepted.AddInt64("request", dropSerial);
         if (sameFolder) {
@@ -1852,8 +1857,8 @@ public:
         const bool canMove = !Listi::IsVirtual(job.destination) &&
                              job.expectedSources.size() == job.sources.size();
         std::string text =
-            "Drop " + std::to_string(job.sources.size()) +
-            " item(s) into:\n" + job.destination +
+            "Drop " + std::to_string(job.sources.size()) + " item(s) into:\n" +
+            job.destination +
             (!canMove
                  ? "\nCopy only for network/archive transfers. Originals are kept."
                  : "\nCopy keeps originals. Move removes originals after transfer.");
@@ -1878,9 +1883,8 @@ public:
           Notice("Could not check installed image translators.");
       } else if (which == 1 || which == 2) {
         auto job = Listi::DecodeJob(*m);
-        const bool move =
-            which == 2 && !Listi::IsVirtual(job.destination) &&
-            job.expectedSources.size() == job.sources.size();
+        const bool move = which == 2 && !Listi::IsVirtual(job.destination) &&
+                          job.expectedSources.size() == job.sources.size();
         job.action = move ? Listi::Action::Move : Listi::Action::Copy;
         queue->Enqueue(job);
       }
@@ -1903,9 +1907,8 @@ public:
       std::vector<std::string> labels;
       BMessage output;
       for (int32 i = 0; m->FindMessage("output", i, &output) == B_OK; ++i) {
-        labels.push_back(
-            std::string(output.GetString("name", "")) + " (." +
-            output.GetString("extension", "") + ")");
+        labels.push_back(std::string(output.GetString("name", "")) + " (." +
+                         output.GetString("extension", "") + ")");
       }
       if (labels.empty())
         break;
@@ -1913,9 +1916,9 @@ public:
       accepted.what = kImageDropConvert;
       accepted.RemoveName("replyTo");
       accepted.RemoveName("which");
-      std::string text =
-          "Convert " + Listi::Leaf(job.sources.front()) + " into:\n" +
-          job.destination + "\nThe original and existing files are kept.";
+      std::string text = "Convert " + Listi::Leaf(job.sources.front()) +
+                         " into:\n" + job.destination +
+                         "\nThe original and existing files are kept.";
       ShowBank(false);
       actionArea->Ask(text.c_str(), "Convert", accepted, nullptr, nullptr,
                       nullptr, labels);

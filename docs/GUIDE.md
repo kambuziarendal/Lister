@@ -37,7 +37,7 @@ in this alpha.
 - **Places:** save the current location under a name, rename it, forget it or
   reopen it. Saving a place is not saving credentials.
 - **Same folder in other panel:** open the active location on the other side.
-- **View:** Details, Icons, Large icons and Thumbnails; optional folder tree per
+- **View:** Details, Icons, Large icons, Thumbnails and Miller columns; optional folder tree per
   panel. Details columns can also be used to choose sort order.
 - **Remember view for this folder / Use default for this folder:** save or clear
   a folder-specific display-mode override. This is not a saved workspace or a
@@ -70,7 +70,11 @@ in this alpha.
 - **Open with:** choose a native application once without rewriting associations.
 - **Properties:** inspect metadata and explicitly save supported local typed
   attributes or ordinary permissions; opening the window alone changes nothing.
-- **Preferences:** show/hide file icons, Size/Modified columns, the action button
+- **Workspace defaults:** Einn starts in Miller columns; the other workspaces
+  start in Details. Change each default in **Listi > Settings**. A remembered
+  folder view takes priority. **View > File view > Use workspace default**
+  clears the current folder and panel overrides.
+- **Settings:** show/hide file icons, Size/Modified columns, the action button
   bank and the command field where the workspace exposes them; choose list font,
   file/folder/link colours, editor and terminal applications.
 - **Command field:** explicitly runs a shell command in Terminal for the active
