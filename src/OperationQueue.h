@@ -12,7 +12,7 @@ class OperationQueue {
 public:
   explicit OperationQueue(BMessenger main);
   ~OperationQueue();
-  void Enqueue(const Listi::Job &);
+  int64 Enqueue(const Listi::Job &);
   void SetCompact(bool);
   void Show();
   void Toggle();
@@ -25,13 +25,20 @@ public:
   std::vector<BMessage> TakeEvents();
   void PresentEvent(BMessage &);
   bool Busy() const { return count.load() > 0; }
-  void Pause();
-  void Cancel();
+  bool Pause(int64 operation);
+  bool CancelOperation(int64 operation);
+  // With an ID, cancel all only if that job is still running.
+  bool Cancel(int64 expectedOperation = 0);
   bool Answer(Listi::Decision, int64 request);
 
 private:
+  struct QueuedJob {
+    int64 operation = 0;
+    Listi::Job job;
+  };
   void Loop();
   void Publish(const BMessage &);
+  void PublishCancelled(const QueuedJob &);
   bool Proceed();
   Listi::Decision Ask(const std::string &);
   class ProgressView *view;
@@ -39,12 +46,13 @@ private:
   std::thread thread;
   std::mutex mutex;
   std::condition_variable changed;
-  std::deque<Listi::Job> jobs;
+  std::deque<QueuedJob> jobs;
   std::vector<BMessage> events;
   std::unique_ptr<BMessageRunner> eventTimer;
   std::atomic<int> count{0};
   bool paused = false, cancel = false, stopping = false;
   int answer = -1;
   int64 conflictSerial = 0, operationSerial = 0;
+  int64 runningOperation = 0;
   bool awaitingAnswer = false;
 };

@@ -13,11 +13,14 @@
 #include <TextView.h>
 #include "ThemeTextView.h"
 #include <Window.h>
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <dirent.h>
 #include <sys/stat.h>
 namespace {
+constexpr uint32 kCancelAll = 'jcab';
+
 uint64_t Size(const std::string &p, const std::function<bool()> &proceed,
               unsigned depth = 0) {
   if (depth > 64 || !proceed())
@@ -95,14 +98,15 @@ class ProgressView : public BView {
   OperationQueue *owner;
   BStringView *title, *file, *summary;
   BStatusBar *bar;
-  BButton *pause, *cancelButton;
+  BButton *pause, *cancelButton, *cancelAllButton;
   BString lastError;
   BGroupView *choices;
   BView *details;
   BButton *detailsButton;
   bool expanded = false;
   bool choicesVisible = false;
-  int64 conflictRequest = 0, activeOperation = -1;
+  bool cancelling = false;
+  int64 conflictRequest = 0, activeOperation = 0, lastStarted = 0;
   void ShowChoices(bool show) {
     if (show == choicesVisible)
       return;
@@ -133,9 +137,12 @@ public:
     bar->SetBarColor(tint_color(ui_color(B_STATUS_BAR_COLOR), 1.2));
     bar->SetBarHeight(4);
     pause = new BButton("pause", "Pause", new BMessage(kPause));
-    cancelButton = new BButton("Cancel", new BMessage(kAbort));
+    cancelButton = new BButton("cancel-job", "Cancel job", new BMessage(kAbort));
+    cancelAllButton =
+        new BButton("cancel-all", "Cancel all", new BMessage(kCancelAll));
     pause->SetEnabled(false);
     cancelButton->SetEnabled(false);
+    cancelAllButton->SetEnabled(false);
     file->Hide();
     bar->Hide();
     choices = new BGroupView(B_HORIZONTAL, 4);
@@ -158,7 +165,13 @@ public:
     scroll->SetExplicitMinSize(BSize(440, 55));
     scroll->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, 55));
     details = new BGroupView(B_VERTICAL, 5);
-    BLayoutBuilder::Group<>(details, B_VERTICAL, 5).Add(choices).Add(scroll);
+    BLayoutBuilder::Group<>(details, B_VERTICAL, 5)
+        .Add(choices)
+        .Add(scroll)
+        .AddGroup(B_HORIZONTAL)
+        .AddGlue()
+        .Add(cancelAllButton)
+        .End();
     details->Hide();
     detailsButton = new BButton("Details", new BMessage(kShowJobs));
     BLayoutBuilder::Group<>(this, B_VERTICAL, 4)
@@ -180,6 +193,7 @@ public:
     pause->SetTarget(this);
     detailsButton->SetTarget(this);
     cancelButton->SetTarget(this);
+    cancelAllButton->SetTarget(this);
     for (int32 i = 0; i < choices->CountChildren(); ++i)
       if (auto button = dynamic_cast<BButton *>(choices->ChildAt(i)))
         button->SetTarget(this);
@@ -237,16 +251,29 @@ public:
       history->Select(history->TextLength(), history->TextLength());
       history->ScrollToSelection();
       break;
-    case kPause:
-      owner->Pause();
-      pause->SetLabel(!strcmp(pause->Label(), "Pause") ? "Resume" : "Pause");
+    case kPause: {
+      const auto operation = m->GetInt64("operation", 0);
+      if (operation == activeOperation && owner->Pause(operation))
+        pause->SetLabel(!strcmp(pause->Label(), "Pause") ? "Resume" : "Pause");
       break;
+    }
     case kAbort:
-      owner->Cancel();
+    case kCancelAll: {
+      const auto operation = m->GetInt64("operation", 0);
+      if (!operation || operation != activeOperation ||
+          !(m->what == kAbort ? owner->CancelOperation(operation)
+                              : owner->Cancel(operation)))
+        break;
+      cancelling = true;
       pause->SetLabel("Pause");
+      pause->SetEnabled(false);
+      cancelButton->SetEnabled(false);
+      if (m->what == kCancelAll)
+        cancelAllButton->SetEnabled(false);
       ShowChoices(false);
       summary->SetText("Cancelling. Finishing the current safe step...");
       break;
+    }
     case kAnswer:
       if (owner->Answer(
               static_cast<Listi::Decision>(m->GetInt32("decision", 4)),
@@ -254,6 +281,9 @@ public:
         ShowChoices(false);
       break;
     case kConflict:
+      if (!activeOperation || cancelling ||
+          m->GetInt64("operation", 0) != activeOperation)
+        break;
       conflictRequest = m->GetInt64("request", -1);
       for (int32 i = 0; i < choices->CountChildren(); ++i) {
         if (auto button = dynamic_cast<BButton *>(choices->ChildAt(i))) {
@@ -269,35 +299,52 @@ public:
       ShowChoices(true);
       break;
     case kJobUpdate: {
+      const auto operation = m->GetInt64("operation", 0);
       if (m->GetBool("start", false)) {
-        activeOperation = m->GetInt64("operation", -1);
+        if (operation <= lastStarted)
+          break;
+        lastStarted = activeOperation = operation;
+        cancelling = false;
+        ShowChoices(false);
+        for (auto *button : {pause, cancelButton, cancelAllButton}) {
+          auto message = new BMessage(button->Message()->what);
+          message->AddInt64("operation", operation);
+          button->SetMessage(message);
+          button->SetEnabled(true);
+        }
         if (file->IsHidden())
           file->Show();
         if (bar->IsHidden())
           bar->Show();
-        pause->SetEnabled(true);
-        cancelButton->SetEnabled(true);
         bar->Reset();
-        bar->SetMaxValue(float(std::max<int64>(1, m->GetInt64("total", 1))));
+        bar->SetMaxValue(1);
         pause->SetLabel("Pause");
         summary->SetText("Working. You can keep browsing.");
       }
-      if (m->GetInt64("operation", -2) != activeOperation)
+      if (!activeOperation || operation != activeOperation)
         break;
       title->SetText(m->GetString("title", title->Text()));
       file->SetText(m->GetString("path", file->Text()));
-      float bytes = float(m->GetInt64("bytes", 0));
-      bar->Update(bytes - bar->CurrentValue());
-      BString s;
-      s << m->GetInt64("bytes", 0) << " bytes processed";
-      bar->SetToolTip(s);
+      int64 total, bytes;
+      if (m->FindInt64("total", &total) == B_OK)
+        bar->SetMaxValue(float(std::max<int64>(1, total)));
+      if (m->FindInt64("bytes", &bytes) == B_OK) {
+        bar->Update(float(bytes) - bar->CurrentValue());
+        BString s;
+        s << bytes << " bytes processed";
+        bar->SetToolTip(s);
+      }
       break;
     }
     case kJobDone: {
-      if (m->GetBool("complete", false))
-        bar->Update(bar->MaxValue() - bar->CurrentValue());
       BString s = m->GetString("result", "");
-      summary->SetText(s);
+      const bool activeDone = activeOperation &&
+                              m->GetInt64("operation", 0) == activeOperation;
+      if (activeDone) {
+        if (m->GetBool("complete", false))
+          bar->Update(bar->MaxValue() - bar->CurrentValue());
+        summary->SetText(s);
+      }
       s << "\n";
       history->Insert(s.String());
       const char *retainedSource, *retainedDestination;
@@ -320,19 +367,21 @@ public:
         history->Delete(0, history->TextLength() - 65536);
       history->Select(history->TextLength(), history->TextLength());
       history->ScrollToSelection();
-      if (!owner->Busy()) {
-        title->SetText("Queue finished");
+      if (activeDone) {
+        ShowChoices(false);
+        activeOperation = 0;
         pause->SetEnabled(false);
         cancelButton->SetEnabled(false);
+        cancelAllButton->SetEnabled(false);
         if (!file->IsHidden())
           file->Hide();
         if (!bar->IsHidden())
           bar->Hide();
       }
+      if (!activeOperation && !owner->Busy())
+        title->SetText("Queue finished");
       if (hasRetainedCopy || m->HasString("error"))
         Expand(true);
-      ShowChoices(false);
-      activeOperation = -1;
       break;
     }
     case B_COLORS_UPDATED:
@@ -360,14 +409,19 @@ void OperationQueue::Start() {
 }
 OperationQueue::~OperationQueue() {
   eventTimer.reset();
+  std::deque<QueuedJob> discarded;
   {
     std::lock_guard<std::mutex> l(mutex);
     stopping = true;
     cancel = true;
     paused = false;
-    answer = int(Listi::Decision::Abort);
+    discarded.swap(jobs);
+    count -= discarded.size();
   }
   changed.notify_all();
+  for (const auto &queued : discarded)
+    if (queued.job.archivePasswordToken)
+      Listi::DiscardArchiveCreationPassword(queued.job.archivePasswordToken);
   if (thread.joinable())
     thread.join();
 }
@@ -380,51 +434,88 @@ void OperationQueue::ErrorInfo(const char *text) {
   error.AddString("error", text);
   display.SendMessage(&error);
 }
-void OperationQueue::Enqueue(const Listi::Job &j) {
+int64 OperationQueue::Enqueue(const Listi::Job &j) {
+  int64 operation;
   {
     std::lock_guard<std::mutex> l(mutex);
-    jobs.push_back(j);
+    operation = ++operationSerial;
+    jobs.push_back({operation, j});
     count++;
   }
   changed.notify_all();
+  return operation;
 }
-void OperationQueue::Pause() {
+bool OperationQueue::Pause(int64 operation) {
   {
     std::lock_guard<std::mutex> l(mutex);
+    if (!operation || operation != runningOperation || cancel || stopping)
+      return false;
     paused = !paused;
   }
   changed.notify_all();
+  return true;
 }
-void OperationQueue::Cancel() {
-  std::vector<int64> discardedTags;
-  std::vector<uint64_t> discardedPasswords;
+bool OperationQueue::CancelOperation(int64 operation) {
+  QueuedJob discarded;
   {
     std::lock_guard<std::mutex> l(mutex);
+    if (!operation || stopping)
+      return false;
+    if (operation == runningOperation) {
+      if (cancel)
+        return false;
+      cancel = true;
+      paused = false;
+    } else {
+      const auto next =
+          std::find_if(jobs.begin(), jobs.end(), [&](const QueuedJob &queued) {
+            return queued.operation == operation;
+          });
+      if (next == jobs.end())
+        return false;
+      discarded = std::move(*next);
+      jobs.erase(next);
+      --count;
+    }
+  }
+  if (discarded.operation)
+    PublishCancelled(discarded);
+  else
+    changed.notify_all();
+  return true;
+}
+bool OperationQueue::Cancel(int64 expectedOperation) {
+  std::deque<QueuedJob> discarded;
+  {
+    std::lock_guard<std::mutex> l(mutex);
+    if (stopping ||
+        (expectedOperation && expectedOperation != runningOperation) ||
+        ((!runningOperation || cancel) && jobs.empty()))
+      return false;
     cancel = true;
     paused = false;
-    for (const auto &job : jobs) {
-      if (job.tag)
-        discardedTags.push_back(job.tag);
-      if (job.archivePasswordToken)
-        discardedPasswords.push_back(job.archivePasswordToken);
-    }
-    count -= jobs.size();
-    jobs.clear();
-    answer = int(Listi::Decision::Abort);
+    discarded.swap(jobs);
+    count -= discarded.size();
   }
   changed.notify_all();
-  for (auto token : discardedPasswords)
-    Listi::DiscardArchiveCreationPassword(token);
-  // Queued jobs never reach Loop(), but their clipboard leases still need a
-  // terminal result. Send outside the mutex and do not dismiss active choices.
-  for (int64 tag : discardedTags) {
-    BMessage done(kJobDone);
-    done.AddInt64("tag", tag);
-    done.AddBool("complete", false);
-    done.AddBool("idle", count.load() == 0);
-    done.AddString("result", "Cancelled before starting.");
-    Publish(done);
-  }
+  for (const auto &queued : discarded)
+    PublishCancelled(queued);
+  return true;
+}
+void OperationQueue::PublishCancelled(const QueuedJob &queued) {
+  if (queued.job.archivePasswordToken)
+    Listi::DiscardArchiveCreationPassword(queued.job.archivePasswordToken);
+  BMessage done(kJobDone);
+  done.AddInt64("operation", queued.operation);
+  done.AddInt64("tag", queued.job.tag);
+  done.AddBool("complete", false);
+  done.AddBool("cancelled", true);
+  done.AddBool("beforeStart", true);
+  done.AddBool("idle", count.load() == 0);
+  BString summary;
+  summary << Verb(queued.job.action) << ": Cancelled before starting.";
+  done.AddString("result", summary);
+  Publish(done);
 }
 void OperationQueue::Publish(const BMessage &done) {
   {
@@ -447,7 +538,8 @@ void OperationQueue::PresentEvent(BMessage &done) {
 bool OperationQueue::Answer(Listi::Decision d, int64 request) {
   {
     std::lock_guard<std::mutex> l(mutex);
-    if (!awaitingAnswer || request != conflictSerial || answer >= 0 ||
+    if (cancel || stopping || !awaitingAnswer || request != conflictSerial ||
+        answer >= 0 ||
         int(d) < int(Listi::Decision::Replace) ||
         int(d) > int(Listi::Decision::Abort))
       return false;
@@ -462,16 +554,18 @@ bool OperationQueue::Proceed() {
   return !cancel && !stopping;
 }
 Listi::Decision OperationQueue::Ask(const std::string &path) {
-  int64 request;
+  int64 request, operation;
   {
     std::lock_guard<std::mutex> l(mutex);
     if (cancel || stopping)
       return Listi::Decision::Abort;
     answer = -1;
     request = ++conflictSerial;
+    operation = runningOperation;
     awaitingAnswer = true;
   }
   BMessage m(kConflict);
+  m.AddInt64("operation", operation);
   m.AddInt64("request", request);
   m.AddString("path", path.c_str());
   Publish(m);
@@ -483,19 +577,21 @@ Listi::Decision OperationQueue::Ask(const std::string &path) {
 }
 void OperationQueue::Loop() {
   for (;;) {
-    Listi::Job job;
+    QueuedJob queued;
     {
       std::unique_lock<std::mutex> l(mutex);
       changed.wait(l, [this] { return stopping || !jobs.empty(); });
       if (stopping)
         return;
-      job = jobs.front();
+      queued = std::move(jobs.front());
       jobs.pop_front();
+      runningOperation = queued.operation;
       cancel = false;
       paused = false;
     }
     Listi::ArchiveListingScope listingScope;
-    const int64 operation = ++operationSerial;
+    const auto &job = queued.job;
+    const int64 operation = queued.operation;
     BString title;
     title << Verb(job.action) << ": " << int32(job.sources.size())
           << " selected entries";
@@ -515,8 +611,10 @@ void OperationQueue::Loop() {
         job.action == Listi::Action::MoveArchive)
       for (auto &s : job.sources)
         total += Size(s, [this] { return Proceed(); });
-    start.AddInt64("total", std::max<uint64_t>(1, total));
-    Publish(start);
+    BMessage size(kJobUpdate);
+    size.AddInt64("operation", operation);
+    size.AddInt64("total", std::max<uint64_t>(1, total));
+    Publish(size);
     std::map<std::string, uint64_t> fileBytes, fileSizes;
     uint64_t bytes = 0;
     bigtime_t last = 0;
@@ -571,7 +669,13 @@ void OperationQueue::Loop() {
       main.SendMessage(&file, (BHandler *)nullptr, 500000);
     };
     auto result = Listi::Run(job, hooks);
-    count--;
+    {
+      std::lock_guard<std::mutex> l(mutex);
+      runningOperation = 0;
+      --count;
+    }
+    if (job.archivePasswordToken)
+      Listi::DiscardArchiveCreationPassword(job.archivePasswordToken);
     BMessage done(kJobDone);
     done.AddInt64("operation", operation);
     done.AddInt64("tag", job.tag);
@@ -591,6 +695,7 @@ void OperationQueue::Loop() {
     done.AddString("result", summary);
     done.AddBool("complete", !result.cancelled && result.errors.empty() &&
                                  result.skipped == 0);
+    done.AddBool("cancelled", result.cancelled);
     if (result.retainedMoveCopy) {
       const auto &[source, destination] = *result.retainedMoveCopy;
       done.AddString("retainedSource", source.c_str());
