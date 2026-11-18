@@ -69,7 +69,7 @@ finished feature.
 | Bulk rename | Single-entry rename | Multi-file preview, transformations, numbering and collision checks |
 | Miller columns and adaptive views | Four preset layouts and optional Miller columns, default in Einn | User-controlled adaptive layouts |
 | Directory synchronisation | Read-only recursive size/SHA-256 comparison | Previewed, conflict-aware one-way or two-way synchronisation |
-| Clipboard contents to a new file | Copy/Cut/Paste of file references | Explicitly save supported clipboard text or image data as a named file |
+| Clipboard contents to a new file | Copy/Cut/Paste of file references; development build saves text and PNG images | Explore additional clipboard formats when useful |
 | Rich built-in inspectors | Image preview/thumbnails, a basic text viewer, archive browsing, local properties | Broader code/document inspection, detailed images and camera EXIF/GPS metadata |
 | Copy queues and pause | Worker queue, progress, pause/resume and cancellation | Stronger job results and finer per-job control |
 | Automatic rules and drop folders | Manual file actions, search filters and live BFS queries | Opt-in sorting rules and configured drop targets for extract/rename/move workflows |
@@ -144,9 +144,9 @@ hidden background moves, recursion loops or overwriting files without review.
 A watched folder, a drop target and a general scripting hook have different
 trust and lifecycle requirements; none is implicitly enabled by this roadmap.
 
-The development build can save plain clipboard text as a new named file in a
-local folder. File references still use ordinary Paste. Saving other clipboard
-formats, such as images, remains a possible extension.
+The development build can save plain clipboard text or an image as a new named
+file in a local folder. Images are saved as PNG. File references still use
+ordinary Paste.
 
 ### Collect files from several folders on a Shelf
 

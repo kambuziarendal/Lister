@@ -223,7 +223,7 @@ text fields retain their normal text-editing shortcuts.
 Build inside **Haiku x86_64**:
 
 ```sh
-pkgman install haiku_devel python3 libarchive_devel curl_devel samba4_devel
+pkgman install haiku_devel python3 libarchive_devel zlib_devel curl_devel samba4_devel
 make
 make test
 make package

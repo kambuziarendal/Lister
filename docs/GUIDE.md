@@ -106,7 +106,10 @@ their selected paths and target even if you navigate or switch workspace.
 To save copied text, choose **Files > Clipboard > Save clipboard text as file**
 in a writable local folder. Keep the suggested name, `Clipboard.txt`, or enter
 your own. Listi saves the text as copied, without running it or replacing an
-existing file. To paste copied files instead, use the ordinary **Paste** action.
+existing file. For a copied image, use **Files > Clipboard > Save clipboard
+image as PNG**. It accepts PNG data and native Haiku bitmaps and suggests
+`Clipboard.png`. Both commands save the clipboard contents selected when
+the naming prompt opened. To paste copied files instead, use **Paste**.
 
 In the development build, **Cancel job** stops only the running operation. Other queued jobs continue. Use **Details > Cancel all** to stop the running job and discard waiting jobs.
 Cancellation does not undo completed work. If a local move finishes copying
@@ -227,13 +230,15 @@ capabilities. A successful listing does not establish member-data integrity.
 - Unix ar archives support flat regular files. Edits preserve GNU or BSD
   naming. Debian packages and static libraries are not rebuilt as generic ar;
   thin archives with external references are not opened.
-- With p7zip installed, Listi can create single-volume ARJ archives using the
-  Store method and portable ASCII names. It can edit archives with that header
-  layout. Compatible DOS/Windows ARJ archives can also be read, including
+- With p7zip installed, Listi can create single-volume ARJ archives with
+  portable ASCII names. Install the optional HaikuPorts `arj` package for
+  compression. Level zero (or no compressor installed) uses Store. Listi
+  can edit archives with its portable header layout. Compatible DOS/Windows ARJ archives can also be read, including
   compressed members; other header variants are not assumed editable.
 - LHA/LZH can be created and edited when the optional HaikuDepot `lha` tool
   and libarchive are installed. Level zero stores files; other levels use LH7.
-- Single-volume Microsoft Cabinets can be rebuilt with uncompressed data.
+- Single-volume Microsoft Cabinets support Store at level zero and MSZIP
+  compression at levels 1 to 9 when system zlib is available.
   Nonempty folders are represented by their member paths. CAB cannot store an
   empty folder; an edit that would leave one is refused without replacing the
   archive. Signed, spanned and unsupported Cabinet variants are not editable.
