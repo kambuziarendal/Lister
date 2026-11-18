@@ -312,19 +312,27 @@ bool ObjectMember(int fd, const Member &member) {
     return true;
   if (member.size < 4)
     return false;
-  std::array<unsigned char, 4> bytes;
-  ReadExact(fd, bytes.data(), bytes.size(), member.offset);
-  // ELF, LLVM bitcode (raw and wrapped), and Mach-O object formats.
-  switch ((uint32_t(bytes[0]) << 24) | (uint32_t(bytes[1]) << 16) |
-          (uint32_t(bytes[2]) << 8) | bytes[3]) {
-  case 0x7f454c46:
-  case 0x4243c0de:
+  std::array<unsigned char, 18> bytes{};
+  const auto count = std::min<uint64_t>(member.size, bytes.size());
+  ReadExact(fd, bytes.data(), count, member.offset);
+  const auto magic = (uint32_t(bytes[0]) << 24) | (uint32_t(bytes[1]) << 16) |
+                     (uint32_t(bytes[2]) << 8) | bytes[3];
+  switch (magic) {
+  case 0x7f454c46: // ELF ET_REL, not executables or shared libraries.
+    return count >= 18 &&
+           ((bytes[5] == 1 && bytes[16] == 1 && bytes[17] == 0) ||
+            (bytes[5] == 2 && bytes[16] == 0 && bytes[17] == 1));
+  case 0x4243c0de: // LLVM bitcode used for link-time optimization.
   case 0xdec0170b:
-  case 0xfeedface:
-  case 0xcefaedfe:
-  case 0xfeedfacf:
-  case 0xcffaedfe:
     return true;
+  case 0xfeedface: // Mach-O MH_OBJECT.
+  case 0xfeedfacf:
+    return count >= 16 && bytes[12] == 0 && bytes[13] == 0 && bytes[14] == 0 &&
+           bytes[15] == 1;
+  case 0xcefaedfe:
+  case 0xcffaedfe:
+    return count >= 16 && bytes[12] == 1 && bytes[13] == 0 && bytes[14] == 0 &&
+           bytes[15] == 0;
   default:
     return false;
   }

@@ -156,10 +156,17 @@ void ExternalFixtures(const Scratch &scratch) {
                                                      "ELF",
           "Object library index leaked as a member or prevented extraction");
 
-  Write(archive, magic + Header("code/", 4) +
-                     "\x7f"
-                     "ELF");
+  std::string elf = "\x7f"
+                    "ELF";
+  elf.resize(18, '\0');
+  elf[5] = 1;
+  elf[16] = 1;
+  Write(archive, magic + Header("code/", elf.size()) + elf);
   Reject([&] { Format(archive); }, "object files");
+  elf[16] = 2;
+  Write(archive, magic + Header("program/", elf.size()) + elf);
+  Require(Format(archive) == "ar",
+          "Ordinary ar with ELF executable is read-only");
   Write(archive, magic + Header("debian-binary/", 4) + "2.0\n");
   Reject([&] { Format(archive); }, "Debian packages");
   Write(archive, "!<thin>\n");
