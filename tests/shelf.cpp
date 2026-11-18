@@ -73,8 +73,16 @@ int main() {
     Check(shelf.Add({link}) == 1 &&
               shelf.Snapshot().entries.back().path == link,
           "collect a symlink without following the selected entry");
-    shelf.Remove({link});
-    Check(fs::is_symlink(link), "removing a shelf row does not touch the link");
+    shelf.Add({collision});
+    const auto withLink = shelf.Snapshot();
+    shelf.Remove({link, collision});
+    const auto withoutLink = shelf.Snapshot();
+    Check(fs::is_symlink(link) && withoutLink.entries.size() == 2 &&
+              withoutLink.entries.front().path == first &&
+              withoutLink.entries.back().path == second &&
+              withoutLink.revision == withLink.revision + 1 &&
+              Read(collision) == "collision",
+          "selected removal keeps unselected references and original entries");
 
     shelf.Add({collision});
     Refused(
@@ -231,6 +239,23 @@ int main() {
     Check(!replacedDestination.errors.empty() && fs::exists(first) &&
               !fs::exists(target / "first"),
           "guard rejects a destination replaced after confirmation");
+
+    shelf.Add({a.string(), collision, link, first});
+    fs::rename(collision, collision + ".renamed");
+    const auto beforeClear = shelf.Snapshot();
+    shelf.Clear();
+    const auto cleared = shelf.Snapshot();
+    Check(cleared.entries.empty() &&
+              cleared.revision == beforeClear.revision + 1 &&
+              fs::is_directory(a) && fs::is_symlink(link) &&
+              Read(first) == "replacement" &&
+              Read(collision + ".renamed") == "collision",
+          "clearing ready and missing references leaves originals unchanged");
+    shelf.Clear();
+    Check(shelf.Snapshot().revision == cleared.revision,
+          "clearing an empty Shelf does not change its revision");
+    Check(shelf.Add({first, link}) == 2,
+          "cleared references can be collected again");
     return 0;
   } catch (const std::exception &e) {
     std::cerr << "FAIL " << e.what() << '\n';

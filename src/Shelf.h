@@ -28,6 +28,7 @@ public:
   size_t Add(const std::vector<std::string> &paths,
              const std::map<std::string, NodeIdentity> &expected = {});
   void Remove(const std::set<std::string> &paths);
+  void Clear();
   ShelfSnapshot Snapshot() const;
 
 private:

@@ -108,6 +108,14 @@ void Shelf::Remove(const std::set<std::string> &paths) {
   }
 }
 
+void Shelf::Clear() {
+  std::lock_guard<std::mutex> lock(mutex);
+  if (!current.entries.empty()) {
+    current.entries.clear();
+    ++current.revision;
+  }
+}
+
 ShelfSnapshot Shelf::Snapshot() const {
   std::lock_guard<std::mutex> lock(mutex);
   return current;

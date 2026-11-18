@@ -179,8 +179,10 @@ content detection. `.jpg` and `.jpeg` remain distinct.
 **Shelf (development build):** Select local entries and press Command+Shift+Y
 (**Files > Add to Shelf**). Open **Listi > Show Shelf** to see their names,
 original folders and status. You can also drop local entries onto the list.
-Removing a row removes only the reference. Closing and reopening the Shelf
-keeps its contents; quitting Listi clears it.
+Select one or more rows and click **Remove from Shelf** to remove just those
+references. **Clear Shelf** removes every reference. Neither action deletes or
+moves the original files. Closing and reopening the Shelf keeps its contents;
+quitting Listi clears it.
 
 **Copy all...** and **Move all...** act on the whole Shelf, not just
 highlighted rows. Choose a destination folder and follow progress in

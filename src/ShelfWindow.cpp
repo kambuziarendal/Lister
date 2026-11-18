@@ -20,7 +20,7 @@ namespace Listi {
 namespace {
 constexpr uint32 kRemove = 'sfrm', kSelect = 'sfsl', kPickMove = 'sfbw',
                  kPickCopy = 'sfcp', kFolderChosen = 'sfdc', kDropped = 'sfdp',
-                 kCreateArchive = 'sfar';
+                 kCreateArchive = 'sfar', kClear = 'sfcl';
 
 std::string RefPath(const entry_ref &ref, bool traverse) {
   BEntry entry(&ref, traverse);
@@ -109,7 +109,7 @@ class ShelfWindow : public BWindow {
   BMessenger owner;
   std::shared_ptr<Shelf> shelf;
   ShelfList *rows;
-  BButton *remove, *copy, *move, *archive;
+  BButton *remove, *clear, *copy, *move, *archive;
   BStringView *status;
   std::map<std::string, ShelfRow *> displayed;
   std::unique_ptr<BFilePanel> picker;
@@ -157,6 +157,7 @@ class ShelfWindow : public BWindow {
       }
     }
     remove->SetEnabled(rows->CurrentSelection() != nullptr);
+    clear->SetEnabled(!snapshot.entries.empty());
     copy->SetEnabled(!snapshot.entries.empty());
     move->SetEnabled(!snapshot.entries.empty());
     archive->SetEnabled(!snapshot.entries.empty());
@@ -247,7 +248,7 @@ class ShelfWindow : public BWindow {
 
 public:
   ShelfWindow(BMessenger receiver, std::shared_ptr<Shelf> collection)
-      : BWindow(BRect(150, 115, 700, 455), "Listi: Shelf", B_TITLED_WINDOW,
+      : BWindow(BRect(150, 115, 780, 455), "Listi: Shelf", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         owner(receiver), shelf(std::move(collection)) {
     // A normal titled window can remain independent or join Stack & Tile.
@@ -269,6 +270,9 @@ public:
     status->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     status->SetTruncation(B_TRUNCATE_END);
     remove = new BButton("Remove from Shelf", new BMessage(kRemove));
+    clear = new BButton("Clear Shelf", new BMessage(kClear));
+    clear->SetToolTip(
+        "Remove all references without changing the original files.");
     copy = new BButton("Copy all...", new BMessage(kPickCopy));
     move = new BButton("Move all...", new BMessage(kPickMove));
     archive = new BButton("Create archive...", new BMessage(kCreateArchive));
@@ -279,6 +283,7 @@ public:
         .AddGroup(B_HORIZONTAL, 8)
         .Add(new BButton("Refresh", new BMessage(kRefreshShelf)))
         .Add(remove)
+        .Add(clear)
         .AddGlue()
         .Add(copy)
         .Add(move)
@@ -311,6 +316,11 @@ public:
         shelf->Remove(Selected());
         Render();
         Status("Removed references only. Original files were not changed.");
+        return;
+      case kClear:
+        shelf->Clear();
+        Render();
+        Status("Shelf cleared. Original files were not changed.");
         return;
       case kPickCopy:
         PickFolder(Action::Copy);
