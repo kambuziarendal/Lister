@@ -20,15 +20,24 @@ int main(){
  int checks=0,failures=0;auto check=[&](bool ok,const std::string&label){++checks;failures+=!ok;std::cout<<(ok?"PASS ":"FAIL ")<<label<<std::endl;};
  for(const auto &format:WritableArchiveFormats()){
   std::cout<<"FORMAT "<<format.id<<std::endl;
-  auto create=PrepareArchiveJob(false,{root+"/in/original.txt"});create.archiveFormat=format.id;SetArchiveDestination(create,root,"archive"+format.extension);
+  std::vector<std::string> sources{root+"/in/original.txt"};
+  if(format.id=="cab"){
+   mkdir((root+"/in/new-folder").c_str(),0700);
+   std::ofstream(root+"/in/new-folder/keep.txt")<<"seed";
+   sources.push_back(root+"/in/new-folder");
+  }
+  auto create=PrepareArchiveJob(false,sources);create.archiveFormat=format.id;SetArchiveDestination(create,root,"archive"+format.extension);
   auto result=Run(create,{});check(result.completed==1&&result.errors.empty(),format.id+" create");if(!result.errors.empty()){std::cerr<<result.errors[0]<<std::endl;continue;}
   try {
    const auto url=OpenArchive(create.destination);auto target=PrepareArchiveEditTarget(create.destination);
    check(target.archiveFormat==format.id,format.id+" detected from container, not file suffix");
    auto folder=ChildLocation(url,"new-folder");
-   auto mkdirJob=PrepareArchiveMutation(Job{Action::MakeDirectory,{},folder});
+   auto mkdirJob=PrepareArchiveMutation(Job{Action::MakeDirectory,{},format.id=="cab"?ChildLocation(url,"empty"):folder});
    result=Run(DecodeJob(EncodeJob(mkdirJob,0)),{});FileEntry entry;
-   check(result.completed==1&&StatFile(folder,entry)&&entry.directory,format.id+" create internal folder");
+   if(format.id=="cab")
+    check(!result.errors.empty()&&!StatFile(ChildLocation(url,"empty"),entry),"cab refuses unrepresentable empty directory");
+   else
+    check(result.completed==1&&StatFile(folder,entry)&&entry.directory,format.id+" create internal folder");
    auto add=PrepareArchiveCopy(Job{Action::Copy,{root+"/in/new.txt"},folder});result=Run(add,{});
    auto file=ChildLocation(folder,"new.txt");check(result.completed==1&&content(file)=="added",format.id+" copy into internal folder");
    auto renamed=ChildLocation(folder,"renamed.txt");auto renameJob=PrepareArchiveMutation(Job{Action::Rename,{file},renamed});result=Run(DecodeJob(EncodeJob(renameJob,0)),{});
