@@ -49,7 +49,7 @@ std::string Read(const std::string &member) {
   return bytes;
 }
 
-void Test() {
+void Test(int level) {
   Scratch scratch;
   const auto source = Join(scratch.path, "parent");
   const auto emptyFolder = Join(source, "empty-folder");
@@ -67,7 +67,13 @@ void Test() {
   const auto archive = Join(scratch.path, "output.arj");
   FD output{open(archive.c_str(), O_RDWR | O_CREAT | O_EXCL, 0600)};
   Require(output.value >= 0, "Cannot create ARJ test archive");
-  ArjWrite(output.value, {source}, {});
+  ArjWrite(output.value, {source}, {}, level);
+  if (level > 0 && ArjCanCompress()) {
+    struct stat result;
+    Require(!fstat(output.value, &result) &&
+                result.st_size < off_t(bytes.size() / 4),
+            "ARJ codec stored compressible data instead of compressing it");
+  }
   ArjValidateEdit(output.value);
   const auto root = OpenArchive(archive);
   const auto parent = ChildLocation(root, "parent");
@@ -82,6 +88,20 @@ void Test() {
   Require(StatFile(member, entry) && entry.modified == stamp,
           "ARJ read-back did not preserve a representable DOS timestamp");
 
+  bool cancelled = false;
+  if (level > 0) {
+    const auto cancelledPath = Join(scratch.path, "cancelled.arj");
+    FD cancelledOutput{
+        open(cancelledPath.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600)};
+    Hooks stop;
+    stop.proceed = [&] { return !cancelled; };
+    stop.progress = [&](const std::string &, uint64_t) { cancelled = true; };
+    try {
+      ArjWrite(cancelledOutput.value, {source}, stop, level);
+      Require(false, "ARJ compression ignored cancellation");
+    } catch (const Cancelled &) {
+    }
+  }
   const auto unsuitable = Join(scratch.path, "føø.bin");
   Write(unsuitable, "must not silently rename");
   FD rejectedOutput{open(Join(scratch.path, "unsupported.arj").c_str(),
@@ -89,7 +109,7 @@ void Test() {
   Require(rejectedOutput.value >= 0, "Cannot create rejected ARJ output");
   bool unsupportedName = false;
   try {
-    ArjWrite(rejectedOutput.value, {unsuitable}, {});
+    ArjWrite(rejectedOutput.value, {unsuitable}, {}, level);
   } catch (const std::runtime_error &) {
     unsupportedName = true;
   }
@@ -114,7 +134,12 @@ int main() {
       std::cout << "SKIP optional p7zip ARJ handler not installed\n";
       return 0;
     }
-    Test();
+    Test(0);
+    if (ArjCanCompress()) {
+      for (int level : {2, 6, 9})
+        Test(level);
+      std::cout << "ARJ compression and cancellation checks passed\n";
+    }
     std::cout << "ARJ writer checks passed\n";
     return 0;
   } catch (const std::exception &error) {

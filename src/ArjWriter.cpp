@@ -178,7 +178,7 @@ struct Compression {
         "ARJ", path,
         {kTool, "a", "-y", "-i", "-2d", "-e", method, "data.arj", "*.bin"},
         output, control);
-    // Verify the compressed data independently before importing the payloads.
+    // Decode and check the compressed data before importing the payloads.
     RunArchiveCompressor("ARJ", path, {kTool, "t", "-y", "-i", "data.arj"},
                          output, control);
     FD file{open(Join(path, "data.arj").c_str(), O_RDONLY | O_NOFOLLOW)};
@@ -218,7 +218,8 @@ struct Compression {
       Require(found != members.end(), "Unexpected ARJ codec member.");
       const auto &m = found->second;
       const auto packed = Get(h + 12, 4);
-      Require(!h[4] && h[6] == kFile && h[5] <= 4 &&
+      // PATHSYM marks the separator convention. Synthetic names have no path.
+      Require(!(h[4] & ~0x10) && h[6] == kFile && h[5] <= 4 &&
                   (h[5] || m.size == packed) && Get(h + 16, 4) == m.size &&
                   Get(h + 20, 4) == m.crc && at <= st.st_size &&
                   packed <= uint64_t(st.st_size - at),
