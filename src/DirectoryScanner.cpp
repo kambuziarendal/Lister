@@ -2,6 +2,7 @@
 #include "DirectoryScanner.h"
 #include "Common.h"
 #include "FileOperation.h"
+#include "FileProperties.h"
 #include "VirtualFile.h"
 #include "Trash.h"
 #include <Bitmap.h>
@@ -108,6 +109,30 @@ public:
       BEntry e(full, false);
       if (e.GetRef(&ref) == B_OK) {
         item.AddRef("ref", &ref);
+        if (!parent && (S_ISREG(st.st_mode) || S_ISDIR(st.st_mode)) &&
+            m->HasString("attribute")) {
+          BNode node(&ref);
+          node_ref observed;
+          bool same = node.GetNodeRef(&observed) == B_OK &&
+                      observed.device == st.st_dev &&
+                      observed.node == st.st_ino;
+          const char *key;
+          for (int32 i = 0;
+               i < 4 && m->FindString("attribute", i, &key) == B_OK; ++i) {
+            auto cell =
+                same ? Listi::AttributeCell(node, key) : "(unavailable)";
+            // Bound the BMessage batch even for large string attributes.
+            if (cell.size() > 160) {
+              size_t end = 160;
+              while (end &&
+                     (static_cast<unsigned char>(cell[end]) & 0xc0) == 0x80)
+                --end;
+              cell.resize(end);
+              cell += "…";
+            }
+            item.AddString("cell", cell.c_str());
+          }
+        }
         // Tracker icon lookup may open the node. Never open a device, FIFO,
         // or a link to one just to display a directory listing.
         if (icons && (S_ISREG(targetMode) || S_ISDIR(targetMode))) {

@@ -72,6 +72,7 @@ private:
   Preferences prefs;
   BString path = "/boot/home";
   PaneModel entries;
+  std::vector<std::string> attributeColumns;
   IconCache icons;
   FileDetails *list;
   FileGrid *grid;

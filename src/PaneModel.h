@@ -8,6 +8,7 @@
 class BBitmap;
 struct PaneEntry {
   std::string name, path;
+  std::vector<std::string> attributeCells;
   bool directory = false, parent = false, sizeKnown = true;
   int kind = 0, transferState = 0;
   int64_t device = -1, node = -1;

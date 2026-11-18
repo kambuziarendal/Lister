@@ -19,6 +19,9 @@ struct PropertySnapshot {
   std::vector<FileAttribute> attributes;
   bool limited = false, writableKind = false;
 };
+// Worker-side bounded preview for an optional Details column.
+std::string AttributeCell(BNode &, const char *name);
+bool IndexableAttribute(type_code);
 std::string AttributeTypeName(type_code);
 std::vector<uint8> EncodeAttribute(type_code, const std::string &);
 // A session pins one native node, and refuses writes after its pathname changes
@@ -30,6 +33,7 @@ public:
   void Save(const FileAttribute *expected, const std::string &name,
             type_code type, const std::string &text);
   void Remove(const FileAttribute &expected);
+  std::string MakeSearchable(const FileAttribute &expected);
   void Permissions(mode_t expected, const std::string &octal);
 
 private:

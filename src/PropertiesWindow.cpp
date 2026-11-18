@@ -3,6 +3,8 @@
 #include "FileProperties.h"
 #include "ThemeTextView.h"
 #include <Button.h>
+#include <Alert.h>
+#include <Volume.h>
 #include <Application.h>
 #include <algorithm>
 #include <ColumnListView.h>
@@ -40,7 +42,9 @@ struct AttributeRow : BRow {
     SetField(new BStringField(preview.c_str()), 2);
   }
 };
+constexpr uint32 kMakeSearchable = 'mkix';
 struct Delivery {
+  std::string completion;
   std::mutex mutex;
   std::unique_ptr<PropertySnapshot> snapshot;
   std::shared_ptr<PropertySession> session;
@@ -49,6 +53,7 @@ struct Delivery {
 class PropertiesWindow : public BWindow {
   std::shared_ptr<PropertySession> session;
   std::shared_ptr<Delivery> delivery = std::make_shared<Delivery>();
+  BMessenger pane;
   std::string path;
   PropertySnapshot snapshot;
   std::unique_ptr<FileAttribute> editing;
@@ -59,6 +64,7 @@ class PropertiesWindow : public BWindow {
   BPopUpMenu *types;
   BMenuField *typeField;
   BButton *save, *remove, *discard, *edit, *create, *refresh, *apply;
+  BButton *showColumn, *index;
   bool busy = false, creating = false, confirmRemove = false;
   std::string originalName, originalValue;
   type_code originalType = B_STRING_TYPE;
@@ -101,6 +107,8 @@ class PropertiesWindow : public BWindow {
     remove->SetEnabled(!busy && editing && editing->editable);
     discard->SetEnabled(!busy);
     edit->SetEnabled(!busy);
+    showColumn->SetEnabled(!busy && pane.IsValid());
+    index->SetEnabled(!busy && session);
     create->SetEnabled(!busy && snapshot.writableKind);
     refresh->SetEnabled(!busy);
     permissions->SetEnabled(!busy && snapshot.writableKind &&
@@ -135,6 +143,7 @@ class PropertiesWindow : public BWindow {
   void Work(std::function<void(PropertySession &)> change = {}) {
     if (busy)
       return;
+    delivery->completion.clear();
     busy = true;
     Controls();
     Status(change ? "Saving metadata..." : "Reading properties...");
@@ -182,10 +191,10 @@ class PropertiesWindow : public BWindow {
   }
 
 public:
-  explicit PropertiesWindow(const std::string &p)
+  PropertiesWindow(const std::string &p, BMessenger owner)
       : BWindow(BRect(100, 90, 850, 710), "Listi: Properties", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
-        path(p) {
+        pane(owner), path(p) {
     location = Line("property path", p.c_str());
     location->SetToolTip(p.c_str());
     details = new ThemeTextView("property details", B_PANEL_BACKGROUND_COLOR,
@@ -211,6 +220,9 @@ public:
     attributes->SetTarget(this);
     attributes->SetExplicitMinSize(BSize(300, 100));
     edit = new BButton("Edit selected", new BMessage(kEdit));
+    showColumn =
+        new BButton("Show in Details", new BMessage(kShowAttributeColumn));
+    index = new BButton("Make searchable…", new BMessage(kMakeSearchable));
     create = new BButton("New attribute", new BMessage(kNew));
     heading = Line("property editing",
                    "Choose an attribute and Edit, or create a new one.");
@@ -252,6 +264,8 @@ public:
         .AddGroup(B_HORIZONTAL, 8)
         .Add(edit)
         .Add(create)
+        .Add(showColumn)
+        .Add(index)
         .AddGlue()
         .End()
         .Add(heading)
@@ -324,7 +338,8 @@ public:
         attributes->AddRow(new AttributeRow(a));
       Reset();
       Status(
-          snapshot.limited
+          !delivery->completion.empty() ? delivery->completion
+          : snapshot.limited
               ? "Attribute limit reached. Some entries are not shown."
               : "Properties loaded. Changes require explicit Save or Apply.");
       break;
@@ -349,6 +364,50 @@ public:
         name->MakeFocus();
       }
       break;
+    case kShowAttributeColumn:
+    case kMakeSearchable: {
+      if (busy || !MayReplaceDraft())
+        break;
+      auto row = static_cast<AttributeRow *>(attributes->CurrentSelection());
+      if (!row) {
+        Status("Select an attribute first.");
+        break;
+      }
+      auto attr = row->value;
+      if (message->what == kShowAttributeColumn) {
+        BMessage add(kShowAttributeColumn), reply;
+        add.AddString("attribute", attr.name.c_str());
+        if (pane.SendMessage(&add, &reply, 500000, 1000000) != B_OK)
+          Status("The original pane is unavailable.");
+        else
+          Status(reply.GetString("status", "Column added to Details."));
+        break;
+      }
+      if (!IndexableAttribute(attr.type)) {
+        Status("This attribute type cannot be indexed by BFS.");
+        break;
+      }
+      char volume[B_FILE_NAME_LENGTH] = {};
+      if (BVolume(snapshot.stat.st_dev).GetName(volume) != B_OK) {
+        Status("Cannot identify the affected volume.");
+        break;
+      }
+      std::string warning = "Create or check the " +
+                            AttributeTypeName(attr.type) + " index for “" +
+                            attr.name + "” on the entire volume “" + volume +
+                            "”? Existing files will not be rewritten.";
+      if ((new BAlert("Volume index", warning.c_str(), "Cancel",
+                      "Make searchable"))
+              ->Go() != 1)
+        break;
+      auto holder = delivery;
+      Work([holder, attr](PropertySession &s) {
+        auto result = s.MakeSearchable(attr);
+        std::lock_guard<std::mutex> lock(holder->mutex);
+        holder->completion = result;
+      });
+      break;
+    }
     case kEdit: {
       if (busy || !MayReplaceDraft())
         break;
@@ -439,7 +498,9 @@ public:
   }
 };
 }
-void OpenFileProperties(const std::string &path) { new PropertiesWindow(path); }
+void OpenFileProperties(const std::string &path, BMessenger pane) {
+  new PropertiesWindow(path, pane);
+}
 
 bool FilePropertiesAllowQuit() {
   std::vector<BMessenger> windows;

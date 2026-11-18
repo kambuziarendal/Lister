@@ -410,6 +410,7 @@ class DetailsView : public FileDetails {
   std::map<std::string, FileRow *> rows;
   Preferences prefs;
   bool active = false;
+  std::vector<BColumn *> attributes;
 
 public:
   DetailsView(Pane *pane, PaneModel *state, const Preferences &p)
@@ -469,6 +470,25 @@ public:
     list->UpdateScrollBars();
     Redraw();
   }
+  void SetAttributes(const std::vector<std::string> &names) override {
+    if (!attributes.empty()) {
+      // Native RemoveColumn does not remove pointers from the sort list.
+      list->ClearSortColumns();
+      list->SetSortColumn(list->name, false, true);
+    }
+    while (!attributes.empty()) {
+      auto column = attributes.back();
+      list->RemoveColumn(column);
+      delete column;
+      attributes.pop_back();
+    }
+    for (auto &name : names) {
+      auto column =
+          new BStringColumn(name.c_str(), 150, 55, 800, B_TRUNCATE_END);
+      list->AddColumn(column, 3 + attributes.size());
+      attributes.push_back(column);
+    }
+  }
   void Refresh() override {
     list->syncing = true;
     std::set<std::string> visible;
@@ -493,6 +513,11 @@ public:
                     1);
       time_t date = entry->modified;
       row->SetField(new DateField(&date), 2);
+      for (size_t i = 0; i < attributes.size(); ++i)
+        row->SetField(new BStringField(i < entry->attributeCells.size()
+                                           ? entry->attributeCells[i].c_str()
+                                           : ""),
+                      3 + i);
       rows.emplace(entry->path, row);
       list->AddRow(row);
     }

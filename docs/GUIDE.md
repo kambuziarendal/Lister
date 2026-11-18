@@ -370,3 +370,18 @@ Saved search criteria written since 0.30 use a newer store format: 0.29 and olde
 cannot read it. Those versions preserve the file and disable saved-search changes;
 upgrading restores access. Do not replace the store with a stale backup merely
 to make an older version read it.
+
+### BFS columns and searchable attributes
+
+In Properties select an attribute and click **Show in Details**. The originating
+pane switches to Details and displays that attribute for each ordinary local
+file or directory. Choose up to four columns per pane for the session; use
+**Clear attribute columns** in the pane's view selector to start again. Missing
+and empty values have distinct labels. Long values are previews, not editors.
+
+**Make searchable…** names the volume before creating an index there. This is a
+volume-wide action, not a change to the current folder. Listi supports the BFS
+index types string, signed 32/64-bit integer, float and double. It checks an
+existing index instead of replacing it, and checks whether a native query
+returns the selected entry. Creating an index does not rewrite or backfill old
+attributes. Use Find files' volume query mode to search an indexed attribute.

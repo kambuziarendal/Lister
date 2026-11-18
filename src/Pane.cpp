@@ -2,6 +2,7 @@
 #include "Pane.h"
 #include "PanelAppearance.h"
 #include "DirectoryScanner.h"
+#include "PropertiesWindow.h"
 #include "FileDetails.h"
 #include "FileGrid.h"
 #include "FileOperation.h"
@@ -223,6 +224,8 @@ Pane::Pane(int32 number, const Preferences &p)
   auto workspaceView = new BMessage(kGridMode);
   workspaceView->AddInt32("mode", -1);
   modes->AddItem(new BMenuItem("Use workspace default", workspaceView));
+  modes->AddItem(new BMenuItem("Clear attribute columns",
+                               new BMessage(kClearAttributeColumns)));
   modes->SetRadioMode(false);
   modes->SetLabelFromMarked(false);
   display = new BMenuField("display mode", "", modes);
@@ -709,6 +712,9 @@ void Pane::StartNavigation(const std::string &request, int target, bool trash) {
   m.AddBool("icons", prefs.icons || (mode > 0 && mode < MillerMode));
   m.AddInt32("iconSize", mode == 0 || mode == MillerMode ? 16 : 96);
   m.AddBool("trash", trash);
+  if (mode == 0)
+    for (auto &name : attributeColumns)
+      m.AddString("attribute", name.c_str());
   BMessage check(kCheckScanDelivery);
   check.AddInt64("serial", serial);
   scanTimer.reset(new BMessageRunner(BMessenger(this), &check, 250000));
@@ -954,6 +960,37 @@ void Pane::MessageReceived(BMessage *m) {
       Navigate(destination);
     break;
   }
+  case kShowAttributeColumn:
+  case kClearAttributeColumns: {
+    std::string name = m->GetString("attribute", "");
+    BMessage reply(B_REPLY);
+    if (m->what == kClearAttributeColumns) {
+      attributeColumns.clear();
+    } else if (name.empty() || name.size() >= B_ATTR_NAME_LENGTH ||
+               (attributeColumns.size() >= 4 &&
+                std::find(attributeColumns.begin(), attributeColumns.end(),
+                          name) == attributeColumns.end())) {
+      reply.AddString(
+          "status",
+          "Use up to four columns; clear them in the pane view menu.");
+      m->SendReply(&reply);
+      break;
+    } else {
+      if (std::find(attributeColumns.begin(), attributeColumns.end(), name) ==
+          attributeColumns.end())
+        attributeColumns.push_back(name);
+      prefs.SetPaneMode(id, 0);
+      auto remembered = prefs.folderModes.find(path.String());
+      if (remembered != prefs.folderModes.end())
+        remembered->second = 0;
+      PublishDisplay(remembered != prefs.folderModes.end());
+    }
+    list->SetAttributes(attributeColumns);
+    StartNavigation(path.String());
+    if (m->IsSourceWaiting())
+      m->SendReply(&reply);
+    break;
+  }
   case kGridMode: {
     auto requestedMode = m->GetInt32("mode", 0);
     prefs.SetPaneMode(id, requestedMode);
@@ -1155,6 +1192,9 @@ void Pane::MessageReceived(BMessage *m) {
       row->path = e.GetString("path", "");
       row->directory = e.GetBool("directory", false);
       row->parent = e.GetBool("parent", false);
+      const char *cell;
+      for (int32 i = 0; e.FindString("cell", i, &cell) == B_OK; ++i)
+        row->attributeCells.emplace_back(cell);
       row->kind = e.GetInt32("kind", 0);
       row->device = e.GetInt64("device", -1);
       row->node = e.GetInt64("node", -1);

@@ -1794,7 +1794,7 @@ public:
             break;
           }
           if (action == kProperties) {
-            OpenFileProperties(folder);
+            OpenFileProperties(folder, BMessenger(panes[owner]));
             break;
           }
           if (action == kRefresh) {
@@ -1898,7 +1898,7 @@ public:
       if (selected.size() != 1)
         Notice("Select one local file or folder for Properties.");
       else
-        OpenFileProperties(selected[0]);
+        OpenFileProperties(selected[0], BMessenger(panes[source]));
       break;
     }
     case kClipboardSaveText:

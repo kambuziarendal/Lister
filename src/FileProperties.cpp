@@ -6,6 +6,9 @@
 #include <Message.h>
 #include <Path.h>
 #include <fs_attr.h>
+#include <fs_index.h>
+#include <Volume.h>
+#include <Query.h>
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
@@ -281,6 +284,110 @@ FileAttribute PropertySession::Attribute(const std::string &name) {
   }
   return a;
 }
+std::string AttributeCell(BNode &node, const char *name) {
+  attr_info info;
+  auto status = node.GetAttrInfo(name, &info);
+  if (status == B_ENTRY_NOT_FOUND)
+    return "(missing)";
+  if (status != B_OK)
+    return "(unavailable)";
+  FileAttribute value;
+  value.type = info.type;
+  if (info.size < 0 || info.size > off_t(MaxText + 1))
+    return AttributeTypeName(info.type) + " (" + std::to_string(info.size) +
+           " bytes)";
+  value.bytes.resize(info.size);
+  if (info.size && node.ReadAttr(name, info.type, 0, value.bytes.data(),
+                                 info.size) != info.size)
+    return "(changed)";
+  if (!Text(value))
+    return AttributeTypeName(info.type) + " (" + std::to_string(info.size) +
+           " bytes)";
+  if (value.text.empty())
+    return "(empty)";
+  std::replace_if(
+      value.text.begin(), value.text.end(),
+      [](char c) { return c == '\n' || c == '\r' || c == '\t'; }, ' ');
+  return value.text;
+}
+
+bool IndexableAttribute(type_code type) {
+  return type == B_STRING_TYPE || type == B_INT32_TYPE ||
+         type == B_INT64_TYPE || type == B_FLOAT_TYPE || type == B_DOUBLE_TYPE;
+}
+
+std::string PropertySession::MakeSearchable(const FileAttribute &expected) {
+  Guard();
+  const auto attribute = Attribute(expected.name);
+  if (!IndexableAttribute(attribute.type) || !Equal(expected, attribute))
+    throw std::runtime_error(
+        "The selected attribute changed or its type cannot be indexed.");
+  BVolume volume(identity.device);
+  if (volume.InitCheck() != B_OK || !volume.KnowsQuery() || !volume.KnowsAttr())
+    throw std::runtime_error("This volume does not support attribute queries.");
+  index_info info;
+  if (fs_stat_index(identity.device, attribute.name.c_str(), &info) != 0) {
+    if (errno != ENOENT || volume.IsReadOnly())
+      throw std::runtime_error(
+          "Cannot inspect or create an index on this volume.");
+    if (fs_create_index(identity.device, attribute.name.c_str(), attribute.type,
+                        0) != 0 &&
+        errno != EEXIST)
+      throw std::runtime_error(std::string("Create volume index: ") +
+                               strerror(errno));
+    if (fs_stat_index(identity.device, attribute.name.c_str(), &info) != 0)
+      throw std::runtime_error("Cannot verify the volume index.");
+  }
+  if (info.type != attribute.type)
+    throw std::runtime_error(
+        "The existing volume index has a different type. It was not changed.");
+  // Ask BFS itself. Creating an index is not a request to rewrite older attributes.
+  BQuery query;
+  status_t status = query.SetVolume(&volume);
+  if (status == B_OK)
+    status = query.PushAttr(attribute.name.c_str());
+  if (status == B_OK) {
+    auto value = attribute;
+    if (!Text(value))
+      return "Index ready. This value could not be checked with a query.";
+    switch (value.type) {
+    case B_STRING_TYPE:
+      status = query.PushString(value.text.c_str());
+      break;
+    case B_INT32_TYPE:
+      status = query.PushInt32(std::stol(value.text));
+      break;
+    case B_INT64_TYPE:
+      status = query.PushInt64(std::stoll(value.text));
+      break;
+    case B_FLOAT_TYPE:
+      status = query.PushFloat(std::stof(value.text));
+      break;
+    default:
+      status = query.PushDouble(std::stod(value.text));
+      break;
+    }
+  }
+  if (status == B_OK)
+    status = query.PushOp(B_EQ);
+  if (status == B_OK)
+    status = query.Fetch();
+  if (status != B_OK)
+    return "Index ready. The query could not be verified.";
+  BEntry item;
+  for (size_t n = 0; n < 1024; ++n) {
+    auto next = query.GetNextEntry(&item);
+    if (next == B_ENTRY_NOT_FOUND)
+      return "Index ready. This existing entry was not returned; older attributes may need reindexing.";
+    if (next != B_OK)
+      break;
+    node_ref ref;
+    if (item.GetNodeRef(&ref) == B_OK && ref == identity)
+      return "Index ready. This entry was found by a volume query.";
+  }
+  return "Index ready. This entry was not verified within the query limit.";
+}
+
 PropertySnapshot PropertySession::Read() {
   Guard();
   PropertySnapshot result;
