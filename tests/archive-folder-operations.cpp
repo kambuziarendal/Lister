@@ -31,6 +31,19 @@ int main(){
   try {
    const auto url=OpenArchive(create.destination);auto target=PrepareArchiveEditTarget(create.destination);
    check(target.archiveFormat==format.id,format.id+" detected from container, not file suffix");
+   if (format.id == "ar") {
+    const auto added = ChildLocation(url,"new.txt");
+    const auto renamed = ChildLocation(url,"renamed.txt");
+    result=Run(PrepareArchiveCopy(Job{Action::Copy,{root+"/in/new.txt"},url}),{});
+    check(result.completed==1 && content(added)=="added","ar copy into archive");
+    result=Run(PrepareArchiveMutation(Job{Action::Rename,{added},renamed}),{});
+    check(result.completed==1 && content(renamed)=="added","ar rename member");
+    result=Run(PrepareArchiveMutation(Job{Action::Delete,{renamed},""}),{});
+    FileEntry entry;
+    check(result.completed==1 && !StatFile(renamed,entry) &&
+          content(ChildLocation(url,"original.txt"))=="retained","ar delete preserves original");
+    continue;
+   }
    auto folder=ChildLocation(url,"new-folder");
    auto mkdirJob=PrepareArchiveMutation(Job{Action::MakeDirectory,{},format.id=="cab"?ChildLocation(url,"empty"):folder});
    result=Run(DecodeJob(EncodeJob(mkdirJob,0)),{});FileEntry entry;

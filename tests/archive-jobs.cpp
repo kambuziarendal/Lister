@@ -53,7 +53,12 @@ void *run(void *) {
   std::string archive;std::map<std::string,std::string> madeArchives;
   for(const auto &f:formats){
     if (f.id == "cab") rmdir((input+"/folder/empty").c_str());
-    auto job=PrepareArchiveJob(false,{input+"/folder",input+"/empty"});job.archiveFormat=f.id;
+    const bool flat = f.id == "ar";
+    const bool ascii = f.id == "arj";
+    const std::string leaf = ascii ? "literal name.txt" : "æ name ; $(no).txt";
+    if (ascii) rename((input+"/folder/æ name ; $(no).txt").c_str(),(input+"/folder/"+leaf).c_str());
+    const auto payload = (flat ? "/" : "/folder/")+leaf;
+    auto job=PrepareArchiveJob(false,{flat ? input+"/folder/"+leaf : input+"/folder",input+"/empty"});job.archiveFormat=f.id;
     SetArchiveDestination(job,out,"roundtrip"+f.extension);
     job=DecodeJob(EncodeJob(job,0));auto result=Run(job,{});
     if(!result.errors.empty())std::cerr<<result.errors.front()<<std::endl;
@@ -61,14 +66,15 @@ void *run(void *) {
     auto extract=PrepareArchiveJob(true,{job.destination});SetArchiveDestination(extract,out,"extract-"+f.id);
     auto unpack=Run(extract,{});if(!unpack.errors.empty())std::cerr<<unpack.errors.front()<<std::endl;
     check(unpack.completed==1 && unpack.errors.empty(),f.id+" extracts transactionally");
-    check(read(extract.destination+"/folder/æ name ; $(no).txt")=="payload\n",f.id+" Unicode and literal shell characters round trip");
-    check((f.id == "cab" || exists(extract.destination+"/folder/empty")) && exists(extract.destination+"/empty"),f.id+" representable empty entries preserved");
-    auto again=Run(job,{});check(!again.errors.empty() && read(extract.destination+"/folder/æ name ; $(no).txt")=="payload\n",f.id+" existing archive is not replaced");
+    check(read(extract.destination+payload)=="payload\n",f.id+" member name and content round trip");
+    check((flat || f.id == "cab" || exists(extract.destination+"/folder/empty")) && exists(extract.destination+"/empty"),f.id+" representable empty entries preserved");
+    auto again=Run(job,{});check(!again.errors.empty() && read(extract.destination+payload)=="payload\n",f.id+" existing archive is not replaced");
     for(int level:{0,9}) {
       auto variant=job;variant.archiveLevel=level;SetArchiveDestination(variant,out,f.id+std::to_string(level)+f.extension);
       auto done=Run(variant,{});if(!done.errors.empty())std::cerr<<done.errors.front()<<std::endl;
       check(done.completed==1 && done.errors.empty(),f.id+" compression level "+std::to_string(level));
     }
+    if (ascii) rename((input+"/folder/"+leaf).c_str(),(input+"/folder/æ name ; $(no).txt").c_str());
     if (f.id == "cab") mkdir((input+"/folder/empty").c_str(),0700);
     archive=job.destination;madeArchives[f.id]=job.destination;
   }

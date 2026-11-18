@@ -3,6 +3,8 @@
 #include "ArchiveBackend.h"
 #include "ArchiveVolumes.h"
 #include "CabWriter.h"
+#include "ArWriter.h"
+#include "ArjWriter.h"
 #include "LhaWriter.h"
 #include "DynamicLibrary.h"
 #include "JobSnapshot.h"
@@ -125,6 +127,8 @@ const ArchiveFormat formats[] = {
     {"tar", "Tar (uncompressed)", ".tar", false},
     {"cpio", "CPIO (newc)", ".cpio", false},
     {"xar", "XAR", ".xar", true},
+    {"ar", "Unix ar", ".ar", false},
+    {"arj", "ARJ (Store)", ".arj", false},
     {"cab", "Microsoft Cabinet", ".cab", false},
     {"lha", "LHA", ".lha", true},
     {"iso", "ISO 9660 (data disc)", ".iso", false}};
@@ -484,7 +488,11 @@ void CreateOutput(int output, const std::string &format,
                   const std::vector<std::string> &sources, int level,
                   bool encryptNames, const ArchiveSecretPtr &secret,
                   const Hooks &hooks) {
-  if (format == "cab")
+  if (format == "ar" || format == "ar-bsd")
+    ArCreate(output, sources, format == "ar-bsd", hooks);
+  else if (format == "arj")
+    ArjWrite(output, sources, hooks);
+  else if (format == "cab")
     CabWrite(output, sources, hooks);
   else if (format == "lha")
     LhaCreate(output, sources, level, hooks);
@@ -511,10 +519,19 @@ std::string EditFormat(const std::string &path, const Hooks &hooks = {}) {
   Require(
       parts.kind == ArchiveVolumes::Single,
       "Split archives cannot be edited. Extract them, change the files, and create a new archive.");
-  if (SevenZipFormat(path) == "7z")
+  const auto sevenZipFormat = SevenZipFormat(path);
+  if (sevenZipFormat == "7z")
     return "7z";
   FD fd(open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK));
   Require(fd.n >= 0, "Cannot open archive for editing.");
+  if (sevenZipFormat == "arj") {
+    Require(ArjCanCreate(), "Install p7zip from HaikuDepot to edit ARJ archives.");
+    ArjValidateEdit(fd.n);
+    return "arj";
+  }
+  auto arFormat = ArEditFormat(fd.n, path, hooks);
+  if (!arFormat.empty())
+    return arFormat;
   unsigned char magic[4]{};
   auto got = read(fd.n, magic, sizeof(magic));
   if (got >= 4 && magic[0] == 'P' && magic[1] == 'K' &&
@@ -522,7 +539,7 @@ std::string EditFormat(const std::string &path, const Hooks &hooks = {}) {
        (magic[2] == 7 && magic[3] == 8)))
     return "zip";
   Require(
-      SevenZipFormat(path).empty(),
+      sevenZipFormat.empty(),
       "This archive format has no installed writer. It can be browsed and extracted, but cannot be changed.");
   DynamicLibrary lib{"libarchive.so", "libarchive.so.13"};
   Require(lib.Available(), "Install libarchive to edit this archive format.");
@@ -860,6 +877,11 @@ std::vector<ArchiveFormat> WritableArchiveFormats() {
   std::vector<ArchiveFormat> result;
   for (const auto &f : formats)
     try {
+      if (f.id == "ar" || f.id == "arj") {
+        if (f.id == "ar" || ArjCanCreate())
+          result.push_back(f);
+        continue;
+      }
       Writer w;
       if (f.id == "cab" || f.id == "lha") {
         if (f.id == "cab" || LhaCanCreate())

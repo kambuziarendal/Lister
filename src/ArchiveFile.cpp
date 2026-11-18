@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "ArchiveBackend.h"
+#include "ArWriter.h"
 #include "ArchiveVolumes.h"
 #include <algorithm>
 #include <cctype>
@@ -93,6 +94,11 @@ std::string OpenArchive(const std::string &path,
     return "";
   RejectSplitArchive(path);
   const auto parts = FindArchiveVolumes(path);
+  if (parts.kind == ArchiveVolumes::Single) {
+    auto root = ArOpen(path, control);
+    if (!root.empty())
+      return root;
+  }
   if (parts.kind != ArchiveVolumes::Single && !SevenZipAvailable())
     throw std::runtime_error("Install the optional p7zip package from "
                              "HaikuDepot to read split archives inside Listi.");
@@ -138,6 +144,8 @@ std::vector<FileEntry> ReadListing(const Location &location,
         "The first archive part is damaged or does not match this set.");
   if (!format.empty() && SevenZipAvailable())
     return SevenZipList(location, control);
+  if (parts.kind == ArchiveVolumes::Single && ArRecognized(location.archive))
+    return ArList(location, control);
   return Backend().list(location, control);
 }
 std::shared_ptr<const std::vector<FileEntry>>
@@ -186,6 +194,7 @@ ArchiveListingScope::~ArchiveListingScope() {
     listings.clear();
     listingBytes = 0;
     ClearLibarchiveReadCache();
+    ClearArReadCache();
   }
 }
 std::vector<FileEntry> ListArchive(const Location &location,
@@ -224,6 +233,8 @@ void ReadArchive(const Location &location, const DataSink &sink,
         "The first archive part is damaged or does not match this set.");
   if (!format.empty() && SevenZipAvailable())
     SevenZipRead(location, sink, control);
+  else if (parts.kind == ArchiveVolumes::Single && ArRecognized(location.archive))
+    ArRead(location, sink, control);
   else
     Backend().read(location, sink, control);
 }
