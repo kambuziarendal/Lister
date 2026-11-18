@@ -138,13 +138,13 @@ The highlighted panel is the source. Direct Copy or Move uses the other panel
 as the destination; clipboard Paste uses the active panel. Accepted jobs retain
 their selected paths and target even if you navigate or switch workspace.
 
-To save copied text, choose **Files > Clipboard > Save clipboard text as file**
-in a writable local folder. Keep the suggested name, `Clipboard.txt`, or enter
-your own. Listi saves the text as copied, without running it or replacing an
-existing file. For a copied image, use **Files > Clipboard > Save clipboard
-image as PNG**. It accepts PNG data and native Haiku bitmaps and suggests
-`Clipboard.png`. Both commands save the clipboard contents selected when
-the naming prompt opened. To paste copied files instead, use **Paste**.
+In a writable local folder, use ordinary **Paste** (Command+V in the file
+panel or **Paste here** in its context menu). File references keep their
+copy/cut behaviour. For copied text or an image the filename is already
+selected: type e.g. `Listi-forslag.md` and press Enter, or keep
+`Clipboard.txt` / `Clipboard.png`. Escape cancels. The prompt freezes the
+contents when opened and never replaces an existing file. Pasting in an
+editable text field still inserts text into that field.
 
 In the development build, open **Operations > Details** and choose a job by
 number to review its result, even after another job has started. **Recent
