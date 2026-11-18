@@ -37,13 +37,12 @@ inline Family Language(const std::string &path, View body) {
     return Family::Sql;
   if (OneOf(ext, {"sh", "bash", "zsh", "fish", "py", "rb", "pl", "yml", "yaml",
                   "toml", "cmake"}) ||
-      OneOf(name, {"makefile", "dockerfile", "cmakelists.txt"}) ||
-      body.substr(0, 2) == "#!")
+      OneOf(name, {"makefile", "dockerfile", "cmakelists.txt"}))
     return Family::Script;
   if (OneOf(ext, {"c", "cc", "cpp", "cxx", "h", "hh", "hpp", "js", "jsx", "ts",
                   "tsx", "css", "java", "kt", "go", "rs", "json", "swift"}))
     return Family::Code;
-  return Family::Plain;
+  return body.substr(0, 2) == "#!" ? Family::Script : Family::Plain;
 }
 
 inline std::vector<Run> ColourRuns(View text, Family family) {
@@ -89,9 +88,8 @@ inline std::vector<Run> ColourRuns(View text, Family family) {
         i = through(begin + 3, "```");
         colour(begin, i, Ink::String);
       } else if (c == '`') {
-        const size_t end = lineEnd(i);
-        const size_t close = text.find('`', i);
-        i = close < end ? close + 1 : end;
+        const size_t close = text.find_first_of("`\n", i);
+        i = close == View::npos ? text.size() : close + (text[close] == '`');
         colour(begin, i, Ink::String);
       }
       continue;
