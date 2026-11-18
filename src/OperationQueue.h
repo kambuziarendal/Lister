@@ -27,6 +27,14 @@ public:
   bool Busy() const { return count.load() > 0; }
   bool Pause(int64 operation);
   bool CancelOperation(int64 operation);
+  bool CancelWaiting(int64 operation);
+  struct JobReport {
+    std::string summary;
+    Listi::Result result;
+  };
+  // Immutable completed results, retained until explicitly cleared by the user.
+  std::shared_ptr<const JobReport> Report(int64 operation);
+  void ForgetReports(const std::vector<int64> &presented);
   // With an ID, cancel all only if that job is still running.
   bool Cancel(int64 expectedOperation = 0);
   bool Answer(Listi::Decision, int64 request);
@@ -38,6 +46,8 @@ private:
   };
   void Loop();
   void Publish(const BMessage &);
+  void Finish(BMessage &, Listi::Result);
+  bool CancelOne(int64 operation, bool waitingOnly);
   void PublishCancelled(const QueuedJob &);
   bool Proceed();
   Listi::Decision Ask(const std::string &);
@@ -48,6 +58,7 @@ private:
   std::condition_variable changed;
   std::deque<QueuedJob> jobs;
   std::vector<BMessage> events;
+  std::map<int64, std::shared_ptr<const JobReport>> reports;
   std::unique_ptr<BMessageRunner> eventTimer;
   std::atomic<int> count{0};
   bool paused = false, cancel = false, stopping = false;

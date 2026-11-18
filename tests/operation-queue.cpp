@@ -7,6 +7,9 @@
 #include <Button.h>
 #include <Window.h>
 #include <StringView.h>
+#include <MenuField.h>
+#include <MenuItem.h>
+#include <Menu.h>
 #include <TextView.h>
 #include <LayoutBuilder.h>
 #include <Directory.h>
@@ -132,14 +135,53 @@ int main(){
  window->Unlock();
 
  auto removed = archiveJob("targeted.zip", 102);
+ for (int i = 1; i <= 50; ++i)
+   removed.sources.push_back(root + "/in/pending" + std::to_string(i));
  const auto pending = window->queue->Enqueue(removed);
  const auto following = window->queue->Enqueue(job(20, 103));
- check(window->queue->CancelOperation(pending) &&
+ auto picker = dynamic_cast<BMenuField *>(window->FindView("job-picker"));
+ auto historyView = dynamic_cast<BTextView *>(window->FindView("history"));
+ auto cancelWaiting = dynamic_cast<BButton *>(window->FindView("cancel-waiting"));
+ auto nextPage = dynamic_cast<BButton *>(window->FindView("next-results"));
+ auto clearReports = dynamic_cast<BButton *>(window->FindView("clear-finished"));
+ // Called under the window lock. Use the same messages as keyboard or mouse input.
+ auto select = [&](int64 id) {
+   if (!picker)
+     return false;
+   for (int32 i = 0; i < picker->Menu()->CountItems(); ++i) {
+     auto item = picker->Menu()->ItemAt(i);
+     if (item->Message() && item->Message()->GetInt64("operation", 0) == id)
+       return item->Invoke() == B_OK;
+   }
+   return false;
+ };
+ auto reportText = [&] { return std::string(historyView ? historyView->Text() : ""); };
+ check(wait([&] { return select(pending); }) &&
+           wait([&] { return cancelWaiting && cancelWaiting->IsEnabled() &&
+                              cancelWaiting->Message()->GetInt64("operation", 0) == pending; }),
+       "a waiting job can be selected by its accepted ID in the job picker");
+ window->Lock();
+ if (!cancelWaiting || !clearReports || !nextPage || !historyView)
+   return 2;
+ cancelWaiting->Invoke();
+ window->Unlock();
+ check(wait([&] { return finished(pending, 102, false, true, true); }) &&
            !window->queue->CancelOperation(pending) &&
            passwordDiscarded(removed.archivePasswordToken),
-       "targeted pending cancellation is unique and releases its password");
- check(wait([&] { return finished(pending, 102, false, true, true); }),
-       "targeted pending cancellation retains its tag and terminal ID");
+       "Cancel selected retains the waiting job's identity and releases its password");
+ auto pendingReport = window->queue->Report(pending);
+ check(pendingReport && pendingReport->result.outcomes.size() == 51 &&
+           pendingReport->result.outcomes[50].source == removed.sources[50] &&
+           pendingReport->result.outcomes[50].status == "unprocessed",
+       "a pending cancellation retains all untouched entries independently of the UI");
+ window->Lock();
+ check(nextPage->IsEnabled() && reportText().find("Showing 1 to 50 of 51") != std::string::npos &&
+           reportText().find("Not processed: " + removed.sources[0]) != std::string::npos,
+       "selected job displays unprocessed paths and pages large results");
+ nextPage->Invoke();
+ window->Unlock();
+ check(wait([&] { return reportText().find("Not processed: " + removed.sources[50]) != std::string::npos; }),
+       "last page exposes the final entry rather than truncating history");
  window->Lock();
  check(pause->IsEnabled() && cancelJob->IsEnabled() &&
            conflictText == summary->Text(),
@@ -217,8 +259,14 @@ int main(){
  retained.AddString("retainedSource", source.c_str());
  retained.AddString("retainedDestination", destination.c_str());
  window->Lock();
+ check(reportText().find("Not processed: " + removed.sources[50]) != std::string::npos,
+       "later completions do not replace the selected older report");
+ select(0);
+ window->Unlock();
+ check(wait([&] { return reportText().find("Copy:") != std::string::npos; }),
+       "recent activity can be reopened");
+ window->Lock();
  window->queue->PresentEvent(retained);
- auto historyView = dynamic_cast<BTextView *>(window->FindView("history"));
  const std::string history = historyView ? historyView->Text() : "";
  check(history.find("0 errors. Cancelled") != std::string::npos &&
            history.find("Complete copy kept at: " + destination) !=
@@ -229,6 +277,12 @@ int main(){
  window->Unlock();
 
  window->queue->Enqueue(job(0,401));check(wait([&]{return window->conflicts.size()==4;}),"shutdown fixture is genuinely waiting at conflict");
+ window->Lock();
+ clearReports->Invoke();
+ window->Unlock();
+ check(wait([&] { return !window->queue->Report(fresh) && !window->queue->Report(pending); }) &&
+           window->queue->Busy(),
+       "clearing finished reports leaves the current waiting conflict intact");
  auto start=system_time();window->Lock();window->Quit();check(system_time()-start<2000000,"queue destruction releases blocked conflict without UI-thread deadlock");
  clean(root);std::cout<<checks<<" checks, "<<failures<<" failures"<<std::endl;return failures?1:0;
 }
