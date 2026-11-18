@@ -127,9 +127,9 @@ current alpha; the images are not fresh 0.31.1 captures.
 - Supported archive-to-archive and archive/local moves verify destination content
   before source cleanup. These are not atomic two-location transactions.
 
-Reading, creation and editing have different format capabilities. RAR writing,
-remote/split/nested archive mutation and full metadata preservation are not
-supported. Decrypted editing copies may remain on disk: see the
+Listi can rebuild supported single-volume RAR5 archives in their original
+format using Store (no compression). RAR4 writing, remote/split/nested archive
+mutation and full metadata preservation are not supported. Decrypted editing copies may remain on disk: see the
 [archive limits and recovery guidance](docs/GUIDE.md#archives).
 
 ### Connect to network locations
