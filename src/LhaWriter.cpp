@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "LhaWriter.h"
 #include "ArchiveBackend.h"
+#include "ArchiveCompressor.h"
 #include "ArchiveTextLocale.h"
 #include "DynamicLibrary.h"
 #include "LocalMoveTree.h"
@@ -12,10 +13,7 @@
 #include <filesystem>
 #include <fcntl.h>
 #include <memory>
-#include <signal.h>
-#include <spawn.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 namespace Listi {
@@ -53,62 +51,6 @@ struct Scratch {
     fs::remove_all(path, error);
   }
 };
-
-void Compress(const std::string &working, std::vector<std::string> args,
-              int outputFd, const TransferControl &control) {
-  control.Check();
-  std::vector<char *> argv;
-  for (auto &arg : args)
-    argv.push_back(arg.data());
-  argv.push_back(nullptr);
-  // Control the child locale and do not honor user/tool environment options.
-  char locale[] = "LC_ALL=C";
-  char *const env[] = {locale, nullptr};
-
-  posix_spawn_file_actions_t actions;
-  Require(posix_spawn_file_actions_init(&actions) == 0,
-          "Cannot set up LHA writer process.");
-  int error = posix_spawn_file_actions_addchdir(&actions, working.c_str());
-  if (!error && outputFd > STDERR_FILENO)
-    error = posix_spawn_file_actions_addclose(&actions, outputFd);
-  if (!error)
-    error = posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO,
-                                             "/dev/null", O_WRONLY, 0);
-  if (!error)
-    error = posix_spawn_file_actions_addopen(&actions, STDERR_FILENO,
-                                             "/dev/null", O_WRONLY, 0);
-  pid_t pid = -1;
-  if (!error)
-    error = posix_spawn(&pid, LhaTool, &actions, nullptr, argv.data(), env);
-  posix_spawn_file_actions_destroy(&actions);
-  Require(!error, "Cannot start LHA writer: " + std::string(strerror(error)));
-
-  int status;
-  bool childIsOwned = true;
-  try {
-    for (;;) {
-      const auto result = waitpid(pid, &status, WNOHANG);
-      if (result == pid)
-        break;
-      if (result < 0 && errno != EINTR) {
-        childIsOwned = errno != ECHILD;
-        throw std::runtime_error("Cannot wait for the LHA writer.");
-      }
-      control.Check();
-      usleep(20000);
-    }
-  } catch (...) {
-    if (childIsOwned) {
-      kill(pid, SIGKILL);
-      while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
-      }
-    }
-    throw;
-  }
-  Require(WIFEXITED(status) && WEXITSTATUS(status) == 0,
-          "The LHA writer could not create the archive.");
-  control.Check();
-}
 
 ssize_t ReadChunk(int fd, void *data, size_t length) {
   ssize_t result;
@@ -285,7 +227,8 @@ void LhaCreate(int outputFd, const std::vector<std::string> &sources, int level,
   // Check the staged tree before the external tool can follow any path in it.
   LocalMoveTree staged({stage.destination}, hooks, false);
   frozen.Verify();
-  Compress(stage.destination, std::move(args), outputFd, control);
+  RunArchiveCompressor("LHA", stage.destination, std::move(args), outputFd,
+                       control);
   staged.Verify();
   Verify(stage.destination, archivePath, control);
   CopyOutput(archivePath, outputFd, control);

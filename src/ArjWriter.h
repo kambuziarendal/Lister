@@ -5,9 +5,10 @@
 
 namespace Listi {
 bool ArjCanCreate();
-// Writes single-volume ARJ, method 0 (Store), to a fresh seekable file.
+bool ArjCanCompress();
+// Without the optional arj tool, or at level zero, write Store members.
 void ArjWrite(int output, const std::vector<std::string> &sources,
-              const Hooks &hooks);
+              const Hooks &hooks, int level = 0);
 // Only the metadata subset emitted by ArjWrite can be safely rebuilt.
 void ArjValidateEdit(int input);
 } // namespace Listi

@@ -495,9 +495,9 @@ void CreateOutput(int output, const std::string &format,
   else if (format == "rar5")
     RarStoreWrite(output, sources, hooks);
   else if (format == "arj")
-    ArjWrite(output, sources, hooks);
+    ArjWrite(output, sources, hooks, level);
   else if (format == "cab")
-    CabWrite(output, sources, hooks);
+    CabWrite(output, sources, level, hooks);
   else if (format == "lha")
     LhaCreate(output, sources, level, hooks);
   else if (secret && format == "7z")
@@ -891,17 +891,29 @@ std::vector<ArchiveFormat> WritableArchiveFormats() {
           result.push_back(f);
         continue;
       }
-      if (f.id == "ar" || f.id == "arj") {
-        if (f.id == "ar" || ArjCanCreate())
+      if (f.id == "arj") {
+        if (ArjCanCreate()) {
+          auto available = f;
+          if (ArjCanCompress()) {
+            available.label = "ARJ";
+            available.compression = true;
+          }
+          result.push_back(available);
+        }
+        continue;
+      }
+      if (f.id == "cab") {
+        auto available = f;
+        available.compression = CabCanCompress();
+        result.push_back(available);
+        continue;
+      }
+      if (f.id == "ar" || f.id == "lha") {
+        if (f.id == "ar" || LhaCanCreate())
           result.push_back(f);
         continue;
       }
       Writer w;
-      if (f.id == "cab" || f.id == "lha") {
-        if (f.id == "cab" || LhaCanCreate())
-          result.push_back(f);
-        continue;
-      }
       w.Configure(f.id, 6);
       FD fd(open("/dev/null", O_WRONLY));
       Require(fd.n >= 0, "Cannot probe writer.");

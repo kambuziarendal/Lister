@@ -78,6 +78,26 @@ void *run(void *) {
     if (f.id == "cab") mkdir((input+"/folder/empty").c_str(),0700);
     archive=job.destination;madeArchives[f.id]=job.destination;
   }
+  // Exercise the public job path with material that actually benefits from
+  // compression. A successful exit alone would not catch silent Store output.
+  for (const auto &format : formats) {
+    if ((format.id != "arj" && format.id != "cab") || !format.compression)
+      continue;
+    const std::string contents(128 * 1024, 'A');
+    const auto member = input + "/compressible.txt";
+    write(member, contents);
+    auto job = PrepareArchiveJob(false, {member});
+    job.archiveFormat = format.id;
+    job.archiveLevel = 6;
+    SetArchiveDestination(job, out, "compressed" + format.extension);
+    auto result = Run(job, {});
+    check(result.completed == 1 && result.errors.empty() &&
+              read(job.destination).size() < contents.size() / 2,
+          format.id + " job uses compression for repeated data");
+    check(vread(ChildLocation(OpenArchive(job.destination), "compressible.txt")) == contents &&
+              PrepareArchiveEditTarget(job.destination).archiveFormat == format.id,
+          format.id + " compressed result is readable and editable");
+  }
   if (madeArchives.count("iso")) {
     // Renamed images still have the same format; copying bytes without the
     // verification attribute must not grant permission to rebuild an image.
