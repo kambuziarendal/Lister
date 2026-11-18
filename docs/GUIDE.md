@@ -217,7 +217,7 @@ browse many formats, but reading, creation and editing are different
 capabilities. A successful listing does not establish member-data integrity.
 
 - Supported local single-volume writers include ZIP, 7z, TAR, TAR with gzip,
-  xz, bzip2, LZMA or lzip, CPIO and XAR. Zstandard/LZ4 wrappers are gated by the
+  xz, bzip2, LZMA, lzip or Unix compress (.tar.Z), CPIO and XAR. Zstandard/LZ4 wrappers are gated by the
   installed engine rather than universally promised. Reading support is broader
   than writing support.
 - Writable archive folders support Copy/Paste, new folders, rename, entry removal
