@@ -1,0 +1,9 @@
+BasedOnStyle: LLVM
+IndentWidth: 2
+ColumnLimit: 80
+PointerAlignment: Right
+# Include order can matter with Haiku headers; do not reorder.
+SortIncludes: Never
+FixNamespaceComments: false
+BreakStringLiterals: false
+ReflowComments: false
