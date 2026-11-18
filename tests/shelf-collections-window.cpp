@@ -96,7 +96,7 @@ bool Menu(BWindow *window, const char *label, const char *named = nullptr) {
       menu = item ? item->Submenu() : nullptr;
       item = menu ? menu->FindItem(named) : nullptr;
     }
-    return item && item->IsEnabled() && item->Invoke() == B_OK;
+    return item && item->IsEnabled() && static_cast<BInvoker *>(item)->Invoke() == B_OK;
   });
 }
 
