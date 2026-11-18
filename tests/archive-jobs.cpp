@@ -219,8 +219,19 @@ void *run(void *) {
       read(unpack.destination+"/folder/æ name ; $(no).txt")=="payload\n",
       format.id+" encrypted round trip exact");
     write(input+"/edit/encrypted-add.txt","private addition\n");
-    auto encryptedEdit=PrepareArchiveEditJob(encrypted.destination,{input+"/edit/encrypted-add.txt"},{},"/");
-    auto encryptedUpdated=RunArchiveJob(encryptedEdit,{});
+    auto encryptedEdit=PrepareArchiveEditJob(encrypted.destination,
+        {input+"/edit/encrypted-add.txt",input+"/empty"},{},"/");
+    bool evicted = false;
+    Hooks evictOnConflict;
+    evictOnConflict.conflict = [&](const std::string &) {
+      const auto generation = ArchivePasswordGeneration();
+      for (int i = 0; i < 17; ++i)
+        RememberArchivePassword("unrelated-" + std::to_string(i), secret(), generation);
+      evicted = true;
+      return Decision::Replace;
+    };
+    auto encryptedUpdated=RunArchiveJob(encryptedEdit,evictOnConflict);
+    check(evicted, format.id+" edit experienced password-cache eviction");
     if(!encryptedUpdated.errors.empty())std::cerr<<encryptedUpdated.errors.front()<<std::endl;
     check(encryptedUpdated.completed==1&&encryptedUpdated.errors.empty(),format.id+" encrypted archive edit");
     ForgetArchivePasswords();int editPrompts=0;

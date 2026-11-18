@@ -188,7 +188,10 @@ struct Reader {
       return nullptr;
     if (r != ARCHIVE_OK)
       Error();
-    if (LIBCALL(lib, archive_entry_is_encrypted)(entry) &&
+    const bool encrypted = LIBCALL(lib, archive_entry_is_encrypted)(entry) > 0;
+    if (encrypted)
+      ArchiveEditProtection::Observe(identity);
+    if (encrypted &&
         (LIBCALL(lib, archive_format)(handle) & ARCHIVE_FORMAT_BASE_MASK) !=
             ARCHIVE_FORMAT_ZIP)
       throw std::runtime_error(

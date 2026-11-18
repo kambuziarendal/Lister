@@ -667,6 +667,9 @@ Result RunArchiveEdit(const Job &job, const Hooks &hooks,
     Require(format == job.archiveFormat,
             "Archive format changed after selection.");
     const auto passwordGeneration = ArchivePasswordGeneration();
+    const auto originalSet = FindArchiveVolumes(job.destination);
+    ArchiveEditProtection protection(originalSet.files.front().identity,
+                                     originalSet.Fingerprint());
     Stage stage(job.destinationFolder);
     const auto work = Join(PathOf(stage.dir), "contents");
     Require(!mkdir(work.c_str(), 0700),
@@ -805,8 +808,9 @@ Result RunArchiveEdit(const Job &job, const Hooks &hooks,
     FD output(
         open(outputPath.c_str(), O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW, 0600));
     Require(output.n >= 0, "Cannot create updated archive output.");
-    auto secret = CachedArchivePassword(
-        job.destination, FindArchiveVolumes(job.destination).Fingerprint());
+    auto secret = protection.Password();
+    Require(!secret || format == "zip" || format == "7z",
+            "The writer cannot preserve this archive’s password protection.");
     CreateOutput(output.n, format, Children(work), job.archiveLevel,
                  secret && format == "7z", secret, internal);
     Require(!fsync(output.n), "Cannot flush updated archive to disk.");

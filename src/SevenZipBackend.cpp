@@ -510,6 +510,8 @@ struct Archive {
       Require(!e.name.empty() && names.insert(e.name).second,
               "Archive contains empty or duplicate entry paths");
       e.path = e.name;
+      if (ArchiveEditProtection::Watching(s.identity) && Bool(i, kpidEncrypted))
+        ArchiveEditProtection::Observe(s.identity);
       e.directory = Bool(i, kpidIsDir);
       e.link = false;
       for (auto property : {kpidSymLink, kpidHardLink, kpidCopyLink}) {

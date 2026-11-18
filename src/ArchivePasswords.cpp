@@ -112,26 +112,37 @@ void RememberArchivePassword(const std::string &identity,
   std::lock_guard<std::mutex> lock(mutex);
   if (stopping || generation != expected)
     return;
+  ArchiveEditProtection::Observe(identity, secret);
   cache.remove_if([&](const auto &item) { return item.first == identity; });
   cache.emplace_front(identity, std::move(secret));
   while (cache.size() > 16)
     cache.pop_back();
 }
-ArchiveSecretPtr CachedArchivePassword(const std::string &path,
-                                       const std::string &alternateIdentity) {
-  struct stat current;
-  if (lstat(path.c_str(), &current) || !S_ISREG(current.st_mode))
-    return {};
-  const auto identity = ArchivePasswordIdentity(current);
-  std::lock_guard<std::mutex> lock(mutex);
-  for (auto it = cache.begin(); it != cache.end(); ++it) {
-    if (it->first != identity && it->first != alternateIdentity)
-      continue;
-    auto result = it->second;
-    cache.splice(cache.begin(), cache, it);
-    return result;
-  }
-  return {};
+thread_local ArchiveEditProtection *ArchiveEditProtection::active = nullptr;
+
+ArchiveEditProtection::ArchiveEditProtection(std::string file, std::string set)
+    : previous(active), fileIdentity(std::move(file)), setIdentity(std::move(set)) {
+  active = this;
+}
+ArchiveEditProtection::~ArchiveEditProtection() { active = previous; }
+
+bool ArchiveEditProtection::Watching(const std::string &identity) {
+  return active && (identity == active->fileIdentity || identity == active->setIdentity);
+}
+void ArchiveEditProtection::Observe(const std::string &identity, const ArchiveSecretPtr &key) {
+  if (!Watching(identity))
+    return;
+  active->protectedInput = true;
+  if (!key)
+    return;
+  if (active->password && strcmp(active->password->Text(), key->Text()))
+    throw std::runtime_error("Cannot preserve different member passwords when editing this archive.");
+  active->password = key;
+}
+ArchiveSecretPtr ArchiveEditProtection::Password() const {
+  if (protectedInput && !password)
+    throw std::runtime_error("Cannot verify the archive password for this edit. Original archive retained.");
+  return password;
 }
 uint64_t HoldArchiveCreationPassword(ArchiveSecretPtr secret) {
   if (!secret)
