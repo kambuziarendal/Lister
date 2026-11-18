@@ -60,8 +60,8 @@ template <class F> bool WaitFor(BMessenger dialog, F condition) {
 
 std::string PreviewName(BColumnListView &rows, int index) {
   const auto row = rows.RowAt(index);
-  const auto field = row ? dynamic_cast<BStringField *>(row->GetField(1))
-                         : nullptr;
+  const auto field =
+      row ? dynamic_cast<BStringField *>(row->GetField(1)) : nullptr;
   return field ? field->String() : "";
 }
 } // namespace
@@ -89,19 +89,24 @@ int main() {
     return dynamic_cast<BTextControl *>(window.FindView("row-name"));
   };
   auto select = [&](int index, const char *expected) {
-    return WithWindow(dialog, [&](BWindow &window) {
-             auto list = rows(window);
-             auto row = list ? list->RowAt(index) : nullptr;
-             if (!row)
-               return false;
-             list->DeselectAll();
-             list->AddToSelection(row);
-             list->SelectionChanged();
-             return true;
-           }) &&
+    return WithWindow(dialog,
+                      [&](BWindow &window) {
+                        auto list = rows(window);
+                        auto row = list ? list->RowAt(index) : nullptr;
+                        if (!row)
+                          return false;
+                        list->DeselectAll();
+                        list->AddToSelection(row);
+                        list->SelectionChanged();
+                        return true;
+                      }) &&
            WaitFor(dialog, [&](BWindow &window) {
              return editor(window) && editor(window)->IsEnabled() &&
-                    std::string(editor(window)->Text()) == expected;
+                    std::string(editor(window)->Text()) == expected &&
+                    // Both rows can now display the same proposed name. Wait
+                    // for the editor to bind to the selected row, not merely
+                    // for its text to resemble the previous row.
+                    !button(window, "reset-row-name")->IsEnabled();
            });
   };
   auto edit = [&](const char *text, bool save) {
@@ -130,42 +135,54 @@ int main() {
     return acquire_sem_etc(receiver->accepted, 1, B_RELATIVE_TIMEOUT, 150000) ==
            B_TIMED_OUT;
   };
-  bool ok = check(select(0, "alpha") && edit("beta", true) &&
-                      WaitFor(dialog, [&](BWindow &window) {
+  bool ok = check(select(0, "alpha"), "select first preview row");
+  ok &= check(edit("beta", true), "set its proposed name");
+  ok &= check(WaitFor(dialog,
+                      [&](BWindow &window) {
                         auto list = rows(window);
                         auto apply = button(window, "apply-rename");
                         return list && apply && !apply->IsEnabled() &&
                                PreviewName(*list, 0) == "beta";
-                      }) &&
-                      select(1, "beta") && edit("alpha", true) &&
-                      WaitFor(dialog, swapPreview) &&
-                      Read(a) == "first" && Read(b) == "second" && noSubmission(),
-                  "editing both native rows previews a swap without modifying files");
+                      }),
+              "first rename blocks until second row releases its name");
+  ok &= check(select(1, "beta"), "select second preview row");
+  ok &= check(edit("alpha", true), "set second proposed name");
+  ok &=
+      check(WaitFor(dialog, swapPreview) && Read(a) == "first" &&
+                Read(b) == "second" && noSubmission(),
+            "editing both native rows previews a swap without modifying files");
 
   ok &= check(edit("uncommitted", false) &&
-                  WaitFor(dialog, [&](BWindow &window) {
-                    auto apply = button(window, "apply-rename");
-                    return apply && !apply->IsEnabled();
-                  }) &&
-                  WithWindow(dialog, [&](BWindow &window) {
-                    // Even a stale Apply message cannot submit older names.
-                    auto apply = button(window, "apply-rename");
-                    return apply && dialog.SendMessage(apply->Message()) == B_OK;
-                  }) &&
+                  WaitFor(dialog,
+                          [&](BWindow &window) {
+                            auto apply = button(window, "apply-rename");
+                            return apply && !apply->IsEnabled();
+                          }) &&
+                  WithWindow(dialog,
+                             [&](BWindow &window) {
+                               // Even a stale Apply message cannot submit older names.
+                               auto apply = button(window, "apply-rename");
+                               return apply && dialog.SendMessage(
+                                                   apply->Message()) == B_OK;
+                             }) &&
                   noSubmission() && Read(a) == "first" && Read(b) == "second",
               "an uncommitted row edit cannot apply a different preview");
 
-  ok &= check(WithWindow(dialog, [&](BWindow &window) {
-                auto prefix =
-                    dynamic_cast<BTextControl *>(window.FindView("Prefix:"));
-                auto apply = button(window, "apply-rename");
-                if (!prefix || !prefix->ModificationMessage() || !apply)
-                  return false;
-                prefix->SetText("rule ");
-                return dialog.SendMessage(prefix->ModificationMessage()) == B_OK &&
-                       dialog.SendMessage(apply->Message()) == B_OK;
-              }) &&
-                  WaitFor(dialog, [&](BWindow &window) {
+  ok &= check(
+      WithWindow(dialog,
+                 [&](BWindow &window) {
+                   auto prefix =
+                       dynamic_cast<BTextControl *>(window.FindView("Prefix:"));
+                   auto apply = button(window, "apply-rename");
+                   if (!prefix || !prefix->ModificationMessage() || !apply)
+                     return false;
+                   prefix->SetText("rule ");
+                   return dialog.SendMessage(prefix->ModificationMessage()) ==
+                              B_OK &&
+                          dialog.SendMessage(apply->Message()) == B_OK;
+                 }) &&
+          WaitFor(dialog,
+                  [&](BWindow &window) {
                     auto list = rows(window);
                     auto field = editor(window);
                     auto apply = button(window, "apply-rename");
@@ -173,27 +190,31 @@ int main() {
                            !field->IsEnabled() && !apply->IsEnabled() &&
                            std::string(field->Text()).empty();
                   }) &&
-                  noSubmission(),
-              "editing a rule invalidates stale row text and the old Apply action");
+          noSubmission(),
+      "editing a rule invalidates stale row text and the old Apply action");
 
-  const bool confirmed = WithWindow(dialog, [&](BWindow &window) {
-                           auto update = button(window, "update-preview");
-                           return update && update->Invoke() == B_OK;
-                         }) &&
-                         WaitFor(dialog, swapPreview) &&
-                         WithWindow(dialog, [&](BWindow &window) {
-                           auto apply = button(window, "apply-rename");
-                           return apply && apply->Invoke() == B_OK;
-                         }) &&
-                         acquire_sem_etc(receiver->accepted, 1, B_RELATIVE_TIMEOUT,
-                                         3000000) == B_OK;
+  const bool confirmed =
+      WithWindow(dialog,
+                 [&](BWindow &window) {
+                   auto update = button(window, "update-preview");
+                   return update && update->Invoke() == B_OK;
+                 }) &&
+      WaitFor(dialog, swapPreview) &&
+      WithWindow(dialog,
+                 [&](BWindow &window) {
+                   auto apply = button(window, "apply-rename");
+                   return apply && apply->Invoke() == B_OK;
+                 }) &&
+      acquire_sem_etc(receiver->accepted, 1, B_RELATIVE_TIMEOUT, 3000000) ==
+          B_OK;
   const auto job = Listi::DecodeJob(receiver->result);
   const std::map<std::string, std::string> expected{{a, "beta"}, {b, "alpha"}};
-  ok &= check(confirmed && job.action == Listi::Action::BulkRename &&
-                  job.sources == std::vector<std::string>{a, b} &&
-                  job.bulkNames == expected &&
-                  Read(a) == "first" && Read(b) == "second",
-              "Apply submits exactly the refreshed preview, without doing the worker's writes");
+  ok &= check(
+      confirmed && job.action == Listi::Action::BulkRename &&
+          job.sources == std::vector<std::string>{a, b} &&
+          job.bulkNames == expected && Read(a) == "first" &&
+          Read(b) == "second",
+      "Apply submits exactly the refreshed preview, without doing the worker's writes");
   if (confirmed) {
     const auto result = Listi::Run(job, {});
     ok &= check(result.completed == 2 && result.errors.empty() &&
