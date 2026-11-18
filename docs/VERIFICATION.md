@@ -44,6 +44,15 @@ setup. They are not all run by `make test`. Diagnostic probes under
 [`tests/probes`](../tests/probes/) have historical reproduction exit meanings and
 must not be mistaken for normal passing regressions.
 
+### File operation fault and job-result tests
+
+On Haiku, run `python3 tests/run-native-audit.py file-operation-faults operation-queue bulk-rename`
+after building. These tests use disposable entries to check staged output after
+short/interrupted writes, permission errors during writing or source removal,
+partial batches and job results when UI notifications are delayed or lost.
+Injected syscall failures also run when normal permission bits alone would not
+prevent the test user from writing.
+
 ### Moving between volumes
 
 The opt-in `cross-volume-move` audit needs a writable directory on a different

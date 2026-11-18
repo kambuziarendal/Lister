@@ -111,12 +111,23 @@ image as PNG**. It accepts PNG data and native Haiku bitmaps and suggests
 `Clipboard.png`. Both commands save the clipboard contents selected when
 the naming prompt opened. To paste copied files instead, use **Paste**.
 
-In the development build, **Cancel job** stops only the running operation. Other queued jobs continue. Use **Details > Cancel all** to stop the running job and discard waiting jobs.
-Cancellation does not undo completed work. If a local move finishes copying
-but is cancelled before Listi removes any source entries, the queue history
-shows the complete copy's location and the original source path. If copying
-or removal stops partway through a directory, a partial tree may remain. After a failed or partial move, inspect both source and destination.
-Concurrent external edits are not prevented by a filesystem snapshot lock.
+In the development build, open **Operations > Details** and choose a job by
+number to review its result, even after another job has started. **Recent
+activity** is the combined log; a specific job shows its source and destination
+paths where available. Large reports have multiple pages. Job results are for
+this session, not saved to disk. **Clear finished** frees completed reports without cancelling any jobs.
+
+For a local move, **Moved** means Listi committed the move. **Copied; source
+retained** means the destination copy was made but Listi did not remove that
+source entry. **Partially completed** means some changes were made inside the
+folder: check its individual entries. **Skipped** identifies an entry passed
+over, **Failed** includes the problem, and **Not processed** is not a success.
+Other providers can give a job-level error or a recovery path rather than
+confirm the state of every file. Concurrent external edits are not prevented.
+
+**Cancel job** stops the running job only. In Details you can cancel a selected
+waiting job, or choose **Cancel all** to stop the running job and discard waiting
+jobs. None of these actions undoes work already committed.
 
 Trash and permanent deletion are separate actions. Trash restore does not
 overwrite an existing file and requires the original parent folder to exist.

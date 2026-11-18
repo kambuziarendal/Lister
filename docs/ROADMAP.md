@@ -42,21 +42,26 @@ clear operation targets are not optional just because a tool is configurable.
 
 ## First: make existing file work easier to trust
 
-The next stages concentrate on foundations rather than feature count:
+Implemented on the development branch, not in the published 0.31.1 alpha:
 
-1. **File safety and partial moves.** Extend targeted failure tests for full
-   disks, permissions, interrupted writes and real cross-volume moves. Report
-   moved, copied-with-source-retained, skipped, failed and unprocessed outcomes
-   clearly enough to find what remains.
-2. **Job identity and results.** Assign identities when jobs are accepted, retain
-   structured results independently of UI updates, and add per-job cancellation
-   alongside Cancel all. Cancellation must not imply undoing completed work.
-3. **Shared command handling.** Gradually route menus, buttons and shortcuts
-   through common validation, confirmation and queueing logic. Reuse the current
-   file-safety engine rather than creating parallel implementations.
+1. **File safety and partial moves.** Local operations report what happened to
+   selected entries. In a move that copies a tree before removing the source,
+   individual entries distinguish committed moves from copies whose sources
+   Listi did not remove. Native fault tests cover permissions, interrupted
+   writes, full volumes and cancellation at different stages of a move.
+2. **Job identity and results.** Jobs have IDs from acceptance. In Operations,
+   Details lets you review a job after another one starts. Completed results
+   do not depend on progress notifications. Cancel one job or cancel the queue;
+   neither action undoes completed work.
+3. **Shared command handling.** File actions share command IDs across menus,
+   buttons and shortcuts. Transfer entry points reuse the same preparation
+   and guarded worker operations rather than implementing their own copies.
+   Clipboard ownership, archive verification and drop choices retain their
+   specific checks.
 
-Copy queues and pause/resume already exist. These stages improve their result
-model and control; they are not a proposal to add the first queue.
+See the [workflow guide](GUIDE.md) for interpreting partial results and the
+[verification guide](VERIFICATION.md) for reproducing fault tests. Job reports
+are session information, not a persistent audit log or an undo mechanism.
 
 ## Feature directions and current foundations
 
