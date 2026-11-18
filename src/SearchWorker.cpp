@@ -12,7 +12,7 @@ constexpr uint32 kRefresh = 'sref', kReconcile = 'srec';
 class SearchWorker : public BLooper {
   BMessenger target;
   std::shared_ptr<std::atomic<int64>> generation;
-  std::shared_ptr<std::atomic<bool>> deliveryFailed;
+  std::shared_ptr<std::atomic<int64>> failedSerial;
   std::unique_ptr<BQuery> query;
   std::unique_ptr<BMessageRunner> debounce, repair;
   SearchRequest request;
@@ -30,7 +30,7 @@ class SearchWorker : public BLooper {
     m.AddInt64("revision", revision);
     if (!Alive()) return false;
     if (target.SendMessage(&m, (BHandler *)nullptr, 500000) == B_OK) return true;
-    if (deliveryFailed) deliveryFailed->store(true);
+    if (failedSerial) failedSerial->store(serial);
     return false;
   }
   void Scan(bool initial) {
@@ -98,8 +98,8 @@ class SearchWorker : public BLooper {
 
 public:
   SearchWorker(BMessenger receiver, std::shared_ptr<std::atomic<int64>> token,
-               std::shared_ptr<std::atomic<bool>> failure)
-      : BLooper("file search"), target(receiver), generation(token), deliveryFailed(failure) {}
+               std::shared_ptr<std::atomic<int64>> failure)
+      : BLooper("file search"), target(receiver), generation(token), failedSerial(failure) {}
   void MessageReceived(BMessage *m) override {
     switch (m->what) {
     case kSearchStart: {
@@ -194,7 +194,7 @@ public:
 }
 BLooper *NewSearchWorker(BMessenger target,
                          std::shared_ptr<std::atomic<int64>> generation,
-                         std::shared_ptr<std::atomic<bool>> failure) {
+                         std::shared_ptr<std::atomic<int64>> failure) {
   return new SearchWorker(target, generation, failure);
 }
 }

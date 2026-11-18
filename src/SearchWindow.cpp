@@ -5,6 +5,7 @@
 #include "FileSearch.h"
 #include "SearchWorker.h"
 #include "SavedSearches.h"
+#include <MessageRunner.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
@@ -27,7 +28,8 @@ using namespace Listi;
 constexpr uint32 kStart = 'ssrt', kStop = 'sstp', kHit = 'shit',
                  kFinished = 'sfin', kSave = 'sqsv', kForget = 'sqfg',
                  kLoad = 'sqld', kName = 'sqnm', kPicked = 'spik',
-                 kShow = 'sshw', kMode = 'smod', kClearFilters = 'sclr';
+                 kShow = 'sshw', kMode = 'smod', kClearFilters = 'sclr',
+                 kDeliveryCheck = 'sdck';
 struct HitRow : BRow {
   Listi::SearchHit hit;
   explicit HitRow(const Listi::SearchHit &value) : BRow(24), hit(value) {
@@ -76,6 +78,10 @@ class SearchWindow : public BWindow {
   Results *results;
   BLooper *worker;
   std::shared_ptr<std::atomic<int64>> generation;
+  std::shared_ptr<std::atomic<int64>> failedSerial =
+      std::make_shared<std::atomic<int64>>(-1);
+  std::unique_ptr<BMessageRunner> deliveryTimer;
+  bool workerReady = false;
   int64 serial = 0;
   bool busy = false;
   static BStringView *Line(const char *name, const char *text) {
@@ -92,6 +98,8 @@ class SearchWindow : public BWindow {
   }
   void Busy(bool value) {
     busy = value;
+    if (!busy)
+      deliveryTimer.reset();
     start->SetEnabled(!busy);
     stop->SetEnabled(busy);
     root->SetEnabled(!busy);
@@ -331,8 +339,8 @@ public:
           new Listi::ExplicitSubmit(BMessenger(this), BMessage(kStart)));
     AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(kStop));
     AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
-    worker = NewSearchWorker(BMessenger(this), generation);
-    worker->Run();
+    worker = NewSearchWorker(BMessenger(this), generation, failedSerial);
+    workerReady = worker->Run() >= 0;
     Store(store);
     Busy(false);
     show->SetEnabled(false);
@@ -476,9 +484,21 @@ public:
       scope->SetToolTip(description);
       Busy(true);
       Status("Searching... Stop keeps only the results received so far.");
-      worker->PostMessage(&request);
+      BMessage check(kDeliveryCheck);
+      deliveryTimer = std::make_unique<BMessageRunner>(BMessenger(this), &check, 250000);
+      if (!workerReady || deliveryTimer->InitCheck() != B_OK ||
+          worker->PostMessage(&request) != B_OK) {
+        Busy(false);
+        Status("Could not start search.");
+      }
       break;
     }
+    case kDeliveryCheck:
+      if (busy && failedSerial->load() == serial) {
+        Cancel();
+        Status("Incomplete: search results could not be delivered. Start again to retry.");
+      }
+      break;
     case kStop:
       Cancel();
       break;

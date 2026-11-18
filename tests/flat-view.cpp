@@ -2,6 +2,8 @@
 #include "FileSearch.h"
 #include "FlatViewWindow.h"
 #include "SearchWorker.h"
+#include "SearchWindow.h"
+#include "SavedSearches.h"
 #include "Shelf.h"
 #include <Application.h>
 #include <Button.h>
@@ -243,7 +245,24 @@ int main() {
   Check(Await([&] { return Inspect(lost, [](BWindow &window) {
       return TextContains(window, "flat status", "Incomplete: results could not be delivered.");
     }); }), "failed terminal delivery cannot leave Flat View scanning indefinitely");
+  auto search = OpenFileSearch(BMessenger(), 0, nested.c_str(), SavedSearches{}.Message());
+  Check(Inspect(search, [](BWindow &window) {
+    auto field = dynamic_cast<BTextControl *>(window.FindView("search expression"));
+    if (!field)
+      return false;
+    field->SetText("same");
+    return window.PostMessage(kSearchStart) == B_OK;
+  }), "start Find files with a real name criterion");
+  Check(Await([&] { return Inspect(search, [](BWindow &window) {
+    return TextContains(window, "search status", "could not be delivered");
+  }); }), "Find files exposes a lost completion and allows retry");
   dropCompletion = false;
+  search.SendMessage(kSearchStart);
+  Check(Await([&] { return Inspect(search, [](BWindow &window) {
+    return TextContains(window, "search status", "Complete snapshot");
+  }); }), "a new search completes after the failed generation");
+  search.SendMessage(B_QUIT_REQUESTED);
+  Check(Await([&] { return !search.IsValid(); }), "Find files closes after retry");
   lost.SendMessage(B_QUIT_REQUESTED);
   Check(Await([&] { return !lost.IsValid(); }), "close after lost completion");
   delete_sem(openedRoot);

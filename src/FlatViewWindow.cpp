@@ -70,7 +70,7 @@ class FlatViewWindow : public BWindow {
   std::shared_ptr<std::atomic<int64>> generation =
       std::make_shared<std::atomic<int64>>(1);
   BLooper *worker = nullptr;
-  std::shared_ptr<std::atomic<bool>> deliveryFailed = std::make_shared<std::atomic<bool>>(false);
+  std::shared_ptr<std::atomic<int64>> failedSerial = std::make_shared<std::atomic<int64>>(-1);
   std::unique_ptr<BMessageRunner> deliveryTimer;
   // Rows refer to these immutable scan hits. Growth must not invalidate them.
   std::deque<File> files;
@@ -194,7 +194,7 @@ public:
 
     BMessage check(kDeliveryCheck);
     deliveryTimer.reset(new BMessageRunner(BMessenger(this), &check, 250000));
-    worker = NewSearchWorker(BMessenger(this), generation, deliveryFailed);
+    worker = NewSearchWorker(BMessenger(this), generation, failedSerial);
     BMessage request(kSearchStart);
     request.AddInt64("serial", generation->load());
     request.AddString("root", path);
@@ -228,7 +228,7 @@ public:
       Collect();
       break;
     case kDeliveryCheck:
-      if (scanning && deliveryFailed->load()) {
+      if (scanning && failedSerial->load() == generation->load()) {
         generation->fetch_add(1);
         scanning = false;
         scanState = "Incomplete: results could not be delivered.";
