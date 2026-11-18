@@ -44,20 +44,32 @@ int main(){
  std::ofstream(root+"/in/keep")<<"retained";std::ofstream(root+"/in/item")<<"payload";std::ofstream(root+"/in/folder/nested")<<std::string(160000,'x');
  const auto input=root+"/in/";
  try {
+  mkdir((input+"packed").c_str(),0700);
+  const std::string nestedPayload(160000, 'x');
+  std::ofstream(input+"packed/nested") << nestedPayload;
   for(const auto &format:WritableArchiveFormats()){
-   auto source=archive(format.id,{input+"keep",input+"item",input+"folder"});
-   auto target=archive("zip",{input+"keep"});
-   auto item=ChildLocation(source,"item"),folder=ChildLocation(source,"folder");
-   auto job=move({item,folder},target);auto result=workerRun(DecodeJob(EncodeJob(job,0)));
+   const bool flat = format.id == "ar";
+   const bool hasEmpty = !flat && format.id != "cab";
+   // ar only stores regular files. CAB stores directories through file paths.
+   const auto secondInput = input + (flat ? "folder/nested" : hasEmpty ? "folder" : "packed");
+   const auto name = Leaf(secondInput);
+   auto source = archive(format.id, {input+"keep", input+"item", secondInput});
+   auto target = archive("zip", {input+"keep"});
+   auto item = ChildLocation(source, "item"), second = ChildLocation(source, name);
+   auto targetItem = ChildLocation(target, "item"), targetSecond = ChildLocation(target, name);
+   auto job = move({item, second}, target);
+   auto result = workerRun(DecodeJob(EncodeJob(job,0)));
    if(!result.errors.empty())std::cerr<<result.errors.front()<<std::endl;
-   check(result.completed==2&&result.errors.empty()&&!result.cancelled,format.id+" cross-container move completes selected roots");
-   check(!exists(item)&&!exists(folder)&&content(ChildLocation(source,"keep"))=="retained",format.id+" source removes only selected entries");
-   check(content(ChildLocation(target,"item"))=="payload"&&content(ChildLocation(ChildLocation(target,"folder"),"nested"))==std::string(160000,'x')&&exists(ChildLocation(ChildLocation(target,"folder"),"empty")),format.id+" bytes, nested directory and empty directory verified");
+   check(result.completed==2 && result.errors.empty() && !result.cancelled,format.id+" cross-container move completes selected roots");
+   check(!exists(item) && !exists(second) && content(ChildLocation(source,"keep"))=="retained",format.id+" source removes only selected entries");
+   check(content(targetItem)=="payload" && content(flat ? targetSecond : ChildLocation(targetSecond,"nested"))==nestedPayload,format.id+" destination has both payloads");
+   if (hasEmpty) check(exists(ChildLocation(targetSecond,"empty")),format.id+" empty directory preserved");
    check(result.completedRoots.size()==2&&result.completedRoots[0].first==item,format.id+" completion names original virtual roots");
    check(PrepareArchiveEditTarget(ParseLocation(source).archive).archiveFormat==format.id,format.id+" source retains container format");
-   // Test each writer as the destination as well, not only as a removal writer.
-   auto back=Run(move({ChildLocation(target,"item"),ChildLocation(target,"folder")},source),{});
-   check(back.completed==2&&back.errors.empty()&&content(item)=="payload"&&!exists(ChildLocation(target,"item")),format.id+" reverse move into writer");
+   auto back = Run(move({targetItem, targetSecond},source),{});
+   check(back.completed==2 && back.errors.empty() && content(item)=="payload" &&
+         content(flat ? second : ChildLocation(second,"nested"))==nestedPayload &&
+         !exists(targetItem) && !exists(targetSecond),format.id+" reverse move into writer");
   }
   for(const auto &format:WritableArchiveFormats())if(format.encryption){
    SetArchivePasswordPrompt([](const std::string&,bool,const TransferControl&){return std::make_shared<ArchiveSecret>("Listi-move-test");});

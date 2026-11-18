@@ -43,21 +43,28 @@ int main(){
  BApplication app("application/x-vnd.Listi-archive-local-move-test");char pattern[]="/tmp/Listi-localmove-XXXXXX";auto made=mkdtemp(pattern);if(!made)return 2;root=made;
  mkdir((root+"/seed").c_str(),0700);std::ofstream(root+"/seed/keep")<<"retained";
  auto seed=root+"/seed/keep";
- auto local=[&]{auto p=root+"/local"+std::to_string(++serial);mkdir(p.c_str(),0700);mkdir((p+"/folder").c_str(),0700);mkdir((p+"/folder/empty").c_str(),0700);std::ofstream(p+"/item")<<"payload";std::ofstream(p+"/folder/nested")<<std::string(160000,'x');return p;};
+ auto local=[&](bool empty = true){auto p=root+"/local"+std::to_string(++serial);mkdir(p.c_str(),0700);mkdir((p+"/folder").c_str(),0700);if (empty) mkdir((p+"/folder/empty").c_str(),0700);std::ofstream(p+"/item")<<"payload";std::ofstream(p+"/folder/nested")<<std::string(160000,'x');return p;};
  auto output=[&]{auto p=root+"/out"+std::to_string(++serial);mkdir(p.c_str(),0700);return p;};
  try {
   for(const auto &format:WritableArchiveFormats()){
-   auto input=local(),target=archive(format.id,{seed}),out=output();
-   auto result=workerRun(DecodeJob(EncodeJob(move({input+"/item",input+"/folder"},target),0)));
+   const bool flat = format.id == "ar";
+   const bool hasEmpty = !flat && format.id != "cab";
+   auto input=local(hasEmpty),target=archive(format.id,{seed}),out=output();
+   const std::string secondInput = input + (flat ? "/folder/nested" : "/folder");
+   const auto name = Leaf(secondInput);
+   auto item = ChildLocation(target,"item"), second = ChildLocation(target,name);
+   auto result=workerRun(DecodeJob(EncodeJob(move({input+"/item",secondInput},target),0)));
    if(!result.errors.empty())std::cerr<<result.errors.front()<<std::endl;
    check(result.completed==2&&result.errors.empty()&&!result.cancelled,format.id+" local-to-archive completes on worker stack");
-   check(!exists(input+"/item")&&!exists(input+"/folder"),format.id+" verified sources removed");
-   check(content(ChildLocation(target,"item"))=="payload"&&exists(ChildLocation(ChildLocation(target,"folder"),"empty"))&&content(ChildLocation(ChildLocation(target,"folder"),"nested"))==std::string(160000,'x'),format.id+" archive bytes and empty directories preserved");
-   result=workerRun(move({ChildLocation(target,"item"),ChildLocation(target,"folder")},out));
+   check(!exists(input+"/item")&&!exists(secondInput),format.id+" verified sources removed");
+   check(content(item)=="payload" && content(flat ? second : ChildLocation(second,"nested"))==std::string(160000,'x'),format.id+" archive bytes preserved");
+   if (hasEmpty) check(exists(ChildLocation(second,"empty")),format.id+" empty directory archived");
+   result=workerRun(move({item,second},out));
    if(!result.errors.empty())std::cerr<<result.errors.front()<<std::endl;
    check(result.completed==2&&result.errors.empty()&&!result.cancelled,format.id+" archive-to-local completes on worker stack");
-   check(content(out+"/item")=="payload"&&exists(out+"/folder/empty")&&content(out+"/folder/nested")==std::string(160000,'x'),format.id+" local bytes and directory set preserved");
-   check(!exists(ChildLocation(target,"item"))&&!exists(ChildLocation(target,"folder"))&&content(ChildLocation(target,"keep"))=="retained",format.id+" removes only selected archive members");
+   check(content(out+"/item")=="payload" && content(out+(flat ? "/nested" : "/folder/nested"))==std::string(160000,'x'),format.id+" local bytes preserved");
+   if (hasEmpty) check(exists(out+"/folder/empty"),format.id+" empty directory restored");
+   check(!exists(item)&&!exists(second)&&content(ChildLocation(target,"keep"))=="retained",format.id+" removes only selected archive members");
    check(PrepareArchiveEditTarget(ParseLocation(target).archive).archiveFormat==format.id,format.id+" archive format retained after both moves");
   }
   for(const auto &format:WritableArchiveFormats())if(format.encryption){
