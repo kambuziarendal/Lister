@@ -344,7 +344,7 @@ public:
         // Command+F remains available to enter the active pane's name filter.
         if (key != 0 && strchr("eEmMrRnNdDiIsSlLtToO", key))
           return B_SKIP_MESSAGE;
-        if ((key == 'y' || key == 'Y') &&
+        if ((key == 'y' || key == 'Y' || key == 'b' || key == 'B') &&
             (m->GetInt32("modifiers", 0) & B_SHIFT_KEY))
           return B_SKIP_MESSAGE;
       }
@@ -948,9 +948,14 @@ class MainWindow : public BWindow {
     SetSplitWeights();
     if (quickView)
       split->SetItemWeight(SplitIndex(2), prefs.splitWeights[1 - source], true);
-    for (auto action : {kCopy, kMove, kSame, kSwitch})
+    for (auto action : {kCopy, kMove, kSame})
       if (auto item = menu->FindItem(action))
-        item->SetEnabled(!prefs.SinglePane() && (!quickView || action != kSwitch));
+        item->SetEnabled(!prefs.SinglePane());
+    if (auto item = menu->FindItem(kSwitch)) {
+      const bool treeFocus = prefs.workspace == Workspace::askr;
+      item->SetLabel(treeFocus ? "Switch tree/list focus" : "Switch panel");
+      item->SetEnabled(!quickView && (treeFocus || !prefs.SinglePane()));
+    }
     if (auto item = menu->FindItem(kFilter))
       item->SetEnabled(!prefs.IsEinn());
     queue->SetCompact(prefs.SinglePane());
@@ -1199,7 +1204,7 @@ public:
     files->AddItem(more);
     auto archives = new BMenu("Archives");
     archives->AddItem(new BMenuItem(
-        "Create archive...", new BMessage(kCreateArchive), 'P', B_SHIFT_KEY));
+        "Create archive...", new BMessage(kCreateArchive), 'B', B_SHIFT_KEY));
     archives->AddItem(new BMenuItem("Extract to folder...",
                                     new BMessage(kExtractArchive), 'E',
                                     B_SHIFT_KEY));
