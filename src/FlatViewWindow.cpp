@@ -10,6 +10,7 @@
 #include <ColumnTypes.h>
 #include <LayoutBuilder.h>
 #include <Message.h>
+#include <MessageRunner.h>
 #include <StorageDefs.h>
 #include <StringView.h>
 #include <TextControl.h>
@@ -24,7 +25,7 @@
 
 namespace Listi {
 namespace {
-constexpr uint32 kFilterChanged = 'flfc', kCollect = 'flcl';
+constexpr uint32 kFilterChanged = 'flfc', kCollect = 'flcl', kDeliveryCheck = 'fldc';
 
 class FlatRow : public BRow {
 public:
@@ -69,6 +70,8 @@ class FlatViewWindow : public BWindow {
   std::shared_ptr<std::atomic<int64>> generation =
       std::make_shared<std::atomic<int64>>(1);
   BLooper *worker = nullptr;
+  std::shared_ptr<std::atomic<bool>> deliveryFailed = std::make_shared<std::atomic<bool>>(false);
+  std::unique_ptr<BMessageRunner> deliveryTimer;
   // Rows refer to these immutable scan hits. Growth must not invalidate them.
   std::deque<File> files;
   BTextControl *filter;
@@ -109,6 +112,7 @@ class FlatViewWindow : public BWindow {
     status->SetToolTip(text.c_str());
     collect->SetEnabled(results->CurrentSelection() != nullptr);
     stop->SetEnabled(scanning);
+    if (!scanning) deliveryTimer.reset();
   }
 
   void Collect() {
@@ -188,12 +192,15 @@ public:
     Colors();
     filter->MakeFocus();
 
-    worker = NewSearchWorker(BMessenger(this), generation);
+    BMessage check(kDeliveryCheck);
+    deliveryTimer.reset(new BMessageRunner(BMessenger(this), &check, 250000));
+    worker = NewSearchWorker(BMessenger(this), generation, deliveryFailed);
     BMessage request(kSearchStart);
     request.AddInt64("serial", generation->load());
     request.AddString("root", path);
     request.AddBool("flat", true);
-    scanning = worker->Run() >= 0 && worker->PostMessage(&request) == B_OK;
+    scanning = worker->Run() >= 0 && deliveryTimer->InitCheck() == B_OK &&
+               worker->PostMessage(&request) == B_OK;
     if (!scanning)
       scanState = "Incomplete: could not start scan.";
     UpdateStatus();
@@ -219,6 +226,14 @@ public:
       break;
     case kCollect:
       Collect();
+      break;
+    case kDeliveryCheck:
+      if (scanning && deliveryFailed->load()) {
+        generation->fetch_add(1);
+        scanning = false;
+        scanState = "Incomplete: results could not be delivered.";
+        UpdateStatus();
+      }
       break;
     case kSearchStop:
       if (scanning) {

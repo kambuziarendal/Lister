@@ -389,7 +389,7 @@ public:
 class MainWindow : public BWindow {
   Preferences prefs;
   BMessenger searchWindow;
-  BMessenger flatViewWindow;
+  std::map<std::string, BMessenger> flatViews;
   BMenuItem *flatViewItem;
   BMessenger bulkRenameWindow;
   std::shared_ptr<Listi::Shelf> shelf = std::make_shared<Listi::Shelf>();
@@ -1664,9 +1664,15 @@ public:
       const char *path = panes[source]->Path();
       if (path[0] != '/' || Listi::IsVirtual(path))
         break;
-      if (!flatViewWindow.IsValid() ||
-          flatViewWindow.SendMessage(Listi::kFlatView) != B_OK)
-        flatViewWindow = Listi::OpenFlatView(BMessenger(this), shelf, path);
+      for (auto it = flatViews.begin(); it != flatViews.end();) {
+        if (!it->second.IsValid())
+          it = flatViews.erase(it);
+        else
+          ++it;
+      }
+      auto &window = flatViews[path];
+      if (!window.IsValid() || window.SendMessage(Listi::kFlatView) != B_OK)
+        window = Listi::OpenFlatView(BMessenger(this), shelf, path);
       break;
     }
     case kRevealSearch: {
