@@ -70,6 +70,45 @@ void *run(void *) {
     }
     archive=job.destination;madeArchives[f.id]=job.destination;
   }
+  if (madeArchives.count("iso")) {
+    // Renamed images still have the same format; copying bytes without the
+    // verification attribute must not grant permission to rebuild an image.
+    const auto original = madeArchives.at("iso");
+    const auto renamed = out + "/without-extension";
+    check(rename(original.c_str(), renamed.c_str()) == 0 &&
+              PrepareArchiveEditTarget(renamed).archiveFormat == "iso",
+          "Listi data ISO remains editable when renamed");
+    const auto unmarked = out + "/unmarked.iso";
+    const auto image = read(renamed);
+    write(unmarked, image);
+    bool unmarkedRefused = false;
+    try { PrepareArchiveEditTarget(unmarked); }
+    catch (const std::exception &) { unmarkedRefused = true; }
+    check(unmarkedRefused && !OpenArchive(unmarked).empty() &&
+              read(unmarked) == image,
+          "unmarked ISO can be read but is never rebuilt");
+    const auto iso = OpenArchive(renamed);
+    const auto added = ChildLocation(iso, "new-folder");
+    const auto pending = PrepareArchiveMutation(
+        Job{Action::MakeDirectory, {}, added});
+    auto tampered = image;
+    tampered[0] = 1; // System area: outside the visible filesystem.
+    write(renamed, tampered);
+    const auto refused = Run(pending, {});
+    bool changedRefused = false;
+    try { PrepareArchiveEditTarget(renamed); }
+    catch (const std::exception &) { changedRefused = true; }
+    check(changedRefused && !refused.errors.empty() &&
+              read(renamed) == tampered && !OpenArchive(renamed).empty(),
+          "changed ISO retains exact bytes and remains readable");
+    write(renamed, image);
+    auto edited = Run(PrepareArchiveMutation(
+        Job{Action::MakeDirectory, {}, added}), {});
+    FileEntry info;
+    check(edited.completed == 1 && StatFile(added, info) && info.directory &&
+              PrepareArchiveEditTarget(renamed).archiveFormat == "iso",
+          "data ISO contents can be edited and reverified");
+  }
   mkdir((input+"/edit").c_str(),0700);mkdir((input+"/edit/replacement").c_str(),0700);
   write(input+"/edit/replacement/empty","replacement\n");write(input+"/edit/new.txt","new\n");
   for(const auto &id:{std::string("zip"),std::string("7z")})if(madeArchives.count(id)){

@@ -5,6 +5,7 @@
 #include "DynamicLibrary.h"
 #include "JobSnapshot.h"
 #include "LocalMoveTree.h"
+#include "Sha256.h"
 #include "VirtualFile.h"
 #include <Directory.h>
 #include <Entry.h>
@@ -76,7 +77,12 @@ struct Writer {
     else {
       if (format == "cpio")
         Check(LIBCALL(lib, archive_write_set_format_cpio_newc)(a));
-      else if (format == "xar")
+      else if (format == "iso") {
+        Check(LIBCALL(lib, archive_write_set_format_iso9660)(a));
+        Check(LIBCALL(lib, archive_write_set_options)(
+            a, "iso9660:iso-level=3,iso9660:rockridge=strict,"
+               "iso9660:volume-id=LISTI_DATA"));
+      } else if (format == "xar")
         Check(LIBCALL(lib, archive_write_set_format_xar)(a));
       else {
         Require(format == "tar" || format == "tgz" || format == "txz" ||
@@ -103,19 +109,21 @@ struct Writer {
     }
   }
 };
-const ArchiveFormat formats[] = {{"zip", "ZIP", ".zip", true},
-                                 {"7z", "7z", ".7z", true},
-                                 {"tgz", "Tar + gzip", ".tar.gz", true},
-                                 {"txz", "Tar + xz", ".tar.xz", true},
-                                 {"tbz2", "Tar + bzip2", ".tar.bz2", true},
-                                 {"tlz", "Tar + LZMA", ".tar.lzma", true},
-                                 {"tzst", "Tar + Zstandard", ".tar.zst", true},
-                                 {"tlz4", "Tar + LZ4", ".tar.lz4", true},
-                                 {"tlzip", "Tar + lzip", ".tar.lz", true},
-                                 {"taz", "Tar + Unix compress", ".tar.Z", false},
-                                 {"tar", "Tar (uncompressed)", ".tar", false},
-                                 {"cpio", "CPIO (newc)", ".cpio", false},
-                                 {"xar", "XAR", ".xar", true}};
+const ArchiveFormat formats[] = {
+    {"zip", "ZIP", ".zip", true},
+    {"7z", "7z", ".7z", true},
+    {"tgz", "Tar + gzip", ".tar.gz", true},
+    {"txz", "Tar + xz", ".tar.xz", true},
+    {"tbz2", "Tar + bzip2", ".tar.bz2", true},
+    {"tlz", "Tar + LZMA", ".tar.lzma", true},
+    {"tzst", "Tar + Zstandard", ".tar.zst", true},
+    {"tlz4", "Tar + LZ4", ".tar.lz4", true},
+    {"tlzip", "Tar + lzip", ".tar.lz", true},
+    {"taz", "Tar + Unix compress", ".tar.Z", false},
+    {"tar", "Tar (uncompressed)", ".tar", false},
+    {"cpio", "CPIO (newc)", ".cpio", false},
+    {"xar", "XAR", ".xar", true},
+    {"iso", "ISO 9660 (data disc)", ".iso", false}};
 std::string LocalSource(const std::string &path) {
   auto loc = ParseLocation(path);
   Require(loc.Local() || loc.Archive(),
@@ -193,6 +201,7 @@ struct Pack {
   const Hooks &hooks;
   size_t count = 0;
   std::vector<std::pair<std::string, struct stat>> snapshots;
+  std::map<std::string, std::string> *isoMembers = nullptr;
   void Verify() {
     for (const auto &item : snapshots) {
       Check();
@@ -220,6 +229,8 @@ struct Pack {
     Require(S_ISREG(before.st_mode) || S_ISDIR(before.st_mode),
             "Links and special files are not packed in this version: " + path);
     snapshots.push_back({path, before});
+    if (isoMembers)
+      isoMembers->emplace(name, path);
     FD fd(open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK));
     Require(fd.n >= 0 && !fstat(fd.n, &after) && Unchanged(before, after),
             "Source changed before packing: " + path);
@@ -360,6 +371,111 @@ void CopyMetadata(const std::string &fromPath, const std::string &toPath,
   }
   Require(status == B_ENTRY_NOT_FOUND, "Cannot enumerate archive metadata.");
 }
+// External ISO images can contain boot code and layout metadata that the
+// data-disc writer cannot preserve. Only an unchanged ISO written and
+// verified by Listi can be rebuilt by the archive editor.
+constexpr const char *IsoDigestAttr = "Listi:verified-data-iso-v1";
+std::string IsoDigest(int fd, const Hooks &hooks) {
+  struct stat before, after;
+  Require(!fstat(fd, &before) && S_ISREG(before.st_mode),
+          "Cannot inspect data ISO.");
+  Sha256 digest;
+  std::vector<char> buffer(131072);
+  off_t at = 0;
+  for (;;) {
+    if (hooks.proceed && !hooks.proceed())
+      throw Cancelled();
+    auto n = pread(fd, buffer.data(), buffer.size(), at);
+    if (n < 0 && errno == EINTR)
+      continue;
+    Require(n >= 0, "Cannot read data ISO.");
+    if (!n)
+      break;
+    digest.Update(buffer.data(), n);
+    at += n;
+  }
+  Require(at == before.st_size && !fstat(fd, &after) &&
+              Unchanged(before, after),
+          "Data ISO changed while being verified.");
+  return digest.Finish();
+}
+void SealIso(int fd, const Hooks &hooks) {
+  const auto digest = IsoDigest(fd, hooks);
+  Require(fs_write_attr(fd, IsoDigestAttr, B_STRING_TYPE, 0, digest.data(),
+                        digest.size()) == ssize_t(digest.size()),
+          "Cannot store data ISO verification on this filesystem.");
+}
+void VerifyIsoOutput(Writer &writer, int output,
+                     std::map<std::string, std::string> members, Pack &pack) {
+  auto &lib = writer.lib;
+  struct Reader {
+    DynamicLibrary &lib;
+    archive *a;
+    ~Reader() {
+      if (a)
+        LIBCALL(lib, archive_read_free)(a);
+    }
+  } reader{lib, LIBCALL(lib, archive_read_new)()};
+  const auto a = reader.a;
+  Require(
+      a && lseek(output, 0, SEEK_SET) == 0 &&
+          LIBCALL(lib, archive_read_support_format_iso9660)(a) == ARCHIVE_OK &&
+          LIBCALL(lib, archive_read_open_fd)(a, output, 131072) == ARCHIVE_OK,
+      "Cannot reopen staged data ISO. Nothing was published.");
+  std::vector<char> decoded(65536), original(65536);
+  archive_entry *entry = nullptr;
+  int status;
+  while ((status = LIBCALL(lib, archive_read_next_header)(a, &entry)) ==
+         ARCHIVE_OK) {
+    pack.Check();
+    auto name = SafeArchivePath(LIBCALL(lib, archive_entry_pathname)(entry));
+    if (name.empty())
+      continue;
+    const auto member = members.find(name);
+    Require(member != members.end(),
+            "Data ISO changed an entry name or wrote an extra entry.");
+    const auto path = member->second;
+    members.erase(member);
+    struct stat st;
+    Require(!lstat(path.c_str(), &st) &&
+                (st.st_mode & 0777) ==
+                    LIBCALL(lib, archive_entry_perm)(entry) &&
+                (st.st_mode & S_IFMT) ==
+                    LIBCALL(lib, archive_entry_filetype)(entry) &&
+                !LIBCALL(lib, archive_entry_hardlink)(entry),
+            "Data ISO could not preserve entry type or permissions: " + path);
+    if (S_ISDIR(st.st_mode))
+      continue;
+    FD input(open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK));
+    struct stat opened;
+    Require(input.n >= 0 && !fstat(input.n, &opened) && Unchanged(st, opened) &&
+                st.st_size == LIBCALL(lib, archive_entry_size)(entry),
+            "Data ISO could not preserve entry size: " + path);
+    off_t total = 0;
+    for (;;) {
+      pack.Check();
+      const auto n =
+          LIBCALL(lib, archive_read_data)(a, decoded.data(), decoded.size());
+      Require(n >= 0, "Cannot decode staged data ISO: " + path);
+      if (!n)
+        break;
+      size_t have = 0;
+      while (have < size_t(n)) {
+        const auto got = read(input.n, original.data() + have, n - have);
+        if (got < 0 && errno == EINTR)
+          continue;
+        Require(got > 0, "Cannot verify data ISO source: " + path);
+        have += got;
+      }
+      Require(!memcmp(decoded.data(), original.data(), n),
+              "Data ISO could not preserve entry bytes: " + path);
+      total += n;
+    }
+    Require(total == st.st_size, "Data ISO entry is incomplete: " + path);
+  }
+  Require(status == ARCHIVE_EOF && members.empty(),
+          "Data ISO is damaged or missing entries. Nothing was published.");
+}
 void CreateOutput(int output, const std::string &format,
                   const std::vector<std::string> &sources, int level,
                   bool encryptNames, const ArchiveSecretPtr &secret,
@@ -371,13 +487,18 @@ void CreateOutput(int output, const std::string &format,
     writer.Configure(format, level, secret);
     writer.Check(LIBCALL(writer.lib, archive_write_open_fd)(writer.a, output));
     Pack pack{writer, hooks};
+    std::map<std::string, std::string> isoMembers;
+    if (format == "iso")
+      pack.isoMembers = &isoMembers;
     for (const auto &source : sources)
       pack.Add(source, Leaf(source));
     writer.Check(LIBCALL(writer.lib, archive_write_close)(writer.a));
+    if (format == "iso")
+      VerifyIsoOutput(writer, output, std::move(isoMembers), pack);
     pack.Verify();
   }
 }
-std::string EditFormat(const std::string &path) {
+std::string EditFormat(const std::string &path, const Hooks &hooks = {}) {
   const auto parts = FindArchiveVolumes(path);
   Require(
       parts.kind == ArchiveVolumes::Single,
@@ -419,10 +540,22 @@ std::string EditFormat(const std::string &path) {
           "Archive is damaged or cannot be inspected for editing.");
   const int detected =
       LIBCALL(lib, archive_format)(reader.value) & ARCHIVE_FORMAT_BASE_MASK;
-  std::string format = detected == ARCHIVE_FORMAT_TAR    ? "tar"
-                       : detected == ARCHIVE_FORMAT_CPIO ? "cpio"
-                       : detected == ARCHIVE_FORMAT_XAR  ? "xar"
-                                                         : "";
+  if (detected == ARCHIVE_FORMAT_ISO9660) {
+    char recorded[64];
+    attr_info info;
+    Require(
+        fs_stat_attr(fd.n, IsoDigestAttr, &info) == 0 &&
+            info.type == B_STRING_TYPE && info.size == sizeof(recorded) &&
+            fs_read_attr(fd.n, IsoDigestAttr, B_STRING_TYPE, 0, recorded,
+                         sizeof(recorded)) == sizeof(recorded) &&
+            IsoDigest(fd.n, hooks) == std::string(recorded, sizeof(recorded)),
+        "Only unmodified Listi data ISOs can be edited. Other ISO images can be browsed and copied out without risking boot or disc metadata.");
+  }
+  std::string format = detected == ARCHIVE_FORMAT_TAR       ? "tar"
+                       : detected == ARCHIVE_FORMAT_CPIO    ? "cpio"
+                       : detected == ARCHIVE_FORMAT_XAR     ? "xar"
+                       : detected == ARCHIVE_FORMAT_ISO9660 ? "iso"
+                                                            : "";
   Require(
       !format.empty(),
       "This archive type has no qualified writer in Listi. It can be browsed and extracted; the original is unchanged.");
@@ -488,7 +621,7 @@ Result RunArchiveEdit(const Job &job, const Hooks &hooks,
             "Choose an archive change first.");
     Guards(job);
     VerifyArchiveSets(job);
-    const auto format = EditFormat(job.destination);
+    const auto format = EditFormat(job.destination, hooks);
     Require(format == job.archiveFormat,
             "Archive format changed after selection.");
     const auto passwordGeneration = ArchivePasswordGeneration();
@@ -627,8 +760,8 @@ Result RunArchiveEdit(const Job &job, const Hooks &hooks,
     }
     check();
     const auto outputPath = Join(PathOf(stage.dir), "updated");
-    FD output(open(outputPath.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
-                   0600));
+    FD output(
+        open(outputPath.c_str(), O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW, 0600));
     Require(output.n >= 0, "Cannot create updated archive output.");
     auto secret = CachedArchivePassword(
         job.destination, FindArchiveVolumes(job.destination).Fingerprint());
@@ -636,6 +769,8 @@ Result RunArchiveEdit(const Job &job, const Hooks &hooks,
                  secret && format == "7z", secret, internal);
     Require(!fsync(output.n), "Cannot flush updated archive to disk.");
     CopyMetadata(job.destination, outputPath, internal);
+    if (format == "iso")
+      SealIso(output.n, internal);
     Require(!fsync(output.n), "Cannot flush updated archive metadata.");
     check();
     if (job.archiveVerifyOutput) {
@@ -1437,7 +1572,7 @@ Result RunArchiveJob(const Job &job, const Hooks &hooks) {
     if (job.action == Action::CreateArchive) {
       auto path = Join(PathOf(stage.dir), "archive");
       FD output(
-          open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600));
+          open(path.c_str(), O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW, 0600));
       Require(output.n >= 0, "Cannot create archive output.");
       auto secret = TakeArchiveCreationPassword(job.archivePasswordToken);
       Require(
@@ -1447,6 +1582,8 @@ Result RunArchiveJob(const Job &job, const Hooks &hooks) {
               "Only encrypted 7z archives can hide file names.");
       CreateOutput(output.n, job.archiveFormat, job.sources, job.archiveLevel,
                    job.archiveEncryptNames, secret, tracked);
+      if (job.archiveFormat == "iso")
+        SealIso(output.n, tracked);
       Require(!fsync(output.n), "Cannot flush archive to disk.");
       Require(publish.SetTo(&stage.dir, "archive", false) == B_OK,
               "Archive output disappeared.");
