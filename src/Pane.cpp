@@ -711,6 +711,8 @@ void Pane::MessageReceived(BMessage *m) {
     break;
   }
   case kJobDone:
+    if (m->GetBool("beforeStart", false))
+      break;
     for (auto &transfer : transfers)
       if (transfer.second.state == 1) {
         transfer.second.state = 3;

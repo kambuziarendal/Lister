@@ -17,6 +17,8 @@
 #include "SavedPlaces.h"
 #include "SavedSearches.h"
 #include "SearchWindow.h"
+#include "Shelf.h"
+#include "ShelfWindow.h"
 #include "ImagePreview.h"
 #include "InlineAction.h"
 #include "OperationQueue.h"
@@ -275,6 +277,9 @@ public:
         // Command+F remains available to enter the active pane's name filter.
         if (key != 0 && strchr("eEmMrRnNdDiIsSlLtToO", key))
           return B_SKIP_MESSAGE;
+        if ((key == 'y' || key == 'Y') &&
+            (m->GetInt32("modifiers", 0) & B_SHIFT_KEY))
+          return B_SKIP_MESSAGE;
       }
       if (bytes[0] == B_FUNCTION_KEY)
         return B_DISPATCH_MESSAGE;
@@ -320,6 +325,28 @@ public:
 class MainWindow : public BWindow {
   Preferences prefs;
   BMessenger searchWindow;
+  std::shared_ptr<Listi::Shelf> shelf = std::make_shared<Listi::Shelf>();
+  BMessenger shelfWindow;
+  void RefreshShelf() {
+    if (shelfWindow.IsValid()) {
+      BMessage refresh(Listi::kRefreshShelf);
+      shelfWindow.SendMessage(&refresh, (BHandler *)nullptr, 0);
+    }
+  }
+  void AddToShelf() {
+    try {
+      const auto added = shelf->Add(panes[source]->Selected());
+      BString status;
+      if (added)
+        status << int32(added) << " added to Shelf. Open it from the Listi menu.";
+      else
+        status = "Already on the Shelf.";
+      panes[source]->ShowStatus(status);
+      RefreshShelf();
+    } catch (const std::exception &e) {
+      Notice(e.what());
+    }
+  }
   Listi::SavedSearches searches, pendingSearches;
   bool searchesWritable = true, searchesSaving = false;
   int64 searchesRevision = 0;
@@ -862,6 +889,8 @@ public:
                                  B_SHIFT_KEY));
     files->AddItem(new BMenuItem("Open with system application",
                                  new BMessage(kOpenSystem)));
+    files->AddItem(new BMenuItem("Add to Shelf", new BMessage(Listi::kAddToShelf),
+                                 'Y', B_SHIFT_KEY));
     auto more = new BMenu("More file actions");
     more->AddItem(new BMenuItem("Duplicate...", new BMessage(kDuplicate), 'D',
                                 B_SHIFT_KEY));
@@ -941,6 +970,7 @@ public:
         new BMenuItem("Compare folders...", new BMessage(kCompareFolders)));
     view->AddItem(new BMenuItem("Terminal here", new BMessage(kTerminal), 'T'));
     view->AddItem(new BMenuItem("Operations", new BMessage(kShowJobs), 'O'));
+    view->AddItem(new BMenuItem("Show Shelf", new BMessage(Listi::kShowShelf)));
     view->AddSeparatorItem();
     view->AddItem(
         new BMenuItem("Preferences", new BMessage(kPreferences), ','));
@@ -1120,6 +1150,22 @@ public:
       }
     }
     switch (m->what) {
+    case Listi::kShowShelf:
+      Listi::OpenShelfWindow(BMessenger(this), shelf, shelfWindow);
+      break;
+    case Listi::kAddToShelf:
+      AddToShelf();
+      break;
+    case Listi::kSubmitShelfMove: {
+      if (m->IsSourceRemote())
+        break;
+      auto job = Listi::DecodeJob(*m);
+      if (job.action == Listi::Action::Move && !job.sources.empty() &&
+          job.expectedSources.size() == job.sources.size() &&
+          job.expectedDestination.device >= 0)
+        queue->Enqueue(job);
+      break;
+    }
     case kPlaceAction: {
       if (!placesWritable || placesSaving) {
         Notice("Saved places are unavailable or still being saved.");
@@ -1717,6 +1763,7 @@ public:
         }
         for (auto p : panes)
           p->MessageReceived(&done);
+        RefreshShelf();
       }
       break;
     case kShowJobs:
