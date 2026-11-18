@@ -220,6 +220,16 @@ capabilities. A successful listing does not establish member-data integrity.
   xz, bzip2, LZMA, lzip or Unix compress (.tar.Z), CPIO and XAR. Zstandard/LZ4 wrappers are gated by the
   installed engine rather than universally promised. Reading support is broader
   than writing support.
+- LHA/LZH can be created and edited when the optional HaikuDepot `lha` tool
+  and libarchive are installed. Level zero stores files; other levels use LH7.
+- Single-volume Microsoft Cabinets can be rebuilt with uncompressed data.
+  Nonempty folders are represented by their member paths. CAB cannot store an
+  empty folder; an edit that would leave one is refused without replacing the
+  archive. Signed, spanned and unsupported Cabinet variants are not editable.
+- Listi can create ISO 9660 data discs. It verifies the member names, contents
+  and permissions and records the image digest in a filesystem attribute.
+  Only images with that matching attribute can be edited. Other images
+  remain browseable where supported; they are not rebuilt as plain data discs.
 - Writable archive folders support Copy/Paste, new folders, rename, entry removal
   and supported moves. Removing an archive member is not local Trash. Editing
   rebuilds the container and needs scratch space for extracted content and the
