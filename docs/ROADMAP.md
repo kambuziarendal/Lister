@@ -68,6 +68,58 @@ See the [workflow guide](GUIDE.md) for interpreting partial results and the
 [verification guide](VERIFICATION.md) for reproducing fault tests. Job reports
 are session information, not a persistent audit log or an undo mechanism.
 
+## Priorities after 0.32.0
+
+### Directory Opus workflows to tackle first
+
+Prioritise the everyday reason to use two panels: assemble the right selection,
+keep the destination in sight and reuse the setup tomorrow. The order below is
+a proposed implementation sequence, not a list of shipped features.
+
+1. **Select by pattern.** Start with an explicit wildcard selection command in
+   the current panel, separate from the existing literal name filter. Preview the
+   match count and support adding or removing matches. In a filtered folder,
+   verify that selecting `*.jpg` and copying to the other panel copies only
+   the visible matches and leaves the destination panel's selection alone.
+2. **Paired folder tabs and saved tab groups.** Start with local tabs: switching
+   tabs should restore each tab's location, selection and scroll position.
+   Then let a named group reopen both sides for a recurring task. A missing
+   folder must be identified, not silently replaced as a transfer destination.
+   Reopening a group should never resume a file operation.
+3. **Flat view and file collections.** Offer a read-only recursive view for
+   gathering files without repeatedly changing folders. Show the original path
+   alongside each name; allow cancellation and avoid following directory-link
+   cycles. Add chosen references to the existing Shelf instead of inventing a
+   second collection window. Two identically named files in different folders
+   must remain distinguishable; removing a reference must leave the file alone.
+4. **Reusable command buttons.** Extend the workspace editor with named presets
+   for existing commands, starting with a saved rename transformation. A button
+   should open the ordinary preview on the current selection, not bypass it.
+   Defer a scripting language and background triggers until concrete tasks
+   cannot be expressed with these presets.
+
+### Engineering work that supports this sequence
+
+- **Keep the native test runner as the reference.** Add focused suite selection
+  and a failing exit status for missing or failed required checks where needed.
+  Start CI with checks that genuinely run on the available host; label those
+  separately from native Haiku builds, fault tests and installed-package checks.
+  Do not make paid or hosted Haiku capacity a prerequisite.
+- **Split App.cpp at a real change boundary.** At 2,314 lines in 0.32.0, extract
+  the command or panel responsibility touched by the first workflow, with tests
+  for existing menu, button and keyboard behaviour. Avoid a wholesale rewrite.
+- **Localise incrementally.** Introduce Haiku translation contexts in the first
+  changed workflow, including errors and plural counts. Verify catalogue
+  extraction, fallback text and layout with a longer translation before rollout.
+- **Make releases easier to follow and report against.** Start a concise
+  changelog with user-visible changes and compatibility notes; add SECURITY.md
+  once a monitored private reporting route is confirmed. Keep reproduction
+  instructions in the existing verification guide.
+- **Review the duplicate-finder prototype rather than importing it wholesale.**
+  Gate integration on native tests for changed files, hard links, unreadable
+  inputs and cancellation, followed by a read-only group-review flow. The
+  existing Duplicate command must still mean “make a copy.”
+
 ## Feature directions and current foundations
 
 “Available now” means included in 0.32.0. A related foundation is
