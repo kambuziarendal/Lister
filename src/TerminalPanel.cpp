@@ -50,7 +50,7 @@ void AppendUtf8(std::string &output, uint32_t codepoint) {
 
 void SendUtf8(VTerm *state, const char *bytes, size_t size,
               VTermModifier mods) {
-  uint32_t codepoint = 0;
+  uint32_t codepoint = 0, minimum = 0;
   unsigned remaining = 0;
   for (size_t i = 0; i < size; ++i) {
     const uint8_t byte = bytes[i];
@@ -59,10 +59,12 @@ void SendUtf8(VTerm *state, const char *bytes, size_t size,
       remaining = 0;
     } else if ((byte & 0xc0) == 0x80 && remaining) {
       codepoint = (codepoint << 6) | (byte & 0x3f);
-      if (--remaining == 0 && codepoint <= 0x10ffff)
+      if (--remaining == 0 && codepoint >= minimum && codepoint <= 0x10ffff &&
+          !(codepoint >= 0xd800 && codepoint <= 0xdfff))
         vterm_keyboard_unichar(state, codepoint, mods);
     } else if (byte >= 0xc2 && byte <= 0xf4) {
       remaining = byte >= 0xf0 ? 3 : byte >= 0xe0 ? 2 : 1;
+      minimum = remaining == 3 ? 0x10000 : remaining == 2 ? 0x800 : 0x80;
       codepoint = byte & (0x7f >> (remaining + 1));
     } else {
       remaining = 0;

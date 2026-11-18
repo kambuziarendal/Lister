@@ -40,8 +40,10 @@ public:
       throw std::runtime_error("Could not lock test clipboard.");
     previous = *be_clipboard->Data();
     be_clipboard->Clear();
+    // Ignore an overlong printable character while preserving valid UTF-8.
+    constexpr char pasted[] = "cont" "\xe0\x81\x81" "inuéd";
     auto status = be_clipboard->Data()->AddData(
-        "text/plain", B_MIME_TYPE, "continued", 9);
+        "text/plain", B_MIME_TYPE, pasted, sizeof(pasted) - 1);
     if (status == B_OK)
       status = be_clipboard->Commit(true);
     sequence = be_clipboard->SystemCount();
@@ -229,7 +231,7 @@ int main() {
     Check(main.SendMessage(&stale) == B_OK &&
               Key(detached, "v", B_KEY_DOWN, B_COMMAND_KEY) &&
               Key(detached, "\n") && Until([&] {
-                return Read(fixture.path / "result") == "live:continued";
+                return Read(fixture.path / "result") == "live:continuéd";
               }),
           "stale placement is ignored; detached clipboard completes the command");
     Check(Click(detached, "Dock CLI") && Until([&] {
