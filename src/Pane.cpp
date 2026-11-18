@@ -395,6 +395,7 @@ void Pane::ClearRows() {
 void Pane::ApplyFilter() {
   entries.Filter(einn ? "" : filter->Text());
   list->Refresh();
+  grid->Update();
   columns->Refresh();
   clearFilter->SetEnabled(filter->Text()[0] != 0);
   if (!scanning)
@@ -438,10 +439,8 @@ void Pane::SetWorkspace(const Preferences &settings) {
   content->SetSplitterSize(einn ? 0 : contentSplitterSize);
   // A hidden filter must not silently hide entries in the minimal workspace.
   // Keep its text for Tviskipt, but suspend its effect while it is hidden.
-  if (changed) {
+  if (changed)
     ApplyFilter();
-    grid->Update();
-  }
   SetDisplayMode(LocationMode());
   activityTimer.reset();
   ++activitySerial;
