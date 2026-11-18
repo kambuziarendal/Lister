@@ -9,6 +9,8 @@
 #include <Sound.h>
 #include <SoundPlayer.h>
 #include <String.h>
+#include <TranslatorFormats.h>
+#include <TranslatorRoster.h>
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
@@ -282,6 +284,47 @@ void WaitUntil(bigtime_t deadline, const Listi::TransferControl &control) {
     snooze(std::min<bigtime_t>(20000, deadline - system_time()));
   }
 }
+
+Kind MediaKind(media_type type) {
+  if (type == B_MEDIA_ENCODED_VIDEO || type == B_MEDIA_RAW_VIDEO)
+    return Kind::Video;
+  if (type == B_MEDIA_ENCODED_AUDIO || type == B_MEDIA_RAW_AUDIO)
+    return Kind::Audio;
+  return Kind::Unknown;
+}
+
+// Probe formats, not decoded frames. Media extractors can recognise still
+// images as one-frame videos, so ask the installed image translators first.
+Kind ProbeInstalledReaders(Input &input) {
+  input.Seek(0, SEEK_SET);
+  translator_info info{};
+  auto *roster = BTranslatorRoster::Default();
+  if (roster && roster->Identify(&input, nullptr, &info, 0, nullptr,
+                                 B_TRANSLATOR_BITMAP) == B_OK &&
+      info.group == B_TRANSLATOR_BITMAP)
+    return Kind::Image;
+
+  input.Seek(0, SEEK_SET);
+  BMediaFile file(&input);
+  Kind result = Kind::Unknown;
+  if (file.InitCheck() == B_OK) {
+    const int32 count = std::min<int32>(file.CountTracks(), 128);
+    for (int32 i = 0; i < count; ++i) {
+      BMediaTrack *track = file.TrackAt(i);
+      if (!track)
+        continue;
+      media_format format{};
+      const auto kind = track->EncodedFormat(&format) == B_OK
+                            ? MediaKind(format.type) : Kind::Unknown;
+      file.ReleaseTrack(track);
+      if (kind == Kind::Video)
+        return kind;
+      if (kind == Kind::Audio)
+        result = kind;
+    }
+  }
+  return result;
+}
 } // namespace
 
 Kind Identify(const std::string &leaf, Input &input) {
@@ -315,14 +358,24 @@ Kind Identify(const std::string &leaf, Input &input) {
     return Kind::Audio;
   if (bytes.rfind("fLaC", 0) == 0 || bytes.rfind("ID3", 0) == 0)
     return Kind::Audio;
-  if ((bytes.size() >= 8 && bytes.compare(4, 4, "ftyp") == 0) || bytes.rfind("OggS", 0) == 0)
-    return Kind::Video;
+  bool text = true;
   try {
     Utf8Length(bytes, bytes.size() == 1024);
-    return ext == "ts" ? Kind::Code : Kind::Text;
   } catch (const std::runtime_error &) {
-    return ext == "ts" ? Kind::Video : Kind::Unknown;
+    text = false;
   }
+  if (ext == "ts")
+    return text ? Kind::Code : Kind::Video;
+  if (text && IsOneOf(ext, {"txt", "text", "log", "csv", "tsv", "ini", "cfg",
+                            "conf", "rst", "properties", "list", "nfo"}))
+    return Kind::Text;
+  // Unknown suffixes and extensionless containers (e.g. AIFF) use track
+  // types, rather than guessing video from a container shared with photos.
+  auto kind = ProbeInstalledReaders(input);
+  input.Seek(0, SEEK_SET);
+  if (kind == Kind::Unknown && text && ext.empty())
+    return Kind::Text;
+  return kind;
 }
 
 void ValidateText(std::string_view text) { Utf8Length(text, false); }
@@ -419,13 +472,11 @@ std::string InspectMedia(Input &input, Kind kind, bool play,
       continue;
     media_format encoded{};
     if (track->EncodedFormat(&encoded) == B_OK) {
-      if (!audio && (encoded.type == B_MEDIA_ENCODED_AUDIO ||
-                     encoded.type == B_MEDIA_RAW_AUDIO)) {
+      if (!audio && MediaKind(encoded.type) == Kind::Audio) {
         audio = track;
         continue;
       }
-      if (!video && kind == Kind::Video &&
-          (encoded.type == B_MEDIA_ENCODED_VIDEO || encoded.type == B_MEDIA_RAW_VIDEO)) {
+      if (!video && kind == Kind::Video && MediaKind(encoded.type) == Kind::Video) {
         videoFormat.type = B_MEDIA_RAW_VIDEO;
         videoFormat.u.raw_video.display.format = B_RGB32;
         if (track->DecodedFormat(&videoFormat) == B_OK) {

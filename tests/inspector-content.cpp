@@ -70,6 +70,27 @@ std::string WaveFixture() {
   return wave;
 }
 
+// Mono, 16-bit AIFF at 44100 Hz. No filename or MIME hint is needed.
+std::string AiffFixture() {
+  constexpr uint32 frames = 4410;
+  std::string bytes = "FORM";
+  auto bigEndian = [&](uint32 value, int width) {
+    for (int i = width - 1; i >= 0; --i)
+      bytes.push_back(static_cast<char>(value >> (8 * i)));
+  };
+  bigEndian(46 + frames * 2, 4);
+  bytes += "AIFFCOMM";
+  bigEndian(18, 4);
+  bigEndian(1, 2);
+  bigEndian(frames, 4);
+  bigEndian(16, 2);
+  bytes.append("\x40\x0e\xac\x44\0\0\0\0\0\0", 10); // 80-bit sample rate
+  bytes += "SSND";
+  bigEndian(8 + frames * 2, 4);
+  bytes.append(8 + frames * 2, '\0'); // Zero offset, block size and sample data.
+  return bytes;
+}
+
 void TestText(const std::string &path) {
   const std::string html = "<script>window.alert('not run')</script>\n";
   Write(path, "\xef\xbb\xbf" + html + "Æøå\r\nlast\r");
@@ -80,6 +101,8 @@ void TestText(const std::string &path) {
     assert(Inspector::Identify("README.md", input) == Inspector::Kind::Markdown);
     assert(Inspector::Identify("code.cpp", input) == Inspector::Kind::Code);
     assert(Inspector::Identify("main.ts", input) == Inspector::Kind::Code);
+    assert(Inspector::Identify("note.txt", input) == Inspector::Kind::Text);
+    assert(Inspector::Identify("note.custom-format", input) == Inspector::Kind::Unknown);
     assert(Inspector::Identify("details", input) == Inspector::Kind::Text);
     assert(Inspector::ReadText(input, truncated) == html + "Æøå\nlast\n");
     assert(!truncated);
@@ -141,6 +164,22 @@ void TestPdf(const std::string &path) {
 }
 
 void TestMedia(const std::string &path, bool expectNoAudio) {
+  Write(path, AiffFixture());
+  {
+    Inspector::Input input(path);
+    assert(Inspector::Identify("recording", input) == Inspector::Kind::Audio);
+    assert(Inspector::Identify("recording.unlisted", input) == Inspector::Kind::Audio);
+    assert(input.Position() == 0);
+    auto noFrame = [](std::unique_ptr<BBitmap>) { assert(false); };
+    assert(Inspector::InspectMedia(input, Inspector::Kind::Audio, false, {}, noFrame)
+               .find("Audio") == 0);
+  }
+  // A standalone bitmap remains a photo, not a one-frame media track.
+  {
+    Inspector::Input input("docs/screenshots/listi-properties-0.10.0.png");
+    assert(Inspector::Identify("untitled", input) == Inspector::Kind::Image);
+    assert(input.Position() == 0);
+  }
   Write(path, WaveFixture());
   {
     Inspector::Input input(path);
@@ -160,6 +199,7 @@ void TestMedia(const std::string &path, bool expectNoAudio) {
   }
   // Synthetic 3-frame testsrc2 clip, encoded with libx264 as yuv420p.
   Inspector::Input input("tests/inspector-video.mp4");
+  assert(Inspector::Identify("unlisted.clip", input) == Inspector::Kind::Video);
   int frames = 0;
   auto frame = [&](std::unique_ptr<BBitmap> image) {
     assert(image && image->Bounds() == BRect(0, 0, 31, 31));
