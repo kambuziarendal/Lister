@@ -33,6 +33,23 @@ int main() {
   check(copiedFolder.GetAttrInfo("Listi:label",&info)==B_OK && info.type==B_STRING_TYPE && copiedFolder.ReadAttr("Listi:label",B_STRING_TYPE,0,copiedLabel,sizeof(copiedLabel))==sizeof(copiedLabel) && std::string(copiedLabel)==label,"folder attribute type and value preserved");
   std::string actual(large.size(),' ');
   check(copiedFile.ReadAttr("Listi:large",B_RAW_TYPE,0,actual.data(),actual.size())==ssize_t(actual.size()) && actual==large,"multi-chunk attribute preserved");
+  const char conflicting[]="other metadata!";
+  check(copiedFolder.WriteAttr("Listi:label",B_STRING_TYPE,0,conflicting,sizeof(conflicting))==sizeof(conflicting),
+        "merged destination has distinct folder metadata");
+  Listi::Job move{Listi::Action::Move,{source},dest};
+  Listi::Hooks replace;
+  replace.conflict=[](const std::string&){return Listi::Decision::Replace;};
+  auto merged=Listi::Run(move,replace);
+  check(!merged.errors.empty() && !merged.completed &&
+            access((source+"/file").c_str(),F_OK)==0 &&
+            copiedFolder.ReadAttr("Listi:label",B_STRING_TYPE,0,copiedLabel,sizeof(copiedLabel))==sizeof(conflicting) &&
+            std::string(copiedLabel)==conflicting,
+        "moving onto a folder with different attribute bytes preserves both trees");
+  check(copiedFolder.WriteAttr("Listi:label",B_STRING_TYPE,0,label,sizeof(label))==sizeof(label),
+        "restore matching destination attribute");
+  merged=Listi::Run(move,replace);
+  check(merged.errors.empty() && merged.completed==1 && access(source.c_str(),F_OK)!=0,
+        "matching folder attributes allow a merged move");
   Listi::Job cleanup;cleanup.action=Listi::Action::Delete;cleanup.sources={base};
   auto removed=Listi::Run(cleanup,{});
   check(removed.errors.empty(),"owned fixture cleaned");

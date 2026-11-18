@@ -173,19 +173,27 @@ struct Runner {
     if (h.progress)
       h.progress(p, n);
   }
-  void Attributes(const std::string &src, const std::string &dst) {
+  void Attributes(const std::string &src, const std::string &dst,
+                  bool verifyMerge = false) {
     BNode from(src.c_str()), to(dst.c_str());
     char name[B_ATTR_NAME_LENGTH];
     if (from.InitCheck() != B_OK || to.InitCheck() != B_OK)
       throw std::runtime_error("Could not open copy metadata");
     status_t status;
     std::vector<char> buf(65536);
+    std::vector<char> existing(verifyMerge ? buf.size() : 0);
     while ((status = from.GetNextAttrName(name)) == B_OK) {
       Check();
       attr_info info;
       if (from.GetAttrInfo(name, &info) != B_OK)
         throw std::runtime_error(src + ": attribute changed during copy");
-      if (info.size == 0)
+      if (verifyMerge) {
+        attr_info target;
+        if (to.GetAttrInfo(name, &target) != B_OK ||
+            target.type != info.type || target.size != info.size)
+          throw std::runtime_error(dst + ": folder merge would lose source attribute " +
+                                   name + "; source retained");
+      } else if (info.size == 0)
         throw std::runtime_error(
             src + ": zero-length attribute cannot be preserved: " + name);
       off_t pos = 0;
@@ -194,7 +202,12 @@ struct Runner {
                                   std::min<off_t>(buf.size(), info.size - pos));
         if (n <= 0)
           throw std::runtime_error(src + ": could not read attribute " + name);
-        if (to.WriteAttr(name, info.type, pos, buf.data(), n) != n)
+        if (verifyMerge) {
+          if (to.ReadAttr(name, info.type, pos, existing.data(), n) != n ||
+              memcmp(existing.data(), buf.data(), n) != 0)
+            throw std::runtime_error(dst + ": folder merge would change attribute " +
+                                     name + "; source retained");
+        } else if (to.WriteAttr(name, info.type, pos, buf.data(), n) != n)
           throw std::runtime_error(dst + ": could not preserve attribute " +
                                    name);
         pos += n;
@@ -414,6 +427,10 @@ struct Runner {
         DirectoryStack &stack;
         ~DirectoryScope() { stack.pop_back(); }
       } scope{copyDirectories};
+      // A merge keeps the destination folder's own metadata. Never remove
+      // the source folder on Move if that would discard a distinct attribute.
+      if (existed && deferCompletion)
+        Attributes(src, dst, true);
       bool complete = true;
       Dir dir(opendir(src.c_str()), closedir);
       if (!dir)
