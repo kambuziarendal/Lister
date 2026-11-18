@@ -2,9 +2,19 @@
 #include "ImagePreview.h"
 #include "BitmapMailbox.h"
 #include "InspectorContent.h"
+#include "InspectorDocument.h"
+#include "InspectorEditor.h"
+#include <Alert.h>
+#include <Application.h>
+#include <Entry.h>
+#include <Roster.h>
+#include <sys/stat.h>
 #include "ThemeTextView.h"
 #include "VirtualFile.h"
 #include <Bitmap.h>
+#include <BitmapStream.h>
+#include <MenuItem.h>
+#include <PopUpMenu.h>
 #include <Button.h>
 #include <ScrollView.h>
 #include <DataIO.h>
@@ -19,11 +29,79 @@
 #include <algorithm>
 #include <cerrno>
 #include <climits>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
 #include <fcntl.h>
 #include <unistd.h>
 namespace {
 constexpr uint32 kLoad = 'pimg', kReady = 'pird', kFrame = 'pifr',
-                 kPrevious = 'pipv', kNext = 'pinx', kPlay = 'pipl';
+                 kFileAction = 'pifa', kPrevious = 'pipv', kNext = 'pinx', kPlay = 'pipl';
+
+constexpr uint32 kPhotoMenu = 'pipm';
+
+// Native JPEG translation writes a bitmap header followed by rows. Decode
+// directly into the final bitmap, not a second image-sized memory stream.
+constexpr size_t kPhotoPixels = 48000000;
+class PhotoBitmapStream : public BBitmapStream {
+  const Listi::TransferControl &control;
+  bool sawHeader = false;
+
+public:
+  explicit PhotoBitmapStream(const Listi::TransferControl &c) : control(c) {}
+  ssize_t WriteAt(off_t offset, const void *data, size_t size) override {
+    try {
+      control.Check();
+    } catch (...) {
+      return B_CANCELED;
+    }
+    if (!sawHeader) {
+      if (offset != 0 || size < sizeof(TranslatorBitmap))
+        return B_BAD_DATA;
+      struct {
+        uint32 magic;
+        float left, top, right, bottom;
+        uint32 rowBytes, colors, dataSize;
+      } header;
+      static_assert(sizeof(header) == sizeof(TranslatorBitmap));
+      std::memcpy(&header, data, sizeof(header));
+      if (B_HOST_IS_LENDIAN)
+        swap_data(B_UINT32_TYPE, &header, sizeof(header), B_SWAP_ALWAYS);
+      double width = header.right + 1., height = header.bottom + 1.;
+      if (header.magic != B_TRANSLATOR_BITMAP || header.left != 0 ||
+          header.top != 0 || !(width >= 1 && width <= 65535) ||
+          !(height >= 1 && height <= 65535) || std::floor(width) != width ||
+          std::floor(height) != height || width * height > kPhotoPixels ||
+          header.rowBytes < width || header.dataSize > kPhotoPixels * 4 ||
+          height * header.rowBytes != header.dataSize)
+        return B_BAD_DATA;
+      sawHeader = true;
+    } else if (offset < static_cast<off_t>(sizeof(TranslatorBitmap))) {
+      return B_BAD_DATA;
+    }
+    return BBitmapStream::WriteAt(offset, data, size);
+  }
+};
+
+BBitmap *DecodePhoto(Inspector::Input &input, const Inspector::PhotoInfo &photo,
+                     const Listi::TransferControl &control) {
+  if (!photo.width || !photo.height)
+    throw std::runtime_error("Cannot read the JPEG frame dimensions");
+  if (uint64_t(photo.width) * photo.height > kPhotoPixels)
+    throw std::runtime_error("Image exceeds the 48 megapixel preview limit");
+  off_t bytes;
+  input.GetSize(&bytes);
+  if (bytes > 64 * 1024 * 1024)
+    throw std::runtime_error("Image previews are limited to 64 MiB");
+  PhotoBitmapStream stream(control);
+  auto status = BTranslatorRoster::Default()->Translate(
+      &input, nullptr, nullptr, &stream, B_TRANSLATOR_BITMAP);
+  control.Check();
+  BBitmap *bitmap = nullptr;
+  if (status != B_OK || stream.DetachBitmap(&bitmap) != B_OK)
+    throw std::runtime_error("Cannot decode this JPEG image");
+  return bitmap;
+}
 
 class CachedPreview {
 public:
@@ -143,6 +221,13 @@ public:
       CachedPreview file(source, c);
       Inspector::Input input(file.path);
       kind = Inspector::Identify(Listi::LocationLeaf(source), input);
+      off_t length = 0;
+      input.GetSize(&length);
+      struct stat st;
+      const bool writable = !Listi::IsVirtual(source) && length <= off_t(Inspector::kDocumentLimit) &&
+          lstat(source.c_str(), &st) == 0 && S_ISREG(st.st_mode) &&
+          (st.st_mode & 0222) != 0 && access(source.c_str(), W_OK) == 0;
+      result.AddBool("writable", writable);
       switch (kind) {
       case Inspector::Kind::Text:
       case Inspector::Kind::Code:
@@ -189,7 +274,17 @@ public:
       }
       default: {
         // Older or extensionless images still use all installed translators.
-        image.reset(DecodeImage(input, c));
+        auto photo = Inspector::ReadPhotoInfo([&](size_t p, void *data, size_t n) {
+          c.Check();
+          return input.ReadAt(p, data, n) == static_cast<ssize_t>(n);
+        });
+        image.reset(photo.jpeg ? DecodePhoto(input, photo, c) : DecodeImage(input, c));
+        kind = Inspector::Kind::Image;
+        result.AddString("camera", photo.cameraDetails.c_str());
+        if (photo.hasLocation) {
+          result.AddDouble("latitude", photo.latitude);
+          result.AddDouble("longitude", photo.longitude);
+        }
         BString caption;
         caption << int32(image->Bounds().Width() + 1) << " × "
                 << int32(image->Bounds().Height() + 1);
@@ -289,7 +384,10 @@ ImagePreview::ImagePreview(bool standalone)
     button->Hide();
     return button;
   };
+  fileAction = addButton("Edit", kFileAction);
   previous = addButton("Previous", kPrevious);
+  photoActions = addButton("Image…", kPhotoMenu);
+  photoActions->SetToolTip("Image size, zoom and camera details. Scroll to zoom; drag to pan.");
   next = addButton("Next", kNext);
   play = addButton("Play preview", kPlay);
 }
@@ -301,7 +399,10 @@ ImagePreview::~ImagePreview() {
   delete bitmap;
 }
 void ImagePreview::AttachedToWindow() {
+  fileAction->SetTarget(this);
+  StartWatching(BMessenger(be_app), 'isav');
   previous->SetTarget(this);
+  photoActions->SetTarget(this);
   next->SetTarget(this);
   play->SetTarget(this);
   FrameResized(Bounds().Width(), Bounds().Height());
@@ -312,10 +413,25 @@ void ImagePreview::AttachedToWindow() {
   if (!path.empty())
     Request(1);
 }
+void ImagePreview::DetachedFromWindow() {
+  StopWatching(BMessenger(be_app), 'isav');
+  // A reattached view receives a new handler token. Do not keep a loader
+  // that posts completed reads to the token from the previous layout.
+  ++*generation;
+  if (loader && loader->Lock())
+    loader->Quit();
+  loader = nullptr;
+  replies->Clear();
+  BView::DetachedFromWindow();
+}
 void ImagePreview::ShowFile(const std::string &p) {
   if (path == p)
     return;
   path = p;
+  photoView = {};
+  draggingPhoto = false;
+  cameraDetails.clear();
+  hasLocation = false;
   page = 1;
   lastPage = 0;
   kind = Inspector::Kind::Unknown;
@@ -323,6 +439,7 @@ void ImagePreview::ShowFile(const std::string &p) {
   Request(1);
 }
 void ImagePreview::Request(int requestedPage, bool playback) {
+  ready = false;
   int64 serial = ++*generation;
   replies->Clear();
   if (kind == Inspector::Kind::Unknown) {
@@ -354,9 +471,21 @@ void ImagePreview::UpdateControls() {
   };
   const bool pdf = kind == Inspector::Kind::Pdf;
   const bool media = kind == Inspector::Kind::Audio || kind == Inspector::Kind::Video;
+  const bool sourceText = kind == Inspector::Kind::Text || kind == Inspector::Kind::Code ||
+                          kind == Inspector::Kind::Markdown || kind == Inspector::Kind::Html;
+  const bool unknown = kind == Inspector::Kind::Unknown && !bitmap;
+  const bool local = !path.empty() && !Listi::IsVirtual(path);
+  const char *label = media ? "MediaPlayer" : !canEdit ? "Read only" :
+                      unknown ? "Try as text…" : "Edit";
+  fileAction->SetLabel(label);
+  fileAction->ResizeToPreferred();
+  fileAction->SetEnabled(media || canEdit);
+  show(fileAction, ready && !path.empty() && (sourceText || unknown || (media && local)));
+  fileAction->MoveTo(std::max(0.f, Bounds().right - fileAction->Bounds().Width() - 8), 3);
   previous->SetEnabled(pdf && page > 1);
   next->SetEnabled(pdf && page != lastPage);
   show(previous, pdf);
+  show(photoActions, kind == Inspector::Kind::Image && bitmap);
   show(next, pdf);
   show(play, media);
   play->SetLabel(playing ? "Stop preview" : "Play preview");
@@ -364,6 +493,47 @@ void ImagePreview::UpdateControls() {
 }
 void ImagePreview::MessageReceived(BMessage *m) {
   switch (m->what) {
+  case kPhotoMenu:
+    if (kind == Inspector::Kind::Image && bitmap)
+      PhotoMenu();
+    return;
+  case B_MOUSE_WHEEL_CHANGED: {
+    if (kind != Inspector::Kind::Image || !bitmap) {
+      BView::MessageReceived(m);
+      return;
+    }
+    float dy = m->GetFloat("be:wheel_delta_y", 0);
+    if (dy != 0) {
+      BPoint pointer;
+      uint32 buttons;
+      GetMouse(&pointer, &buttons, false);
+      ZoomPhoto(dy < 0 ? 1.5 : 1. / 1.5, pointer);
+    }
+    return;
+  }
+  case B_OBSERVER_NOTICE_CHANGE:
+    if (m->GetInt32(B_OBSERVE_WHAT_CHANGE, 0) == 'isav' &&
+        !path.empty() && path == m->GetString("path", ""))
+      Request(1);
+    return;
+  case kFileAction: {
+    if (!ready || path.empty() || Listi::IsVirtual(path))
+      return;
+    if (kind == Inspector::Kind::Audio || kind == Inspector::Kind::Video) {
+      entry_ref ref;
+      BMessage open(B_REFS_RECEIVED);
+      if (get_ref_for_path(path.c_str(), &ref) == B_OK && open.AddRef("refs", &ref) == B_OK) {
+        auto status = be_roster->Launch("application/x-vnd.Haiku-MediaPlayer", &open);
+        if (status == B_OK || status == B_ALREADY_RUNNING)
+          return;
+      }
+      (new BAlert("MediaPlayer", "Could not open this file in Haiku MediaPlayer.",
+                  "OK"))->Go(nullptr);
+    } else if (canEdit && !bitmap) {
+      OpenInspectorEditor(path, Window());
+    }
+    return;
+  }
   case kPrevious:
     if (kind == Inspector::Kind::Pdf && page > 1)
       Request(page - 1);
@@ -392,6 +562,11 @@ void ImagePreview::MessageReceived(BMessage *m) {
       return;
     }
     kind = static_cast<Inspector::Kind>(m->GetInt32("kind", 0));
+    cameraDetails = m->GetString("camera", "");
+    hasLocation = m->FindDouble("latitude", &latitude) == B_OK &&
+                  m->FindDouble("longitude", &longitude) == B_OK;
+    ready = true;
+    canEdit = m->GetBool("writable", false);
     const int resultPage = m->GetInt32("page", 1);
     const bool validPage = m->GetBool("pageValid", false);
     if (validPage)
@@ -413,6 +588,8 @@ void ImagePreview::MessageReceived(BMessage *m) {
       text->ScrollToOffset(0);
       textScroll->Show();
     }
+    if (kind == Inspector::Kind::Unknown && !bitmap && canEdit)
+      caption = "Unknown format. Try opening it as UTF-8 text?";
     playing = false;
     UpdateControls();
     return;
@@ -422,8 +599,99 @@ void ImagePreview::MessageReceived(BMessage *m) {
   }
 }
 
+BRect ImagePreview::PhotoArea() const {
+  BRect area = Bounds().InsetByCopy(12, 12);
+  area.top = std::max(area.top + 22, photoActions->Frame().bottom + 4);
+  area.bottom = Bounds().bottom - 45;
+  return area;
+}
+
+void ImagePreview::ZoomPhoto(double factor, BPoint anchor) {
+  auto area = PhotoArea(), bounds = bitmap->Bounds();
+  double w = bounds.Width() + 1, h = bounds.Height() + 1;
+  double vw = area.Width() + 1, vh = area.Height() + 1;
+  auto before = photoView.Region(w, h, vw, vh);
+  if (before.scale <= 0)
+    return;
+  const auto fit = Inspector::PhotoView{}.Region(w, h, vw, vh);
+  photoView.zoom = std::clamp(before.scale * factor, fit.scale, 8.);
+  auto after = photoView.Region(w, h, vw, vh);
+  // Keep the pixel under the pointer stationary when zoom changes.
+  double x = anchor.x - area.left, y = anchor.y - area.top;
+  double sourceX = before.left + (x - before.x) / before.scale;
+  double sourceY = before.top + (y - before.y) / before.scale;
+  double left = sourceX - (x - after.x) / after.scale;
+  double top = sourceY - (y - after.y) / after.scale;
+  photoView.centerX = (std::clamp(left, 0., w-after.width) + after.width/2) / w;
+  photoView.centerY = (std::clamp(top, 0., h-after.height) + after.height/2) / h;
+  Invalidate();
+}
+
+void ImagePreview::PhotoMenu() {
+  BPopUpMenu menu("Image", false, false);
+  auto add = [&](const char *label) {
+    auto *item = new BMenuItem(label, nullptr);
+    menu.AddItem(item);
+    return item;
+  };
+  auto *fit = add("Fit to window"), *actual = add("Actual pixels (100%)");
+  auto *larger = add("Zoom in"), *smaller = add("Zoom out");
+  menu.AddSeparatorItem();
+  auto *details = add("Camera details…"), *gps = add("Show GPS coordinates…");
+  details->SetEnabled(!cameraDetails.empty());
+  gps->SetEnabled(hasLocation);
+  BPoint location = photoActions->Frame().LeftBottom() + BPoint(0, 2);
+  auto *chosen = menu.Go(ConvertToScreen(location), false, true);
+  if (!chosen)
+    return;
+  if (chosen == details) {
+    (new BAlert("Camera details", cameraDetails.c_str(), "OK"))->Go(nullptr);
+  } else if (chosen == gps && hasLocation) {
+    char text[100];
+    std::snprintf(text, sizeof(text), "Latitude: %.6f\nLongitude: %.6f", latitude, longitude);
+    (new BAlert("GPS coordinates", text, "OK"))->Go(nullptr);
+  } else if (chosen == larger || chosen == smaller) {
+    BRect area = PhotoArea();
+    BPoint center((area.left + area.right) / 2, (area.top + area.bottom) / 2);
+    ZoomPhoto(chosen == larger ? 1.5 : 1. / 1.5, center);
+  } else {
+    if (chosen == fit)
+      photoView = {};
+    else if (chosen == actual)
+      photoView.zoom = 1;
+    Invalidate();
+  }
+}
+
+void ImagePreview::MouseDown(BPoint where) {
+  if (kind == Inspector::Kind::Image && bitmap && PhotoArea().Contains(where)) {
+    draggingPhoto = true;
+    lastPointer = where;
+    SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+    return;
+  }
+  BView::MouseDown(where);
+}
+void ImagePreview::MouseMoved(BPoint where, uint32 transit, const BMessage *drag) {
+  if (draggingPhoto && bitmap && kind == Inspector::Kind::Image) {
+    auto bounds = bitmap->Bounds(), area = PhotoArea();
+    photoView.Pan(where.x - lastPointer.x, where.y - lastPointer.y,
+                 bounds.Width()+1, bounds.Height()+1, area.Width()+1, area.Height()+1);
+    lastPointer = where;
+    Invalidate();
+    return;
+  }
+  BView::MouseMoved(where, transit, drag);
+}
+void ImagePreview::MouseUp(BPoint where) {
+  draggingPhoto = false;
+  BView::MouseUp(where);
+}
+
 void ImagePreview::FrameResized(float width, float height) {
-  textScroll->MoveTo(8, 31);
+  photoActions->MoveTo(std::max(0.f, width - photoActions->Bounds().Width() - 8), 3);
+  fileAction->MoveTo(std::max(0.f, width - fileAction->Bounds().Width() - 8), 3);
+  textScroll->MoveTo(8, 35);
   textScroll->ResizeTo(std::max(32.f, width - 16), std::max(32.f, height - 70));
   text->SetTextRect(text->Bounds().OffsetToCopy(0, 0).InsetByCopy(4, 3));
   const float buttonTop = height - 44 - previous->Bounds().Height();
@@ -440,7 +708,24 @@ void ImagePreview::Draw(BRect) {
   area.bottom = previous->IsHidden(previous) && play->IsHidden(play)
                     ? Bounds().bottom - 53
                     : previous->Frame().top - 6;
-  if (bitmap && area.Width() > 0 && area.Height() > 0) {
+  BString line(caption.c_str());
+  if (bitmap && kind == Inspector::Kind::Image) {
+    area = PhotoArea();
+    const auto bounds = bitmap->Bounds();
+    const auto region = photoView.Region(bounds.Width()+1, bounds.Height()+1,
+                                         area.Width()+1, area.Height()+1);
+    if (region.scale > 0) {
+      BRect src(0, 0, std::max(0., region.width-1), std::max(0., region.height-1));
+      src.OffsetTo(bounds.left + region.left, bounds.top + region.top);
+      BRect dest(0, 0, std::max(0., region.width*region.scale-1),
+                 std::max(0., region.height*region.scale-1));
+      dest.OffsetTo(area.left + region.x, area.top + region.y);
+      SetDrawingMode(B_OP_ALPHA);
+      DrawBitmap(bitmap, src, dest);
+      SetDrawingMode(B_OP_COPY);
+      line << " · " << int32(std::lround(region.scale * 100)) << "%";
+    }
+  } else if (bitmap && area.Width() > 0 && area.Height() > 0) {
     BRect src = bitmap->Bounds();
     float scale = std::min(1.f, std::min(area.Width() / (src.Width() + 1),
                                          area.Height() / (src.Height() + 1)));
@@ -454,7 +739,6 @@ void ImagePreview::Draw(BRect) {
     DrawBitmap(bitmap, src, dest);
     SetDrawingMode(B_OP_COPY);
   }
-  BString line(caption.c_str());
   TruncateString(&line, B_TRUNCATE_END, std::max(0.f, Bounds().Width() - 24));
   DrawString(line, BPoint(12, Bounds().bottom - 26));
   BString name(path.empty() ? "" : Listi::LocationLeaf(path).c_str());

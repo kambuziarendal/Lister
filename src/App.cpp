@@ -25,6 +25,7 @@
 #include "Shelf.h"
 #include "ShelfWindow.h"
 #include "ImagePreview.h"
+#include "InspectorEditor.h"
 #include "ImageConvert.h"
 #include "InlineAction.h"
 #include "OperationQueue.h"
@@ -70,7 +71,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 constexpr uint32 kResumeArchiveEdits = 'ared';
-constexpr uint32 kEditWorkspace = 'ewsp', kSplitChanged = 'swgt';
+constexpr uint32 kEditWorkspace = 'ewsp', kSplitChanged = 'swgt',
+                 kQuickView = 'qvpr';
 
 class WorkspaceSplit : public BSplitView {
 public:
@@ -438,6 +440,8 @@ class MainWindow : public BWindow {
   Pane *panes[2];
   ImagePreview *preview;
   BMenuItem *previewMenu, *einnMenu, *askrMenu, *tviskiptMenu, *smidjaMenu;
+  BMenuItem *quickViewMenu;
+  bool quickView = false;
   BMenuBar *menu;
   BButton *bankToggle;
   BMenu *fileView;
@@ -882,7 +886,7 @@ class MainWindow : public BWindow {
       split->SetItemWeight(SplitIndex(i), prefs.splitWeights[i], true);
   }
   void RememberSplitWeights() {
-    if (prefs.SinglePane())
+    if (prefs.SinglePane() || quickView)
       return;
     // Keep the inspector's previous share when it is not participating.
     const bool inspectorExpanded =
@@ -900,7 +904,7 @@ class MainWindow : public BWindow {
       prefs.splitWeights[i] = raw[i] * totalShare / total;
   }
   void ApplyPreviewVisibility() {
-    const bool showPreview = prefs.Preview() && !prefs.SinglePane();
+    const bool showPreview = quickView || (prefs.Preview() && !prefs.SinglePane());
     if (showPreview != previewVisible) {
       previewVisible = showPreview;
       if (showPreview && preview->IsHidden(preview))
@@ -908,14 +912,16 @@ class MainWindow : public BWindow {
       else if (!showPreview && !preview->IsHidden(preview))
         preview->Hide();
     }
-    previewMenu->SetMarked(showPreview);
-    previewMenu->SetEnabled(!prefs.SinglePane());
+    quickViewMenu->SetMarked(quickView);
+    previewMenu->SetMarked(prefs.Preview() && !prefs.SinglePane());
+    previewMenu->SetEnabled(!quickView && !prefs.SinglePane());
     UpdatePreview();
   }
   void ApplyWorkspace() {
-    if (inspectorOnLeft != prefs.inspectorLeft) {
+    const bool previewFirst = quickView ? source == 1 : prefs.inspectorLeft;
+    if (inspectorOnLeft != previewFirst) {
       split->GetLayout()->RemoveView(preview);
-      inspectorOnLeft = prefs.inspectorLeft;
+      inspectorOnLeft = previewFirst;
       split->AddChild(SplitIndex(2), preview, prefs.splitWeights[2]);
       for (int i = 0; i < 3; ++i)
         split->SetCollapsible(SplitIndex(i), i == 2);
@@ -923,7 +929,7 @@ class MainWindow : public BWindow {
     PlaceTools();
     UpdateBank(Bounds().Width());
     for (int i = 0; i < 2; ++i) {
-      const bool visible = !prefs.SinglePane() || i == source;
+      const bool visible = i == source || (!quickView && !prefs.SinglePane());
       if (visible != paneVisible[i]) {
         paneVisible[i] = visible;
         if (visible)
@@ -936,12 +942,15 @@ class MainWindow : public BWindow {
     }
     ApplyPreviewVisibility();
     split->SetOrientation(prefs.panelsStacked ? B_VERTICAL : B_HORIZONTAL);
-    split->SetSpacing(prefs.SinglePane() ? 0 : 6);
-    split->SetSplitterSize(prefs.SinglePane() ? 0 : splitterSize);
+    const bool oneView = prefs.SinglePane() && !quickView;
+    split->SetSpacing(oneView ? 0 : 6);
+    split->SetSplitterSize(oneView ? 0 : splitterSize);
     SetSplitWeights();
+    if (quickView)
+      split->SetItemWeight(SplitIndex(2), prefs.splitWeights[1 - source], true);
     for (auto action : {kCopy, kMove, kSame, kSwitch})
       if (auto item = menu->FindItem(action))
-        item->SetEnabled(!prefs.SinglePane());
+        item->SetEnabled(!prefs.SinglePane() && (!quickView || action != kSwitch));
     if (auto item = menu->FindItem(kFilter))
       item->SetEnabled(!prefs.IsEinn());
     queue->SetCompact(prefs.SinglePane());
@@ -963,6 +972,7 @@ class MainWindow : public BWindow {
   void SetWorkspace(Workspace value) {
     if (prefs.workspace == value)
       return;
+    quickView = false;
     prefs.workspace = value;
     prefs.singlePane = source;
     ApplyWorkspace();
@@ -1126,7 +1136,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Listi::SavedPlaces &saved, bool writable,
              const Listi::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.34.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.35.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable),
         places(saved), placesWritable(writable), service(svc) {
@@ -1260,6 +1270,8 @@ public:
     previewMenu =
         new BMenuItem("Inspector panel", new BMessage(kPreviewToggle), 'P');
     view->AddItem(previewMenu);
+    quickViewMenu = new BMenuItem("Quick view", new BMessage(kQuickView), 'P', B_SHIFT_KEY);
+    view->AddItem(quickViewMenu);
     view->AddItem(
         new BMenuItem("Connect to server...", new BMessage(kNetwork), 'K'));
     view->AddItem(new BMenuItem("Refresh", new BMessage(kRefresh), 'L'));
@@ -1418,7 +1430,7 @@ public:
   }
 
   bool QuitRequested() override {
-    if (!FilePropertiesAllowQuit() || !OpenWithAllowQuit() ||
+    if (!InspectorEditorsAllowQuit() || !FilePropertiesAllowQuit() || !OpenWithAllowQuit() ||
         !ArchiveEditorsAllowQuit())
       return false;
     if (placesSaving || searchesSaving) {
@@ -1656,11 +1668,20 @@ public:
         break;
       if (actionArea->Pending())
         CloseAction();
-      else
+      else if (quickView) {
+        quickView = false;
+        ApplyWorkspace();
+        panes[source]->FocusList();
+      } else
         queue->Collapse();
       break;
+    case kQuickView:
+      quickView = !quickView;
+      ApplyWorkspace();
+      panes[source]->FocusList();
+      break;
     case kPreviewToggle:
-      if (prefs.SinglePane())
+      if (prefs.SinglePane() || quickView)
         break;
       prefs.SetPreview(!prefs.Preview());
       ApplyPreviewVisibility();
@@ -1701,7 +1722,7 @@ public:
     case kActivate:
       if (m->GetInt32("pane", source) < 0 || m->GetInt32("pane", source) > 1)
         break;
-      if (prefs.SinglePane() && m->GetInt32("pane", source) != source)
+      if ((quickView || prefs.SinglePane()) && m->GetInt32("pane", source) != source)
         break;
       source = m->GetInt32("pane", source);
       for (int i = 0; i < 2; i++)
@@ -1709,6 +1730,8 @@ public:
       UpdatePreview();
       break;
     case kSwitch:
+      if (quickView)
+        break;
       if (prefs.workspace == Workspace::askr) {
         panes[source]->ToggleTreeFocus();
         break;
@@ -1756,6 +1779,10 @@ public:
       int32 which = m->GetInt32("pane", -1);
       if (which < 0 || which > 1)
         break;
+      if (quickView && source != which) {
+        quickView = false;
+        ApplyWorkspace();
+      }
       source = which;
       if (prefs.SinglePane()) {
         prefs.singlePane = source;
@@ -1778,7 +1805,7 @@ public:
         break;
       }
       const int32 owner = m->GetInt32("pane", -1);
-      if (owner < 0 || owner > 1 || (prefs.SinglePane() && owner != source))
+      if (owner < 0 || owner > 1 || ((prefs.SinglePane() || quickView) && owner != source))
         break;
       source = owner;
       for (int i = 0; i < 2; ++i)
@@ -2376,6 +2403,7 @@ public:
       prefs.profiles.Load(profilesMessage);
       if (layout.buttons != prefs.buttons)
         prefs.tviskiptButtons = -1;
+      quickView = false;
       prefs.ApplyLayout(layout);
       if (prefs.SinglePane())
         source = prefs.singlePane;
@@ -2465,10 +2493,14 @@ public:
     }
   }
   bool QuitRequested() override {
-    return FilePropertiesAllowQuit() && OpenWithAllowQuit() &&
+    return InspectorEditorsAllowQuit() && FilePropertiesAllowQuit() && OpenWithAllowQuit() &&
            ArchiveEditorsAllowQuit() && BApplication::QuitRequested();
   }
   void MessageReceived(BMessage *m) override {
+    if (m->what == 'isav') {
+      SendNotices(m->what, m);
+      return;
+    }
     if (m->what == kPlacesSaved || m->what == kSearchesSaved) {
       mainWindow.SendMessage(m);
       return;

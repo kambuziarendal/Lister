@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "InspectorContent.h"
+#include "InspectorPhoto.h"
 #include <View.h>
 #include <atomic>
 #include <memory>
@@ -16,14 +17,27 @@ public:
   explicit ImagePreview(bool standalone = false);
   ~ImagePreview();
   void AttachedToWindow() override;
+  void DetachedFromWindow() override;
   void MessageReceived(BMessage *) override;
   void Draw(BRect) override;
   void FrameResized(float, float) override;
+  void MouseDown(BPoint) override;
+  void MouseMoved(BPoint, uint32, const BMessage *) override;
+  void MouseUp(BPoint) override;
   void ShowFile(const std::string &);
 
 private:
   void Request(int page, bool playback = false);
   void UpdateControls();
+  BRect PhotoArea() const;
+  void PhotoMenu();
+  void ZoomPhoto(double factor, BPoint anchor);
+  BButton *photoActions;
+  Inspector::PhotoView photoView;
+  std::string cameraDetails;
+  bool hasLocation = false, draggingPhoto = false;
+  double latitude = 0, longitude = 0;
+  BPoint lastPointer;
   BBitmap *bitmap = nullptr;
   std::shared_ptr<BitmapMailbox> replies;
   BLooper *loader = nullptr;
@@ -31,6 +45,8 @@ private:
   ThemeTextView *text;
   BScrollView *textScroll;
   BButton *previous, *next, *play;
+  BButton *fileAction;
+  bool ready = false, canEdit = false;
   Inspector::Kind kind = Inspector::Kind::Unknown;
   const bool standalone;
   int page = 1, lastPage = 0;
