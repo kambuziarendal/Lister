@@ -269,19 +269,41 @@ ArchiveEditSession::Open(const std::string &member, const std::string &root,
   Require(made, "Cannot allocate private archive edit folder.");
   s->directory = made;
   s->directoryIdentity = PrivateDirectory(s->directory);
-  Require(!mkdir(Join(s->directory, "work").c_str(), 0700),
-          "Cannot create editor working folder.");
-  s->workIdentity = PrivateDirectory(Join(s->directory, "work"));
-  s->working = Join(Join(s->directory, "work"), LocationLeaf(member));
-  FD output(
-      open(s->working.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600));
-  Require(output.n >= 0, "Cannot create editor working file.");
-  ReadFile(
-      member, [&](const char *b, size_t n) { Write(output.n, b, n); }, control);
-  Require(!fsync(output.n), "Cannot flush editor working file.");
-  s->ValidateArchive();
-  Snapshot(s->working, Join(s->directory, "saved"), hooks);
-  s->Persist();
+  const auto work = Join(s->directory, "work");
+  const auto leaf = LocationLeaf(member);
+  FD folder(open(made, O_RDONLY | O_DIRECTORY | O_NOFOLLOW));
+  FD workFolder(-1);
+  try {
+    Require(folder.n >= 0 && !mkdirat(folder.n, "work", 0700),
+            "Cannot create editor working folder.");
+    workFolder.n = openat(folder.n, "work", O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    Require(workFolder.n >= 0, "Cannot open editor working folder.");
+    s->workIdentity = PrivateDirectory(work);
+    s->working = Join(work, leaf);
+    FD output(openat(workFolder.n, leaf.c_str(),
+                     O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600));
+    Require(output.n >= 0, "Cannot create editor working file.");
+    ReadFile(member, [&](const char *b, size_t n) { Write(output.n, b, n); },
+             control);
+    Require(!fsync(output.n), "Cannot flush editor working file.");
+    s->ValidateArchive();
+    Snapshot(s->working, Join(s->directory, "saved"), hooks);
+    s->Persist();
+  } catch (...) {
+    // No editor has seen these files yet. Preserve a published journal (e.g.
+    // directory fsync failed), but do not strand unfinished, decrypted data.
+    struct stat now;
+    if (folder.n >= 0 && fstatat(folder.n, "session", &now, AT_SYMLINK_NOFOLLOW)
+                             && errno == ENOENT) {
+      if (workFolder.n >= 0)
+        unlinkat(workFolder.n, leaf.c_str(), 0);
+      unlinkat(folder.n, "work", AT_REMOVEDIR);
+      unlinkat(folder.n, "saved", 0);
+    }
+    if (!lstat(made, &now) && Identity(s->directoryIdentity, now))
+      rmdir(made); // Only removes an empty, unpublished session.
+    throw;
+  }
   return s;
 }
 std::shared_ptr<ArchiveEditSession>
