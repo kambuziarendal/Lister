@@ -16,6 +16,7 @@ public:
   bool Connect(BMessenger pane);
   void Close();
   void MessageReceived(BMessage *) override;
+
 private:
   BMessenger target;
   BMessage result;

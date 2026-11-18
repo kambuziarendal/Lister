@@ -8,12 +8,14 @@
 namespace Listi {
 ArchiveSecret::ArchiveSecret(const char *text) {
   size_t length = strlen(text);
-  if (!length || length > 1024) throw std::runtime_error("Enter a password of 1 to 1024 bytes.");
+  if (!length || length > 1024)
+    throw std::runtime_error("Enter a password of 1 to 1024 bytes.");
   bytes.assign(text, text + length + 1);
 }
 ArchiveSecret::~ArchiveSecret() {
   volatile char *p = bytes.data();
-  for (size_t i = 0; i < bytes.size(); ++i) p[i] = 0;
+  for (size_t i = 0; i < bytes.size(); ++i)
+    p[i] = 0;
 }
 namespace {
 std::mutex mutex;
@@ -26,68 +28,105 @@ std::map<uint64_t, ArchiveSecretPtr> creation;
 uint64_t nextCreationToken = 1;
 }
 void SetArchivePasswordPrompt(ArchivePasswordPrompt fn) {
-  std::lock_guard<std::mutex> lock(mutex);prompt = std::move(fn);stopping = false;
+  std::lock_guard<std::mutex> lock(mutex);
+  prompt = std::move(fn);
+  stopping = false;
 }
 void ForgetArchivePasswords() {
-  std::lock_guard<std::mutex> lock(mutex);cache.clear();creation.clear();++generation;
+  std::lock_guard<std::mutex> lock(mutex);
+  cache.clear();
+  creation.clear();
+  ++generation;
 }
 void StopArchivePasswords() {
-  std::lock_guard<std::mutex> lock(mutex);stopping = true;cache.clear();creation.clear();++generation;prompt = {};
+  std::lock_guard<std::mutex> lock(mutex);
+  stopping = true;
+  cache.clear();
+  creation.clear();
+  ++generation;
+  prompt = {};
 }
 uint64_t ArchivePasswordGeneration() {
-  std::lock_guard<std::mutex> lock(mutex);return generation;
+  std::lock_guard<std::mutex> lock(mutex);
+  return generation;
 }
 void CheckArchivePasswordGeneration(uint64_t expected) {
   std::lock_guard<std::mutex> lock(mutex);
-  if (stopping || generation != expected) throw Cancelled();
+  if (stopping || generation != expected)
+    throw Cancelled();
 }
 std::string ArchivePasswordIdentity(const struct stat &s) {
-  return std::to_string(s.st_dev)+":"+std::to_string(s.st_ino)+":"+
-    std::to_string(s.st_size)+":"+std::to_string(s.st_mtim.tv_sec)+":"+
-    std::to_string(s.st_mtim.tv_nsec)+":"+std::to_string(s.st_ctim.tv_sec)+":"+
-    std::to_string(s.st_ctim.tv_nsec);
+  return std::to_string(s.st_dev) + ":" + std::to_string(s.st_ino) + ":" +
+         std::to_string(s.st_size) + ":" + std::to_string(s.st_mtim.tv_sec) +
+         ":" + std::to_string(s.st_mtim.tv_nsec) + ":" +
+         std::to_string(s.st_ctim.tv_sec) + ":" +
+         std::to_string(s.st_ctim.tv_nsec);
 }
 ArchiveSecretPtr GetArchivePassword(const std::string &path,
-    const std::string &identity, bool retry, uint64_t expected,
-    const TransferControl &control) {
-  auto check = [&] { control.Check();CheckArchivePasswordGeneration(expected); };
+                                    const std::string &identity, bool retry,
+                                    uint64_t expected,
+                                    const TransferControl &control) {
+  auto check = [&] {
+    control.Check();
+    CheckArchivePasswordGeneration(expected);
+  };
   check();
   std::unique_lock<std::timed_mutex> gate(promptMutex, std::defer_lock);
-  while (!gate.try_lock_for(std::chrono::milliseconds(100))) check();
+  while (!gate.try_lock_for(std::chrono::milliseconds(100)))
+    check();
   check();
   ArchivePasswordPrompt ask;
   {
     std::lock_guard<std::mutex> lock(mutex);
     for (auto it = cache.begin(); it != cache.end(); ++it) {
-      if (it->first != identity) continue;
-      if (!retry) {auto result = it->second;cache.splice(cache.begin(),cache,it);return result;}
-      cache.erase(it);break;
+      if (it->first != identity)
+        continue;
+      if (!retry) {
+        auto result = it->second;
+        cache.splice(cache.begin(), cache, it);
+        return result;
+      }
+      cache.erase(it);
+      break;
     }
     ask = prompt;
   }
-  if (!ask) throw std::runtime_error("This archive needs a password. Open it in Listi to enter one.");
-  TransferControl waiting;waiting.proceed = [&] {check();return true;};
-  auto result = ask(path,retry,waiting);check();
-  if (!result) throw Cancelled();
+  if (!ask)
+    throw std::runtime_error(
+        "This archive needs a password. Open it in Listi to enter one.");
+  TransferControl waiting;
+  waiting.proceed = [&] {
+    check();
+    return true;
+  };
+  auto result = ask(path, retry, waiting);
+  check();
+  if (!result)
+    throw Cancelled();
   return result;
 }
-void RememberArchivePassword(const std::string &identity, ArchiveSecretPtr secret,
-    uint64_t expected) {
-  if (!secret) return;
+void RememberArchivePassword(const std::string &identity,
+                             ArchiveSecretPtr secret, uint64_t expected) {
+  if (!secret)
+    return;
   std::lock_guard<std::mutex> lock(mutex);
-  if (stopping || generation != expected) return;
-  cache.remove_if([&](const auto &item){return item.first == identity;});
-  cache.emplace_front(identity,std::move(secret));
-  while(cache.size()>16)cache.pop_back();
+  if (stopping || generation != expected)
+    return;
+  cache.remove_if([&](const auto &item) { return item.first == identity; });
+  cache.emplace_front(identity, std::move(secret));
+  while (cache.size() > 16)
+    cache.pop_back();
 }
 ArchiveSecretPtr CachedArchivePassword(const std::string &path,
-    const std::string &alternateIdentity) {
+                                       const std::string &alternateIdentity) {
   struct stat current;
-  if (lstat(path.c_str(), &current) || !S_ISREG(current.st_mode)) return {};
+  if (lstat(path.c_str(), &current) || !S_ISREG(current.st_mode))
+    return {};
   const auto identity = ArchivePasswordIdentity(current);
   std::lock_guard<std::mutex> lock(mutex);
   for (auto it = cache.begin(); it != cache.end(); ++it) {
-    if (it->first != identity && it->first != alternateIdentity) continue;
+    if (it->first != identity && it->first != alternateIdentity)
+      continue;
     auto result = it->second;
     cache.splice(cache.begin(), cache, it);
     return result;
@@ -95,18 +134,23 @@ ArchiveSecretPtr CachedArchivePassword(const std::string &path,
   return {};
 }
 uint64_t HoldArchiveCreationPassword(ArchiveSecretPtr secret) {
-  if (!secret) return 0;
+  if (!secret)
+    return 0;
   std::lock_guard<std::mutex> lock(mutex);
-  if (stopping) throw Cancelled();
+  if (stopping)
+    throw Cancelled();
   if (creation.size() >= 16)
-    throw std::runtime_error("Finish or cancel a pending encrypted archive job before queuing another one.");
-  while (!nextCreationToken || creation.count(nextCreationToken)) ++nextCreationToken;
+    throw std::runtime_error(
+        "Finish or cancel a pending encrypted archive job before queuing another one.");
+  while (!nextCreationToken || creation.count(nextCreationToken))
+    ++nextCreationToken;
   const auto token = nextCreationToken++;
   creation.emplace(token, std::move(secret));
   return token;
 }
 ArchiveSecretPtr TakeArchiveCreationPassword(uint64_t token) {
-  if (!token) return {};
+  if (!token)
+    return {};
   std::lock_guard<std::mutex> lock(mutex);
   auto found = creation.find(token);
   if (stopping || found == creation.end())

@@ -32,14 +32,18 @@ class RubberBand : public BMessageFilter {
     float delta = 0;
     if (scroll && now - lastScroll >= 50000) {
       lastScroll = now;
-      delta = point.y < bounds.top + 12 ? -18 :
-              point.y > bounds.bottom - 12 ? 18 : 0;
+      delta = point.y < bounds.top + 12      ? -18
+              : point.y > bounds.bottom - 12 ? 18
+                                             : 0;
     }
-    if (point == cursor && (!moved || !delta)) return;
+    if (point == cursor && (!moved || !delta))
+      return;
     painting = true;
-    if (moved) outline(Rect()); // Erase the previous invert-mode border.
+    if (moved)
+      outline(Rect()); // Erase the previous invert-mode border.
     cursor = point;
-    if (std::abs(cursor.x - origin.x) >= 4 || std::abs(cursor.y - origin.y) >= 4)
+    if (std::abs(cursor.x - origin.x) >= 4 ||
+        std::abs(cursor.y - origin.y) >= 4)
       moved = true;
     if (moved && delta) {
       if (auto bar = view->ScrollBar(B_VERTICAL)) {
@@ -54,15 +58,19 @@ class RubberBand : public BMessageFilter {
     // the border never invalidates or redraws the underlying native file list.
     view->Window()->UpdateIfNeeded();
     painting = false;
-    if (moved) outline(Rect());
+    if (moved)
+      outline(Rect());
     view->Flush();
   }
   void End(bool restore) {
-    if (!active) return;
-    if (moved) outline(Rect());
+    if (!active)
+      return;
+    if (moved)
+      outline(Rect());
     active = false;
     timer.reset();
-    if (restore) restoreSelection(before);
+    if (restore)
+      restoreSelection(before);
     finished();
     view->Flush();
   }
@@ -85,14 +93,21 @@ public:
                  std::max(origin.x, cursor.x), std::max(origin.y, cursor.y));
   }
   void Cancel() { End(false); }
-  bool Escape() { bool was = active; End(true); return was; }
+  bool Escape() {
+    bool was = active;
+    End(true);
+    return was;
+  }
   filter_result Filter(BMessage *message, BHandler **) override {
-    if (active && (path() != location || !ready() || view->IsHidden())) End(false);
+    if (active && (path() != location || !ready() || view->IsHidden()))
+      End(false);
     if (message->what == B_MOUSE_DOWN) {
-      if (active) End(false);
+      if (active)
+        End(false);
       BPoint point;
       if (message->GetInt32("buttons", 0) != B_PRIMARY_MOUSE_BUTTON ||
-          message->FindPoint("where", &point) != B_OK || !ready() || !empty(point))
+          message->FindPoint("where", &point) != B_OK || !ready() ||
+          !empty(point))
         return B_DISPATCH_MESSAGE;
       activate();
       origin = cursor = point;
@@ -102,7 +117,8 @@ public:
       active = true;
       moved = false;
       lastFrame = lastScroll = system_time();
-      if (!extend) restoreSelection({});
+      if (!extend)
+        restoreSelection({});
       view->SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
       BMessage tick(kTick);
       timer.reset(new BMessageRunner(BMessenger(view), &tick, 16667));
@@ -111,24 +127,30 @@ public:
     if (message->what == kTick) {
       if (active && system_time() - lastFrame >= 12000) {
         lastFrame = system_time();
-        BPoint point; uint32 buttons;
+        BPoint point;
+        uint32 buttons;
         view->GetMouse(&point, &buttons, false);
         Update(point, (buttons & B_PRIMARY_MOUSE_BUTTON) != 0);
         // Drop overdue ticks after a slow paint instead of replaying them and
         // starving input and window messages with consecutive redraws.
         lastFrame = system_time();
-        if (!(buttons & B_PRIMARY_MOUSE_BUTTON)) End(false);
+        if (!(buttons & B_PRIMARY_MOUSE_BUTTON))
+          End(false);
       }
       return B_SKIP_MESSAGE;
     }
-    if (!active) return B_DISPATCH_MESSAGE;
+    if (!active)
+      return B_DISPATCH_MESSAGE;
     // Pointer events can arrive much faster than the display. Sample the latest
     // position once per frame instead of replaying a growing movement backlog.
-    if (message->what == B_MOUSE_MOVED) return B_SKIP_MESSAGE;
+    if (message->what == B_MOUSE_MOVED)
+      return B_SKIP_MESSAGE;
     if (message->what == B_MOUSE_UP) {
       BPoint point;
-      if (message->FindPoint("where", &point) == B_OK) Update(point, false);
-      if (message->what == B_MOUSE_UP) End(false);
+      if (message->FindPoint("where", &point) == B_OK)
+        Update(point, false);
+      if (message->what == B_MOUSE_UP)
+        End(false);
       return B_SKIP_MESSAGE;
     }
     if (message->what == B_KEY_DOWN) {

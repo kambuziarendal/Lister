@@ -17,7 +17,7 @@ void Need(bool ok, const std::string &s) {
 }
 struct Item {
   FileEntry entry;
-  struct stat native{};
+  struct stat native {};
   bool local = false;
   std::string link;
 };
@@ -31,7 +31,8 @@ bool Stable(const struct stat &a, const struct stat &b) {
          a.st_ctim.tv_nsec == b.st_ctim.tv_nsec;
 }
 Item Inspect(FileEntry e) {
-  Need(!e.sizeKnown || e.size >= 0, "Invalid file size reported for: " + e.path);
+  Need(!e.sizeKnown || e.size >= 0,
+       "Invalid file size reported for: " + e.path);
   Item i;
   i.entry = e;
   i.local = ParseLocation(e.path).Local();

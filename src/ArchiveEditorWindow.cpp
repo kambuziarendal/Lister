@@ -185,7 +185,8 @@ public:
       Work(kLoaded, [member, application](auto &d, const auto &hooks) {
         d.session = Listi::ArchiveEditSession::Open(member, Root(), hooks);
         Launch(d.session->WorkingFile(), application);
-        d.status = "Editor opened. Saved changes will be written back automatically.";
+        d.status =
+            "Editor opened. Saved changes will be written back automatically.";
       });
       return;
     }

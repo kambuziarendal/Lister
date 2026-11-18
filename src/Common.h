@@ -93,34 +93,41 @@ enum : uint32 {
   kOpenPaths = 'opth'
 };
 // Values are the existing on-disk workspace IDs. Never reorder.
-enum class Workspace : int32 {
-  tviskipt = 0,
-  einn = 1,
-  askr = 2,
-  smidja = 3
-};
+enum class Workspace : int32 { tviskipt = 0, einn = 1, askr = 2, smidja = 3 };
 inline const char *WorkspaceId(Workspace workspace) {
   switch (workspace) {
-  case Workspace::einn: return "einn";
-  case Workspace::askr: return "askr";
-  case Workspace::smidja: return "smidja";
-  default: return "tviskipt";
+  case Workspace::einn:
+    return "einn";
+  case Workspace::askr:
+    return "askr";
+  case Workspace::smidja:
+    return "smidja";
+  default:
+    return "tviskipt";
   }
 }
 inline const char *WorkspaceName(Workspace workspace) {
   switch (workspace) {
-  case Workspace::einn: return "Einn";
-  case Workspace::askr: return "Askr";
-  case Workspace::smidja: return "Smiðja";
-  default: return "Tvískipt";
+  case Workspace::einn:
+    return "Einn";
+  case Workspace::askr:
+    return "Askr";
+  case Workspace::smidja:
+    return "Smiðja";
+  default:
+    return "Tvískipt";
   }
 }
 inline const char *WorkspaceMenuLabel(Workspace workspace) {
   switch (workspace) {
-  case Workspace::einn: return "Einn: simple single-panel browsing";
-  case Workspace::askr: return "Askr: folder tree and file list";
-  case Workspace::smidja: return "Smiðja: workbench with more tools";
-  default: return "Tvískipt: side-by-side file panels";
+  case Workspace::einn:
+    return "Einn: simple single-panel browsing";
+  case Workspace::askr:
+    return "Askr: folder tree and file list";
+  case Workspace::smidja:
+    return "Smiðja: workbench with more tools";
+  default:
+    return "Tvískipt: side-by-side file panels";
   }
 }
 struct Preferences {

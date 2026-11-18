@@ -122,6 +122,7 @@ public:
   }
 };
 } // namespace
-BView *CreateConnectionView(BMessenger pane, BMessenger close, const BMessage &message) {
+BView *CreateConnectionView(BMessenger pane, BMessenger close,
+                            const BMessage &message) {
   return new ConnectionView(pane, close, message);
 }

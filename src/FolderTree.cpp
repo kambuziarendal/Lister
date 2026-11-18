@@ -217,7 +217,8 @@ void FolderTree::MessageReceived(BMessage *m) {
   type_code type;
   m->GetInfo("child", &type, &count);
   if (items.size() + count > 20000) {
-    auto error = new BStringItem("Tree limit reached. Reopen the tree to reset.");
+    auto error =
+        new BStringItem("Tree limit reached. Reopen the tree to reset.");
     error->SetEnabled(false);
     list->AddUnder(error, parent);
     return;
@@ -227,7 +228,8 @@ void FolderTree::MessageReceived(BMessage *m) {
   // AddUnder inserts immediately after the parent, so insert in reverse to
   // preserve the reader's ascending name order.
   for (int32 i = count - 1; i >= 0; --i) {
-    if (m->FindString("child", i, &path) != B_OK) continue;
+    if (m->FindString("child", i, &path) != B_OK)
+      continue;
     auto item = new TreeItem(path, Listi::LocationLeaf(path).c_str());
     items[path] = item;
     list->AddUnder(item, parent);

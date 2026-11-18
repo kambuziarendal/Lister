@@ -748,7 +748,8 @@ struct WriteState {
     Check();
     Require(depth <= 64 && items.size() < 200000,
             "Archive exceeds the folder or entry limit.");
-    Require(!name.empty() && name.find_first_of("\r\n\\") == std::string::npos &&
+    Require(!name.empty() &&
+                name.find_first_of("\r\n\\") == std::string::npos &&
                 !(depth == 0 && name.size() > 1 && name[1] == ':'),
             "Unsupported archive entry name.");
     struct stat before, opened;
@@ -804,7 +805,8 @@ struct WriteInput : ISequentialInStream {
   const WriteItem &item;
   int fd = -1;
   uint64_t readBytes = 0;
-  WriteInput(WriteState &state, const WriteItem &entry) : s(state), item(entry) {
+  WriteInput(WriteState &state, const WriteItem &entry)
+      : s(state), item(entry) {
     fd = open(item.path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
     struct stat opened;
     if (fd < 0 || fstat(fd, &opened) || !Exact(item.snapshot, opened)) {
@@ -842,7 +844,8 @@ struct WriteInput : ISequentialInStream {
         struct stat opened, now;
         Require(readBytes == uint64_t(item.snapshot.st_size) &&
                     !fstat(fd, &opened) && Exact(item.snapshot, opened) &&
-                    !lstat(item.path.c_str(), &now) && Exact(item.snapshot, now),
+                    !lstat(item.path.c_str(), &now) &&
+                    Exact(item.snapshot, now),
                 "Archive source changed during packing");
       } else if (s.hooks.progress)
         s.hooks.progress(item.path, got);
@@ -923,8 +926,12 @@ struct UpdateCallback : IArchiveUpdateCallback, ICryptoGetTextPassword2 {
     AddRef();
     return S_OK;
   }
-  HRESULT SetTotal(UInt64) override { return s.Call([] {}); }
-  HRESULT SetCompleted(const UInt64 *) override { return s.Call([] {}); }
+  HRESULT SetTotal(UInt64) override {
+    return s.Call([] {});
+  }
+  HRESULT SetCompleted(const UInt64 *) override {
+    return s.Call([] {});
+  }
   HRESULT GetUpdateItemInfo(UInt32 index, Int32 *newData, Int32 *newProps,
                             UInt32 *indexInArchive) override {
     return s.Call([&] {

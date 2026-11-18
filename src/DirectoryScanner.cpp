@@ -22,10 +22,14 @@ class Scanner : public BLooper {
   std::shared_ptr<DirectoryScanDelivery> delivery;
 
   bool Send(BMessage &message, int64 serial) {
-    for (int attempt = 0; attempt < 3 && generation->load() == serial; ++attempt) {
-      status_t status = target.SendMessage(&message, (BHandler *)nullptr, 100000);
-      if (status == B_OK) return true;
-      if (status != B_TIMED_OUT && status != B_WOULD_BLOCK && status != B_INTERRUPTED)
+    for (int attempt = 0; attempt < 3 && generation->load() == serial;
+         ++attempt) {
+      status_t status =
+          target.SendMessage(&message, (BHandler *)nullptr, 100000);
+      if (status == B_OK)
+        return true;
+      if (status != B_TIMED_OUT && status != B_WOULD_BLOCK &&
+          status != B_INTERRUPTED)
         break;
     }
     return false;
@@ -45,7 +49,8 @@ public:
       return;
     }
     int64 serial = m->GetInt64("serial", 0);
-    if (generation->load() != serial) return;
+    if (generation->load() != serial)
+      return;
     BString path = m->GetString("path", "");
     bool icons = m->GetBool("icons", true);
     int32 iconPixels = m->GetInt32("iconSize", 16);
@@ -76,7 +81,8 @@ public:
       count = 0;
     };
     auto row = [&](const char *full, const char *label, bool parent = false) {
-      if (deliveryFailed) return;
+      if (deliveryFailed)
+        return;
       struct stat st;
       if (lstat(full, &st))
         return;
@@ -155,7 +161,8 @@ public:
         }
         for (auto &entry : entries) {
           control.Check();
-          if (deliveryFailed) break;
+          if (deliveryFailed)
+            break;
           virtualRow(entry);
         }
       } catch (const Listi::Cancelled &) {
@@ -219,15 +226,17 @@ public:
       if (count && !deliveryFailed)
         send();
       if (deliveryFailed)
-        done.AddString("error", "Directory delivery failed. Reload to try again.");
+        done.AddString("error",
+                       "Directory delivery failed. Reload to try again.");
       done.AddString("path", path);
       Complete(done, serial);
     }
   }
 };
 }
-BLooper *CreateDirectoryScanner(BMessenger target,
-    std::shared_ptr<std::atomic<int64>> generation,
-    std::shared_ptr<DirectoryScanDelivery> delivery) {
+BLooper *
+CreateDirectoryScanner(BMessenger target,
+                       std::shared_ptr<std::atomic<int64>> generation,
+                       std::shared_ptr<DirectoryScanDelivery> delivery) {
   return new Scanner(target, generation, delivery);
 }

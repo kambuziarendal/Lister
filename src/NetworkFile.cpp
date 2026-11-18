@@ -56,8 +56,8 @@ struct SMBSession {
       LIBCALL(lib, smbc_setTimeout)(ctx, 10000);
       if (!LIBCALL(lib, smbc_setOptionProtocols)(ctx, "SMB2_02", "SMB3_11"))
         throw std::runtime_error("SMB2/3 protocol configuration failed");
-      LIBCALL(lib, smbc_setOptionNoAutoAnonymousLogin)(
-          ctx, auth.username.empty() ? 0 : 1);
+      LIBCALL(lib, smbc_setOptionNoAutoAnonymousLogin)
+      (ctx, auth.username.empty() ? 0 : 1);
       LIBCALL(lib, smbc_setDebug)(ctx, 0);
       if (l.port)
         LIBCALL(lib, smbc_setPort)(ctx, l.port);

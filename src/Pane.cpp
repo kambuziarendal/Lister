@@ -59,20 +59,22 @@ public:
     return B_DISPATCH_MESSAGE;
   }
 };
-constexpr uint32 kRememberView = 'grem',
-                 kForgetView = 'gfor', kExpireProgress = 'expr',
-                 kToggleTree = 'ttre', kActivityFrame = 'actf', kCheckScanDelivery = 'scdl';
+constexpr uint32 kRememberView = 'grem', kForgetView = 'gfor',
+                 kExpireProgress = 'expr', kToggleTree = 'ttre',
+                 kActivityFrame = 'actf', kCheckScanDelivery = 'scdl';
 } // namespace
 namespace {
 class GridScroll : public BScrollView {
-  FileGrid* grid;
-  Pane* pane;
+  FileGrid *grid;
+  Pane *pane;
   BRect laidOutBounds;
   float fullWidth = 0;
   bool laidOut = false, barVisible = true;
+
 public:
-  GridScroll(FileGrid* target, Pane* owner)
-      : BScrollView("icons scroll", target, 0, false, true), grid(target), pane(owner) {}
+  GridScroll(FileGrid *target, Pane *owner)
+      : BScrollView("icons scroll", target, 0, false, true), grid(target),
+        pane(owner) {}
   void DoLayout() override {
     auto bar = ScrollBar(B_VERTICAL);
     const bool resized = !laidOut || laidOutBounds != Bounds();
@@ -82,20 +84,27 @@ public:
       laidOutBounds = Bounds();
       laidOut = true;
     }
-    bool show = !pane->IsSinglePane() || grid->ContentHeight(fullWidth) > grid->Bounds().Height() + 1;
+    bool show = !pane->IsSinglePane() ||
+                grid->ContentHeight(fullWidth) > grid->Bounds().Height() + 1;
     if (resized || show != barVisible) {
-      if (!resized) BScrollView::DoLayout();
+      if (!resized)
+        BScrollView::DoLayout();
       barVisible = show;
-      if (!show) grid->ResizeTo(fullWidth, grid->Bounds().Height());
+      if (!show)
+        grid->ResizeTo(fullWidth, grid->Bounds().Height());
     }
     if (show == bar->IsHidden(this)) {
-      if (show) bar->Show(); else bar->Hide();
+      if (show)
+        bar->Show();
+      else
+        bar->Hide();
     }
   }
 };
 }
 Pane::Pane(int32 number, const Preferences &p)
-    : BView("pane", B_WILL_DRAW | B_SUPPORTS_LAYOUT | B_FULL_UPDATE_ON_RESIZE), id(number), prefs(p),
+    : BView("pane", B_WILL_DRAW | B_SUPPORTS_LAYOUT | B_FULL_UPDATE_ON_RESIZE),
+      id(number), prefs(p),
       generation(std::make_shared<std::atomic<int64>>(0)) {
   SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
   auto menu = new BPopUpMenu("Go");
@@ -237,8 +246,8 @@ void Pane::Draw(BRect update) {
   if (!prefs.SinglePane()) {
     const auto neutral = Listi::PanelBlend(ui_color(B_PANEL_BACKGROUND_COLOR),
                                            ui_color(B_PANEL_TEXT_COLOR), 0.12f);
-    SetHighColor(Listi::PanelBlend(neutral, ui_color(B_KEYBOARD_NAVIGATION_COLOR),
-                                    activityLevel));
+    SetHighColor(Listi::PanelBlend(
+        neutral, ui_color(B_KEYBOARD_NAVIGATION_COLOR), activityLevel));
     SetPenSize(2);
     StrokeRect(Bounds().InsetByCopy(1, 1));
   }
@@ -249,17 +258,21 @@ void Pane::UpdateActivityAppearance() {
   list->SetActive(highlighted);
   grid->SetActive(highlighted);
   auto text = edit->TextView();
-  const auto background = Listi::PanelBlend(ui_color(B_DOCUMENT_BACKGROUND_COLOR),
+  const auto background = Listi::PanelBlend(
+      ui_color(B_DOCUMENT_BACKGROUND_COLOR),
       ui_color(B_KEYBOARD_NAVIGATION_COLOR), highlighted ? 0.075f : 0.f);
   if (text->ViewColor() != background) {
     text->SetViewColor(background);
     text->SetLowColor(background);
     text->Invalidate();
   }
-  edit->SetToolTip(prefs.SinglePane() ? "Folder path" : active ? "Active file panel" : "Inactive file panel");
+  edit->SetToolTip(prefs.SinglePane() ? "Folder path"
+                   : active           ? "Active file panel"
+                                      : "Inactive file panel");
 }
 void Pane::SetSource(bool source) {
-  if (active == source) return;
+  if (active == source)
+    return;
   active = source;
   UpdateActivityAppearance();
   activityTimer.reset();
@@ -271,7 +284,8 @@ void Pane::SetSource(bool source) {
     BMessage frame(kActivityFrame);
     frame.AddInt64("serial", activitySerial);
     activityTimer.reset(new BMessageRunner(BMessenger(this), &frame, 25000, 6));
-    if (activityTimer->InitCheck() == B_OK) return;
+    if (activityTimer->InitCheck() == B_OK)
+      return;
     activityTimer.reset();
   }
   activityLevel = active ? 1.f : 0.f;
@@ -288,12 +302,15 @@ void Pane::Sort(PaneSort value) {
   SendSelection();
 }
 void Pane::SetDisplayMode(int32 value) {
-  if (mode == 0) entries.Sort(list->Sorting());
+  if (mode == 0)
+    entries.Sort(list->Sorting());
   mode = std::max(0, std::min(3, value));
   cards->CardLayout()->SetVisibleItem(mode == 0 ? 0 : 1);
   grid->SetMode(mode);
-  if (mode == 0) list->SyncSelection();
-  else grid->SyncSelection();
+  if (mode == 0)
+    list->SyncSelection();
+  else
+    grid->SyncSelection();
   auto menu = display->Menu();
   for (int i = 0; i < 4; ++i)
     menu->ItemAt(i)->SetMarked(mode == i);
@@ -318,12 +335,16 @@ void Pane::FocusList() {
 }
 void Pane::ToggleTreeFocus() {
   auto focused = Window()->CurrentFocus();
-  while (focused && focused != tree) focused = focused->Parent();
-  if (focused) FocusList();
-  else if (treeVisible) tree->FindView("folder tree")->MakeFocus();
+  while (focused && focused != tree)
+    focused = focused->Parent();
+  if (focused)
+    FocusList();
+  else if (treeVisible)
+    tree->FindView("folder tree")->MakeFocus();
 }
 void Pane::FocusFilter() {
-  if (einn) return;
+  if (einn)
+    return;
   Activate();
   filter->MakeFocus(true);
   filter->TextView()->SelectAll();
@@ -349,25 +370,37 @@ void Pane::SetWorkspace(Workspace workspace) {
   list->SetSinglePane(prefs.SinglePane());
   if (chromeVisible == einn) {
     chromeVisible = !einn;
-    for (BView* control : {static_cast<BView*>(header), static_cast<BView*>(filterRow),
-                          static_cast<BView*>(back), static_cast<BView*>(forward)}) {
-      if (chromeVisible) control->Show(); else control->Hide();
+    for (BView *control :
+         {static_cast<BView *>(header), static_cast<BView *>(filterRow),
+          static_cast<BView *>(back), static_cast<BView *>(forward)}) {
+      if (chromeVisible)
+        control->Show();
+      else
+        control->Hide();
     }
   }
-  auto layout = static_cast<BGroupLayout*>(GetLayout());
+  auto layout = static_cast<BGroupLayout *>(GetLayout());
   layout->SetInsets(einn ? 2 : 6);
   layout->SetSpacing(einn ? 2 : 5);
   content->SetSpacing(einn ? 0 : 4);
   content->SetSplitterSize(einn ? 0 : contentSplitterSize);
   // A hidden filter must not silently hide entries in the minimal workspace.
   // Keep its text for Tviskipt, but suspend its effect while it is hidden.
-  if (changed) { ApplyFilter(); grid->Update(); }
-  const bool visible = workspace == Workspace::askr || (prefs.Tree(id) && !einn);
+  if (changed) {
+    ApplyFilter();
+    grid->Update();
+  }
+  const bool visible =
+      workspace == Workspace::askr || (prefs.Tree(id) && !einn);
   if (treeVisible != visible) {
     treeVisible = visible;
-    if (visible) tree->Show(); else tree->Hide();
+    if (visible)
+      tree->Show();
+    else
+      tree->Hide();
   }
-  if (visible) tree->ShowPath(path.String());
+  if (visible)
+    tree->ShowPath(path.String());
   display->Menu()->ItemAt(8)->SetMarked(treeVisible);
   display->Menu()->ItemAt(8)->SetEnabled(!prefs.SinglePane());
   activityTimer.reset();
@@ -397,8 +430,8 @@ void Pane::Navigate(const char *p) {
   try {
     if (request[0] != '/' && request != "@disks" && !Listi::IsVirtual(request))
       request = Listi::IsVirtual(path.String())
-                  ? Listi::ChildLocation(path.String(), request)
-                  : Listi::Join(path.String(), request);
+                    ? Listi::ChildLocation(path.String(), request)
+                    : Listi::Join(path.String(), request);
     if (Listi::IsVirtual(request))
       request = Listi::ParseLocation(request).URL();
   } catch (const std::exception &error) {
@@ -417,7 +450,8 @@ void Pane::SetPlaces(const Listi::SavedPlaces &value, bool writable) {
   UpdatePlaces();
 }
 void Pane::UpdatePlaces() {
-  while (auto item = placesMenu->RemoveItem(int32(0))) delete item;
+  while (auto item = placesMenu->RemoveItem(int32(0)))
+    delete item;
   const char *labels[] = {"Save this place...", "Rename this saved place...",
                           "Forget this saved place..."};
   bool saved = places.Find(path.String()) != nullptr;
@@ -425,8 +459,10 @@ void Pane::UpdatePlaces() {
     auto message = new BMessage(kPlaceAction);
     message->AddInt32("action", i);
     auto item = new BMenuItem(labels[i], message);
-    item->SetEnabled(placesWritable && (i ? saved :
-        locationValid && !saved && places.Items().size() < Listi::SavedPlaces::Limit));
+    item->SetEnabled(placesWritable && (i ? saved
+                                          : locationValid && !saved &&
+                                                places.Items().size() <
+                                                    Listi::SavedPlaces::Limit));
     placesMenu->AddItem(item);
   }
   placesMenu->AddSeparatorItem();
@@ -438,7 +474,8 @@ void Pane::UpdatePlaces() {
     item->SetMarked(place.path == path.String());
     placesMenu->AddItem(item);
   }
-  if (Window()) placesMenu->SetTargetForItems(this);
+  if (Window())
+    placesMenu->SetTargetForItems(this);
 }
 void Pane::UpdateNavigation() {
   back->SetEnabled(history.Back() >= 0);
@@ -447,9 +484,9 @@ void Pane::UpdateNavigation() {
 void Pane::StartNavigation(const std::string &request, int target, bool trash) {
   stop_watching(this);
   reveal = {};
-  savedSelection =
-      (target < 0 && !trash && path == request.c_str())
-          ? Selected() : std::vector<std::string>{};
+  savedSelection = (target < 0 && !trash && path == request.c_str())
+                       ? Selected()
+                       : std::vector<std::string>{};
   if (trash || path != request.c_str()) {
     filter->SetText("");
     clearFilter->SetEnabled(false);
@@ -481,7 +518,8 @@ void Pane::StartNavigation(const std::string &request, int target, bool trash) {
   if (scanTimer->InitCheck() != B_OK || scanner->PostMessage(&m) != B_OK) {
     BMessage failed(kScanDone);
     failed.AddInt64("serial", serial);
-    failed.AddString("error", "Cannot start directory reader. Reload to try again.");
+    failed.AddString("error",
+                     "Cannot start directory reader. Reload to try again.");
     MessageReceived(&failed);
   }
 }
@@ -494,7 +532,8 @@ void Pane::Reload() {
 }
 std::vector<std::string> Pane::Selected() const { return entries.Selected(); }
 bool Pane::SelectSameFileType() {
-  if (scanning || !entries.SelectSameFileType()) return false;
+  if (scanning || !entries.SelectSameFileType())
+    return false;
   SendSelection();
   return true;
 }
@@ -503,10 +542,12 @@ void Pane::Select(int mode) {
   SendSelection();
 }
 void Pane::ContextMenu(const std::string &path, BPoint screen) {
-  if (scanning) return;
+  if (scanning)
+    return;
   if (path.empty()) {
     BMessage request(kContextMenu);
-    request.AddInt32("pane", id); request.AddPoint("screen", screen);
+    request.AddInt32("pane", id);
+    request.AddPoint("screen", screen);
     request.AddBool("folderContext", true);
     const auto selected = entries.Selected();
     if (selected.size() == 1)
@@ -519,8 +560,10 @@ void Pane::ContextMenu(const std::string &path, BPoint screen) {
     return;
   }
   for (auto entry : entries.Visible()) {
-    if (entry->path != path || entry->parent) continue;
-    auto selected = entries.IsSelected(path) ? entries.Selected() : std::vector<std::string>{path};
+    if (entry->path != path || entry->parent)
+      continue;
+    auto selected = entries.IsSelected(path) ? entries.Selected()
+                                             : std::vector<std::string>{path};
     entries.SetSelection(selected, path);
     SendSelection();
     BMessage request(kContextMenu);
@@ -545,22 +588,28 @@ void Pane::SendSelection(bool gesture) {
     s << ": ";
     bool part = false;
     if (summary.files) {
-      if (summary.files == summary.unknown) s << "size unknown";
+      if (summary.files == summary.unknown)
+        s << "size unknown";
       else {
         char text[64];
-        if (summary.overflow) s << "at least ";
+        if (summary.overflow)
+          s << "at least ";
         s << string_for_size(summary.bytes, text, sizeof(text));
-        if (summary.unknown) s << " + unknown size";
+        if (summary.unknown)
+          s << " + unknown size";
       }
       part = true;
     }
     if (summary.folders) {
-      if (part) s << " + ";
-      s << uint64(summary.folders) << (summary.folders == 1 ? " folder" : " folders");
+      if (part)
+        s << " + ";
+      s << uint64(summary.folders)
+        << (summary.folders == 1 ? " folder" : " folders");
       part = true;
     }
     if (summary.links) {
-      if (part) s << " + ";
+      if (part)
+        s << " + ";
       s << uint64(summary.links) << (summary.links == 1 ? " link" : " links");
     }
   }
@@ -578,11 +627,14 @@ void Pane::SendSelection(bool gesture) {
     if (summary.folders || summary.links)
       tip << "\nFolder contents and link targets are not counted.";
     if (summary.unknown)
-      tip << "\nSize unavailable for " << uint64(summary.unknown) << " selected file(s).";
+      tip << "\nSize unavailable for " << uint64(summary.unknown)
+          << " selected file(s).";
     status->SetToolTip(tip);
   }
-  if (mode == 0) list->SyncSelection();
-  else grid->SyncSelection();
+  if (mode == 0)
+    list->SyncSelection();
+  else
+    grid->SyncSelection();
   // Preview decoding is useful after the gesture, not for transient rows.
   if (Window() && !gesture) {
     BMessage changed(kPreviewSelection);
@@ -599,13 +651,19 @@ void Pane::SendSelection(bool gesture) {
 void Pane::MessageReceived(BMessage *m) {
   switch (m->what) {
   case kActivityFrame: {
-    if (m->GetInt64("serial", -1) != activitySerial || !activityTimer) break;
-    const bool finished = ++activitySteps >= 6 || system_time() - activityStarted >= 150000;
-    const float fraction = finished ? 1.f
-      : std::min(1.f, float(system_time() - activityStarted) / 150000.f);
-    activityLevel = activityFrom + ((active ? 1.f : 0.f) - activityFrom) * fraction;
+    if (m->GetInt64("serial", -1) != activitySerial || !activityTimer)
+      break;
+    const bool finished =
+        ++activitySteps >= 6 || system_time() - activityStarted >= 150000;
+    const float fraction =
+        finished
+            ? 1.f
+            : std::min(1.f, float(system_time() - activityStarted) / 150000.f);
+    activityLevel =
+        activityFrom + ((active ? 1.f : 0.f) - activityFrom) * fraction;
     InvalidateActivityBorder();
-    if (finished) activityTimer.reset();
+    if (finished)
+      activityTimer.reset();
     break;
   }
   case kExpireProgress: {
@@ -662,7 +720,8 @@ void Pane::MessageReceived(BMessage *m) {
     Reload();
     break;
   case kToggleTree:
-    if (prefs.SinglePane()) break;
+    if (prefs.SinglePane())
+      break;
     tree->Reset();
     prefs.SetTree(id, !prefs.Tree(id));
     treeVisible = prefs.Tree(id);
@@ -720,10 +779,12 @@ void Pane::MessageReceived(BMessage *m) {
     FocusList();
     break;
   case kPlaceAction: {
-    if (!placesWritable) break;
+    if (!placesWritable)
+      break;
     int32 action = m->GetInt32("action", 0);
     if ((action == 0 && (!locationValid || places.Find(path.String()))) ||
-        (action != 0 && !places.Find(path.String()))) break;
+        (action != 0 && !places.Find(path.String())))
+      break;
     BMessage request(*m);
     request.AddString("path", path);
     request.AddInt32("pane", id);
@@ -732,25 +793,33 @@ void Pane::MessageReceived(BMessage *m) {
     break;
   }
   case kRevealSearch: {
-    Listi::SearchHit hit{m->GetString("path", ""), m->GetInt64("device", -1), m->GetInt64("node", -1)};
+    Listi::SearchHit hit{m->GetString("path", ""), m->GetInt64("device", -1),
+                         m->GetInt64("node", -1)};
     if (!Listi::SameSearchEntry(hit)) {
-      savedSelection.clear(); reveal = {};
-      entries.Select(0); SendSelection();
-      SetStatus("Search result moved, disappeared or was replaced. Search again; nothing selected.");
+      savedSelection.clear();
+      reveal = {};
+      entries.Select(0);
+      SendSelection();
+      SetStatus(
+          "Search result moved, disappeared or was replaced. Search again; nothing selected.");
       break;
     }
     size_t slash = hit.path.find_last_of('/');
-    if (slash == std::string::npos) break;
-    filter->SetText(""); clearFilter->SetEnabled(false);
+    if (slash == std::string::npos)
+      break;
+    filter->SetText("");
+    clearFilter->SetEnabled(false);
     StartNavigation(hit.path.substr(0, slash ? slash : 1));
     // Do not select the path until the scan is complete and identity rechecked.
-    savedSelection.clear(); reveal = hit;
+    savedSelection.clear();
+    reveal = hit;
     break;
   }
   case kNavigate:
     if (m->HasInt64("serial") && m->GetInt64("serial", -1) != serial)
       break;
-    if (m->GetBool("place", false)) Activate();
+    if (m->GetBool("place", false))
+      Activate();
     Navigate(m->GetString("path", edit->Text()));
     if (m->GetBool("tree", false))
       Activate();
@@ -821,7 +890,9 @@ void Pane::MessageReceived(BMessage *m) {
         scanDelivery->failedSerial.load() == serial) {
       BMessage failed(kScanDone);
       failed.AddInt64("serial", serial);
-      failed.AddString("error", "Directory completion was not delivered. Reload to try again.");
+      failed.AddString(
+          "error",
+          "Directory completion was not delivered. Reload to try again.");
       MessageReceived(&failed);
     }
     break;
@@ -873,7 +944,7 @@ void Pane::MessageReceived(BMessage *m) {
     UpdateNavigation();
     auto view = prefs.folderModes.find(path.String());
     SetDisplayMode(view == prefs.folderModes.end() ? prefs.paneMode[id]
-                                                 : view->second);
+                                                   : view->second);
     edit->SetText(path);
     tree->ShowPath(path.String());
     const char *error;
@@ -886,13 +957,17 @@ void Pane::MessageReceived(BMessage *m) {
       bool stale = false;
       if (!reveal.path.empty()) {
         stale = !Listi::SameSearchEntry(reveal);
-        entries.SetSelection(stale ? std::vector<std::string>{} : std::vector<std::string>{reveal.path},
+        entries.SetSelection(stale ? std::vector<std::string>{}
+                                   : std::vector<std::string>{reveal.path},
                              stale ? "" : reveal.path);
-        if (!stale && entries.Selected().empty()) stale = true;
+        if (!stale && entries.Selected().empty())
+          stale = true;
         reveal = {};
       }
       SendSelection();
-      if (stale) SetStatus("Search result changed during navigation. Search again; nothing selected.");
+      if (stale)
+        SetStatus(
+            "Search result changed during navigation. Search again; nothing selected.");
       const void *p;
       ssize_t n;
       if (m->FindData("node", B_RAW_TYPE, &p, &n) == B_OK &&

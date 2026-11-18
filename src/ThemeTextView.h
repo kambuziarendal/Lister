@@ -5,7 +5,8 @@
 // Refresh existing text runs as well as the background on a live theme change.
 class ThemeTextView : public BTextView {
 public:
-  ThemeTextView(const char *name, color_which background, color_which foreground)
+  ThemeTextView(const char *name, color_which background,
+                color_which foreground)
       : BTextView(name), foreground(foreground) {
     SetViewUIColor(background);
     SetLowUIColor(background);
@@ -17,8 +18,10 @@ public:
   }
   void MessageReceived(BMessage *message) override {
     BTextView::MessageReceived(message);
-    if (message->what == B_COLORS_UPDATED) RefreshTextColor();
+    if (message->what == B_COLORS_UPDATED)
+      RefreshTextColor();
   }
+
 private:
   color_which foreground;
   void RefreshTextColor() {

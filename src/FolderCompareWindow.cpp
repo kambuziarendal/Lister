@@ -26,7 +26,8 @@ constexpr uint32 kQuick = 'cmqu', kHash = 'cmha', kDone = 'cmdn',
                  kTick = 'cmtk', kCancel = 'cmca', kFilter = 'cmfi',
                  kSelected = 'cmse', kBrowse = 'cmbr', kChosen = 'cmch';
 BTextView *Text(const char *name, float height) {
-  auto v = new ThemeTextView(name, B_PANEL_BACKGROUND_COLOR, B_PANEL_TEXT_COLOR);
+  auto v =
+      new ThemeTextView(name, B_PANEL_BACKGROUND_COLOR, B_PANEL_TEXT_COLOR);
   v->MakeEditable(false);
   v->SetWordWrap(true);
   v->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
@@ -235,7 +236,8 @@ public:
         result = {};
         rows->Clear();
         detail->SetText("");
-        summary->SetText("Folders changed. Run a new comparison for these paths.");
+        summary->SetText(
+            "Folders changed. Run a new comparison for these paths.");
         Controls();
       }
       return;

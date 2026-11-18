@@ -24,23 +24,30 @@ void Preferences::Load(const BMessage &m) {
   // have changed them since our last save. New-only settings use ASCII IDs.
   int32 stored;
   if (m.FindInt32("workspace", &stored) == B_OK) {
-    workspace = stored >= 0 && stored <= 3 ? static_cast<Workspace>(stored) : Workspace::tviskipt;
+    workspace = stored >= 0 && stored <= 3 ? static_cast<Workspace>(stored)
+                                           : Workspace::tviskipt;
   } else if (m.HasString("workspaceId")) {
     workspace = Workspace::tviskipt;
-    for (auto value : {Workspace::tviskipt, Workspace::einn, Workspace::askr, Workspace::smidja})
-      if (!strcmp(m.GetString("workspaceId", ""), WorkspaceId(value))) workspace = value;
+    for (auto value : {Workspace::tviskipt, Workspace::einn, Workspace::askr,
+                       Workspace::smidja})
+      if (!strcmp(m.GetString("workspaceId", ""), WorkspaceId(value)))
+        workspace = value;
   } else {
-    workspace = m.GetBool("simpleWorkspace", false) ? Workspace::einn : Workspace::tviskipt;
+    workspace = m.GetBool("simpleWorkspace", false) ? Workspace::einn
+                                                    : Workspace::tviskipt;
   }
   singlePane = m.GetInt32("singlePane", 0) == 1 ? 1 : 0;
   paneMode[0] = std::max(0, std::min(3, m.GetInt32("leftMode", 0)));
   paneMode[1] = std::max(0, std::min(3, m.GetInt32("rightMode", 0)));
   paneTree[0] = m.GetBool("leftTree", false);
   paneTree[1] = m.GetBool("rightTree", false);
-  smidjaTree[0] = m.GetBool("workbenchLeftTree", m.GetBool("smidjaLeftTree", true));
-  smidjaTree[1] = m.GetBool("workbenchRightTree", m.GetBool("smidjaRightTree", true));
+  smidjaTree[0] =
+      m.GetBool("workbenchLeftTree", m.GetBool("smidjaLeftTree", true));
+  smidjaTree[1] =
+      m.GetBool("workbenchRightTree", m.GetBool("smidjaRightTree", true));
   preview = m.GetBool("preview", false);
-  smidjaPreview = m.GetBool("workbenchPreview", m.GetBool("smidjaPreview", true));
+  smidjaPreview =
+      m.GetBool("workbenchPreview", m.GetBool("smidjaPreview", true));
   folderModes.clear();
   BMessage folder;
   for (int32 i = 0; i < 4096 && m.FindMessage("folderView", i, &folder) == B_OK;
@@ -57,7 +64,8 @@ void Preferences::Load(const BMessage &m) {
   command = m.GetBool("command", false);
   float fontSize = m.GetFloat("fontSize", be_plain_font->Size());
   font.SetSize(std::isfinite(fontSize) && fontSize >= 8 && fontSize <= 40
-                   ? fontSize : 12);
+                   ? fontSize
+                   : 12);
   const char *family = m.GetString("fontFamily", "");
   if (*family)
     font.SetFamilyAndStyle(family, nullptr);

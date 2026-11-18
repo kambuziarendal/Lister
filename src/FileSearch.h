@@ -23,7 +23,9 @@ struct SearchSummary {
 };
 // Read-only snapshot. Callbacks execute on the caller's worker, never a UI thread.
 // Returning false from deliver stops the search; it never silently drops rows.
-SearchSummary SearchFiles(const SearchRequest &, const std::function<bool()> &proceed,
-                          const std::function<bool(const SearchHit &)> &deliver, BQuery *liveQuery = nullptr);
+SearchSummary SearchFiles(const SearchRequest &,
+                          const std::function<bool()> &proceed,
+                          const std::function<bool(const SearchHit &)> &deliver,
+                          BQuery *liveQuery = nullptr);
 bool SameSearchEntry(const SearchHit &);
 } // namespace Listi

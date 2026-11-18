@@ -75,20 +75,27 @@ struct Runner {
   const Job *guardedJob = nullptr;
   std::string guardedSource;
   void Guard() {
-    if (!guardedJob) return;
+    if (!guardedJob)
+      return;
     struct stat st;
     if (!guardedJob->expectedSources.empty()) {
       auto expected = guardedJob->expectedSources.find(guardedSource);
       if (expected == guardedJob->expectedSources.end() ||
           lstat(guardedSource.c_str(), &st) ||
-          st.st_dev != expected->second.device || st.st_ino != expected->second.inode)
-        throw std::runtime_error(guardedSource + ": selected source changed; left untouched");
+          st.st_dev != expected->second.device ||
+          st.st_ino != expected->second.inode)
+        throw std::runtime_error(guardedSource +
+                                 ": selected source changed; left untouched");
     }
     const auto &destination = guardedJob->expectedDestination;
-    const auto &path = guardedJob->destinationFolder.empty() ? guardedJob->destination : guardedJob->destinationFolder;
-    if (destination.device >= 0 && (stat(path.c_str(), &st) || !S_ISDIR(st.st_mode) ||
-        st.st_dev != destination.device || st.st_ino != destination.inode))
-      throw std::runtime_error("Selected destination changed; operation stopped.");
+    const auto &path = guardedJob->destinationFolder.empty()
+                           ? guardedJob->destination
+                           : guardedJob->destinationFolder;
+    if (destination.device >= 0 &&
+        (stat(path.c_str(), &st) || !S_ISDIR(st.st_mode) ||
+         st.st_dev != destination.device || st.st_ino != destination.inode))
+      throw std::runtime_error(
+          "Selected destination changed; operation stopped.");
   }
 
   bool deferCompletion = false;
@@ -121,7 +128,8 @@ struct Runner {
       if (from.GetAttrInfo(name, &info) != B_OK)
         throw std::runtime_error(src + ": attribute changed during copy");
       if (info.size == 0)
-        throw std::runtime_error(src + ": zero-length attribute cannot be preserved: " + name);
+        throw std::runtime_error(
+            src + ": zero-length attribute cannot be preserved: " + name);
       off_t pos = 0;
       while (pos < info.size) {
         ssize_t n = from.ReadAttr(name, info.type, pos, buf.data(),
@@ -141,7 +149,8 @@ struct Runner {
     if (!Exists(dst))
       return true;
     if (guardedJob && guardedJob->action == Action::Duplicate)
-      throw std::runtime_error(dst + ": already exists; duplicate does not overwrite");
+      throw std::runtime_error(
+          dst + ": already exists; duplicate does not overwrite");
     if (skipAll) {
       result.skipped++;
       return false;
@@ -184,7 +193,8 @@ struct Runner {
     return true;
   }
   using Snapshot = std::map<std::string, struct stat>;
-  void SnapshotTree(const std::string &path, Snapshot &entries, dev_t volume, unsigned depth = 0) {
+  void SnapshotTree(const std::string &path, Snapshot &entries, dev_t volume,
+                    unsigned depth = 0) {
     Check();
     if (depth > 64 || entries.size() >= 200000)
       throw std::runtime_error("Folder tree exceeds the safe operation limit");
@@ -261,17 +271,20 @@ struct Runner {
     if (status != B_OK)
       throw std::runtime_error(dst + ": " + strerror(status));
   }
-  bool Copy(const std::string &src, const std::string &dst, unsigned depth = 0) {
+  bool Copy(const std::string &src, const std::string &dst,
+            unsigned depth = 0) {
     Check();
-    if (depth > 64) throw std::runtime_error("Folder tree exceeds the safe copy depth");
+    if (depth > 64)
+      throw std::runtime_error("Folder tree exceeds the safe copy depth");
     Guard();
     struct stat st;
     if (lstat(src.c_str(), &st) != 0)
       Fail(src);
-    struct stat before{};
+    struct stat before {};
     bool existed = Exists(dst, &before);
     if (existed && guardedJob && guardedJob->action == Action::Duplicate)
-      throw std::runtime_error(dst + ": already exists; duplicate does not overwrite");
+      throw std::runtime_error(
+          dst + ": already exists; duplicate does not overwrite");
     if (existed && st.st_dev == before.st_dev && st.st_ino == before.st_ino)
       throw std::runtime_error(src +
                                ": source and destination are the same entry");
@@ -383,11 +396,13 @@ struct Runner {
   }
   void Execute(const Job &job) {
     guardedJob = &job;
-    const bool named = job.action == Action::Duplicate || job.action == Action::Link;
+    const bool named =
+        job.action == Action::Duplicate || job.action == Action::Link;
     if (named) {
       if (job.sources.size() != 1 || job.expectedSources.size() != 1 ||
           job.expectedDestination.device < 0)
-        throw std::runtime_error("Named entry operations require one guarded local source and destination.");
+        throw std::runtime_error(
+            "Named entry operations require one guarded local source and destination.");
       ValidateNewEntryName(job.destination, job.entryName);
     }
     if (job.action == Action::MakeDirectory) {
@@ -422,19 +437,25 @@ struct Runner {
           if (directory.GetNodeRef(&node) != B_OK ||
               node.device != job.expectedDestination.device ||
               node.node != job.expectedDestination.inode)
-            throw std::runtime_error("The link destination changed; nothing was created.");
+            throw std::runtime_error(
+                "The link destination changed; nothing was created.");
           // One native exclusive create: existing files, folders and broken
           // symlinks are never replaced. No shell or source dereferencing.
           const auto text = LinkText(job);
-          status_t status = directory.CreateSymLink(job.entryName.c_str(), text.c_str(), nullptr);
-          if (status != B_OK) throw std::runtime_error("Could not create link: " + std::string(strerror(status)));
+          status_t status = directory.CreateSymLink(job.entryName.c_str(),
+                                                    text.c_str(), nullptr);
+          if (status != B_OK)
+            throw std::runtime_error("Could not create link: " +
+                                     std::string(strerror(status)));
           const auto destination = Join(job.destination, job.entryName);
           result.completedRoots.emplace_back(source, destination);
           ++result.completed;
-          if (h.fileDone) h.fileDone(source, destination);
+          if (h.fileDone)
+            h.fileDone(source, destination);
           continue;
         }
-        if (S_ISDIR(sourceStat.st_mode) && job.action != Action::Copy && job.action != Action::Duplicate) {
+        if (S_ISDIR(sourceStat.st_mode) && job.action != Action::Copy &&
+            job.action != Action::Duplicate) {
           std::string parent = source.substr(0, source.find_last_of('/'));
           if (parent.empty())
             parent = "/";
@@ -464,7 +485,8 @@ struct Runner {
         }
         std::string destination = job.action == Action::Rename
                                       ? job.destination
-                                      : Join(Canonical(job.destination), named ? job.entryName : leaf);
+                                      : Join(Canonical(job.destination),
+                                             named ? job.entryName : leaf);
         if (S_ISDIR(sourceStat.st_mode)) {
           std::string from = Canonical(source),
                       parent = Canonical(
@@ -478,7 +500,7 @@ struct Runner {
           if (Exists(destination))
             throw std::runtime_error(
                 destination + ": already exists; rename does not overwrite");
-          struct stat empty{};
+          struct stat empty {};
           Commit(source, destination, false, empty);
           if (h.fileDone)
             h.fileDone(source, destination);
@@ -526,7 +548,8 @@ struct Runner {
 } // namespace
 Result Run(const Job &j, const Hooks &h) {
   if (j.action == Action::CreateArchive || j.action == Action::ExtractArchive ||
-      j.action == Action::EditArchive || j.action == Action::MoveArchive) return RunArchiveJob(j,h);
+      j.action == Action::EditArchive || j.action == Action::MoveArchive)
+    return RunArchiveJob(j, h);
   // Source-only actions must not depend on the location in the other pane.
   const bool usesDestination =
       j.action == Action::Copy || j.action == Action::Move ||
@@ -538,15 +561,19 @@ Result Run(const Job &j, const Hooks &h) {
   if (virtualJob) {
     if (j.action == Action::Duplicate || j.action == Action::Link) {
       Result result;
-      result.errors.push_back("Guarded file clipboard transfers require local entries.");
+      result.errors.push_back(
+          "Guarded file clipboard transfers require local entries.");
       return result;
     }
     try {
       for (const auto &entry : j.expectedArchiveSets)
         if (FindArchiveVolumes(entry.first).Fingerprint() != entry.second)
-          throw std::runtime_error("Archive changed after selection. Select its entries again.");
+          throw std::runtime_error(
+              "Archive changed after selection. Select its entries again.");
     } catch (const std::exception &e) {
-      Result result;result.errors.push_back(e.what());return result;
+      Result result;
+      result.errors.push_back(e.what());
+      return result;
     }
     return RunVirtual(j, h);
   }

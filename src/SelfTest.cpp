@@ -69,7 +69,8 @@ int SelfTest() {
   model.Pick(4, true, false);
   check(model.Selected().size() == 4, "grid Shift selects the complete range");
   model.Pick(2, true, false);
-  check(model.Selected().size() == 2, "grid Shift range shrinks from its anchor");
+  check(model.Selected().size() == 2,
+        "grid Shift range shrinks from its anchor");
   model.Pick(2, false, true);
   check(model.Selected() == std::vector<std::string>{"a.txt"},
         "grid toggle removes one selected entry");
@@ -195,14 +196,18 @@ int SelfTest() {
     ++completedEvents;
     reportedBeforeCleanup |= exists(source);
   };
-  r = Run({Action::Move, {Join(root, "src/move-progress")}, Join(root, "dst")}, hooks);
+  r = Run({Action::Move, {Join(root, "src/move-progress")}, Join(root, "dst")},
+          hooks);
   check(r.completed == 1 && completedEvents == 1 && !reportedBeforeCleanup,
         "move completion is emitted only after source cleanup");
   write(Join(root, "src/move-cancel"), "new data");
   write(Join(root, "dst/move-cancel"), "old data");
   completedEvents = 0;
-  hooks.proceed = [&] { return text(Join(root, "dst/move-cancel")) != "new data"; };
-  r = Run({Action::Move, {Join(root, "src/move-cancel")}, Join(root, "dst")}, hooks);
+  hooks.proceed = [&] {
+    return text(Join(root, "dst/move-cancel")) != "new data";
+  };
+  r = Run({Action::Move, {Join(root, "src/move-cancel")}, Join(root, "dst")},
+          hooks);
   check(r.cancelled && r.completed == 0 && completedEvents == 0 &&
             exists(Join(root, "src/move-cancel")) &&
             text(Join(root, "dst/move-cancel")) == "new data",
@@ -233,7 +238,8 @@ int SelfTest() {
     if (n)
       unlink(Join(root, "dst/disappearing").c_str());
   };
-  r = Run({Action::Copy, {Join(root, "src/disappearing")}, Join(root, "dst")}, hooks);
+  r = Run({Action::Copy, {Join(root, "src/disappearing")}, Join(root, "dst")},
+          hooks);
   check(!r.errors.empty() && !exists(Join(root, "dst/disappearing")),
         "deleted conflict target is detected before commit");
   hooks.progress = {};

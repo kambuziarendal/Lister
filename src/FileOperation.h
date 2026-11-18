@@ -8,7 +8,21 @@
 #include <vector>
 
 namespace Listi {
-enum class Action { Copy, Move, Delete, Trash, Restore, MakeDirectory, Rename, Duplicate, Link, CreateArchive, ExtractArchive, EditArchive, MoveArchive };
+enum class Action {
+  Copy,
+  Move,
+  Delete,
+  Trash,
+  Restore,
+  MakeDirectory,
+  Rename,
+  Duplicate,
+  Link,
+  CreateArchive,
+  ExtractArchive,
+  EditArchive,
+  MoveArchive
+};
 enum class Decision { Replace, ReplaceAll, Skip, SkipAll, Abort };
 struct NodeIdentity {
   int32_t device = -1;
@@ -33,7 +47,8 @@ struct Job {
   // application restart with this handle, which is intentional.
   uint64_t archivePasswordToken = 0;
   bool archiveEncryptNames = false;
-  bool archiveVerifyOutput = false; // Decode and compare before replacing an edited archive.
+  bool archiveVerifyOutput =
+      false; // Decode and compare before replacing an edited archive.
   // EditArchive uses destination as the local archive, sources as local entries
   // to add, archivePath as the internal destination folder, and archiveRemove
   // as normalized member paths without a leading slash.
@@ -41,7 +56,8 @@ struct Job {
   std::vector<std::string> archiveRemove;
   std::vector<std::string> archiveFolders;
   std::map<std::string, std::string> archiveRenames;
-  std::string destinationFolder; // Captured parent for rename/new-folder questions.
+  std::string
+      destinationFolder; // Captured parent for rename/new-folder questions.
 };
 struct Hooks {
   std::function<bool()> proceed;

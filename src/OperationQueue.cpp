@@ -18,7 +18,8 @@
 #include <dirent.h>
 #include <sys/stat.h>
 namespace {
-uint64_t Size(const std::string &p, const std::function<bool()> &proceed, unsigned depth = 0) {
+uint64_t Size(const std::string &p, const std::function<bool()> &proceed,
+              unsigned depth = 0) {
   if (depth > 64 || !proceed())
     return 0;
   if (Listi::IsVirtual(p)) {
@@ -61,10 +62,14 @@ uint64_t Size(const std::string &p, const std::function<bool()> &proceed, unsign
 }
 const char *Verb(Listi::Action a) {
   switch (a) {
-  case Listi::Action::CreateArchive: return "Create archive";
-  case Listi::Action::ExtractArchive: return "Extract archive";
-  case Listi::Action::EditArchive: return "Update archive";
-  case Listi::Action::MoveArchive: return "Move archive entries";
+  case Listi::Action::CreateArchive:
+    return "Create archive";
+  case Listi::Action::ExtractArchive:
+    return "Extract archive";
+  case Listi::Action::EditArchive:
+    return "Update archive";
+  case Listi::Action::MoveArchive:
+    return "Move archive entries";
   case Listi::Action::Copy:
     return "Copy";
   case Listi::Action::Move:
@@ -142,7 +147,8 @@ public:
       choices->AddChild(new BButton(labels[i], m));
     }
     choices->Hide();
-    history = new ThemeTextView("history", B_DOCUMENT_BACKGROUND_COLOR, B_DOCUMENT_TEXT_COLOR);
+    history = new ThemeTextView("history", B_DOCUMENT_BACKGROUND_COLOR,
+                                B_DOCUMENT_TEXT_COLOR);
     history->MakeEditable(false);
     history->SetWordWrap(true);
     history->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
@@ -181,13 +187,23 @@ public:
   bool compact = false, visible = true;
   void UpdateVisibility() {
     const bool show = !compact || expanded || choicesVisible || owner->Busy();
-    if (visible == show) return;
+    if (visible == show)
+      return;
     visible = show;
-    if (show) BView::Show(); else BView::Hide();
+    if (show)
+      BView::Show();
+    else
+      BView::Hide();
   }
-  void SetCompact(bool value) { compact = value; UpdateVisibility(); }
+  void SetCompact(bool value) {
+    compact = value;
+    UpdateVisibility();
+  }
   void Expand(bool show) {
-    if (expanded == show) { UpdateVisibility(); return; }
+    if (expanded == show) {
+      UpdateVisibility();
+      return;
+    }
     expanded = show;
     if (show)
       details->Show();
@@ -232,8 +248,9 @@ public:
       summary->SetText("Cancelling. Finishing the current safe step...");
       break;
     case kAnswer:
-      if (owner->Answer(static_cast<Listi::Decision>(m->GetInt32("decision", 4)),
-                        m->GetInt64("request", -1)))
+      if (owner->Answer(
+              static_cast<Listi::Decision>(m->GetInt32("decision", 4)),
+              m->GetInt64("request", -1)))
         ShowChoices(false);
       break;
     case kConflict:
@@ -265,7 +282,8 @@ public:
         pause->SetLabel("Pause");
         summary->SetText("Working. You can keep browsing.");
       }
-      if (m->GetInt64("operation", -2) != activeOperation) break;
+      if (m->GetInt64("operation", -2) != activeOperation)
+        break;
       title->SetText(m->GetString("title", title->Text()));
       file->SetText(m->GetString("path", file->Text()));
       float bytes = float(m->GetInt64("bytes", 0));
@@ -374,8 +392,10 @@ void OperationQueue::Cancel() {
     cancel = true;
     paused = false;
     for (const auto &job : jobs) {
-      if (job.tag) discardedTags.push_back(job.tag);
-      if (job.archivePasswordToken) discardedPasswords.push_back(job.archivePasswordToken);
+      if (job.tag)
+        discardedTags.push_back(job.tag);
+      if (job.archivePasswordToken)
+        discardedPasswords.push_back(job.archivePasswordToken);
     }
     count -= jobs.size();
     jobs.clear();
@@ -448,7 +468,7 @@ Listi::Decision OperationQueue::Ask(const std::string &path) {
   changed.wait(l, [this] { return answer >= 0 || cancel || stopping; });
   awaitingAnswer = false;
   return cancel || stopping ? Listi::Decision::Abort
-                                           : static_cast<Listi::Decision>(answer);
+                            : static_cast<Listi::Decision>(answer);
 }
 void OperationQueue::Loop() {
   for (;;) {
@@ -477,8 +497,11 @@ void OperationQueue::Loop() {
     Publish(start);
     uint64_t total = 0;
     if (job.action == Listi::Action::Copy ||
-        job.action == Listi::Action::Move || job.action == Listi::Action::Duplicate || job.action == Listi::Action::CreateArchive ||
-        job.action == Listi::Action::EditArchive || job.action == Listi::Action::MoveArchive)
+        job.action == Listi::Action::Move ||
+        job.action == Listi::Action::Duplicate ||
+        job.action == Listi::Action::CreateArchive ||
+        job.action == Listi::Action::EditArchive ||
+        job.action == Listi::Action::MoveArchive)
       for (auto &s : job.sources)
         total += Size(s, [this] { return Proceed(); });
     start.AddInt64("total", std::max<uint64_t>(1, total));
@@ -541,8 +564,11 @@ void OperationQueue::Loop() {
     BMessage done(kJobDone);
     done.AddInt64("operation", operation);
     done.AddInt64("tag", job.tag);
-    if (job.action == Listi::Action::Move || job.action == Listi::Action::Duplicate || job.action == Listi::Action::CreateArchive ||
-        job.action == Listi::Action::EditArchive || job.action == Listi::Action::MoveArchive)
+    if (job.action == Listi::Action::Move ||
+        job.action == Listi::Action::Duplicate ||
+        job.action == Listi::Action::CreateArchive ||
+        job.action == Listi::Action::EditArchive ||
+        job.action == Listi::Action::MoveArchive)
       for (const auto &root : result.completedRoots)
         done.AddString("moved", root.first.c_str());
     BString summary;

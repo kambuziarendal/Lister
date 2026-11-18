@@ -8,6 +8,7 @@ namespace Listi {
 // Non-copyable, explicitly cleared storage. Never serialized into jobs or URLs.
 class ArchiveSecret {
   std::vector<char> bytes;
+
 public:
   explicit ArchiveSecret(const char *text);
   ~ArchiveSecret();
@@ -25,14 +26,16 @@ uint64_t ArchivePasswordGeneration();
 void CheckArchivePasswordGeneration(uint64_t);
 std::string ArchivePasswordIdentity(const struct stat &);
 ArchiveSecretPtr GetArchivePassword(const std::string &path,
-    const std::string &identity, bool retry, uint64_t generation,
-    const TransferControl &);
+                                    const std::string &identity, bool retry,
+                                    uint64_t generation,
+                                    const TransferControl &);
 void RememberArchivePassword(const std::string &identity, ArchiveSecretPtr,
-    uint64_t generation);
+                             uint64_t generation);
 // Returns a matching in-memory password without prompting. The complete file
 // identity must still match, so a replaced archive never inherits a secret.
-ArchiveSecretPtr CachedArchivePassword(const std::string &path,
-    const std::string &alternateIdentity = {});
+ArchiveSecretPtr
+CachedArchivePassword(const std::string &path,
+                      const std::string &alternateIdentity = {});
 // Creation passwords live only in this process. The queue serializes the token,
 // not the secret bytes. Taking a token removes it from the bounded registry.
 uint64_t HoldArchiveCreationPassword(ArchiveSecretPtr);

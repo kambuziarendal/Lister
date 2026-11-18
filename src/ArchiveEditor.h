@@ -31,7 +31,8 @@ private:
   std::string directory, member, working;
   Job target;
   unsigned permissions = 0644;
-  struct stat directoryIdentity{}, workIdentity{}, observed{};
+  struct stat directoryIdentity {
+  }, workIdentity{}, observed{};
   bool haveObserved = false, checked = false;
   int stable = 0;
   void ValidateDirectory() const;

@@ -84,7 +84,8 @@ private:
   BTextControl *edit;
   BButton *back, *forward;
   Listi::NavigationHistory history;
-  void StartNavigation(const std::string &, int target = -1, bool trash = false);
+  void StartNavigation(const std::string &, int target = -1,
+                       bool trash = false);
   void UpdateNavigation();
   BTextControl *filter;
   BButton *clearFilter;

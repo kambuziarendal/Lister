@@ -10,6 +10,7 @@ namespace Listi {
 class ExplicitSubmit : public BMessageFilter {
   BMessenger target;
   BMessage action;
+
 public:
   ExplicitSubmit(BMessenger receiver, const BMessage &message)
       : BMessageFilter(B_KEY_DOWN), target(receiver), action(message) {}

@@ -76,22 +76,28 @@ int VirtualTest(const std::string &fixtures, const std::string &hosts) {
                 StatFile(ChildLocation(root, "hello world.txt"), extracted) &&
                 original.permissions == extracted.permissions &&
                 (!original.modified || original.modified == extracted.modified),
-            std::string(name) + " extraction preserves available mode and mtime");
-      std::string folderTarget = ChildLocation(root, std::string(name) + "-tree");
+            std::string(name) +
+                " extraction preserves available mode and mtime");
+      std::string folderTarget =
+          ChildLocation(root, std::string(name) + "-tree");
       MakeFolder(folderTarget);
       auto directory = ChildLocation(a, "folder");
       auto copied = Run({Action::Copy, {directory}, folderTarget}, hooks);
       check(copied.completed == 1 && copied.errors.empty() &&
                 contents(ChildLocation(ChildLocation(folderTarget, "folder"),
-                                       "hello world.txt")) == "archive content\n",
+                                       "hello world.txt")) ==
+                    "archive content\n",
             std::string(name) + " recursive extraction completes");
       int successEvents = 0;
       Hooks skipped = hooks;
       skipped.conflict = [](const std::string &) { return Decision::Skip; };
-      skipped.fileDone = [&](const std::string &, const std::string &) { ++successEvents; };
+      skipped.fileDone = [&](const std::string &, const std::string &) {
+        ++successEvents;
+      };
       auto partial = Run({Action::Copy, {directory}, folderTarget}, skipped);
-      check(partial.completed == 0 && partial.skipped == 1 && successEvents == 0,
-            std::string(name) + " skipped child never marks its parent complete");
+      check(
+          partial.completed == 0 && partial.skipped == 1 && successEvents == 0,
+          std::string(name) + " skipped child never marks its parent complete");
       check(ParentLocation(a) == fixtures,
             std::string(name) + " parent exits archive");
     } catch (const std::exception &e) {
@@ -108,7 +114,8 @@ int VirtualTest(const std::string &fixtures, const std::string &hosts) {
             std::string(name) + " single-file read");
       auto copied = Run({Action::Copy, {entry}, root}, hooks);
       check(copied.errors.empty() && copied.completed == 1 &&
-                contents(ChildLocation(root, "single.txt")) == "single content\n",
+                contents(ChildLocation(root, "single.txt")) ==
+                    "single content\n",
             std::string(name) + " single-file extraction");
     } catch (const std::exception &e) {
       check(false, std::string(name) + ": " + e.what());
@@ -123,7 +130,8 @@ int VirtualTest(const std::string &fixtures, const std::string &hosts) {
               StatFile(ChildLocation(root, "explicit"), folder) &&
               folder.permissions == 0750 && folder.modified == 1600000000,
           "explicit archive directory mode and time preserved");
-    check(StatFile(ChildLocation(ChildLocation(root, "explicit"), "run.sh"), file) &&
+    check(StatFile(ChildLocation(ChildLocation(root, "explicit"), "run.sh"),
+                   file) &&
               file.permissions == 0751 && file.modified == 1600000020,
           "archive executable mode preserved without setuid");
     chmod(ChildLocation(root, "explicit").c_str(), 0700);
@@ -182,8 +190,9 @@ int VirtualTest(const std::string &fixtures, const std::string &hosts) {
   const std::string host = configuredHost ? configuredHost : "10.0.2.2";
   for (auto protocol : {"smb", "ftp", "sftp"}) {
     std::string url = std::string(protocol) + "://" + host +
-        (std::string(protocol) == "smb" ? ":1445/files" :
-         std::string(protocol) == "ftp" ? ":2121/" : ":2222/");
+                      (std::string(protocol) == "smb"   ? ":1445/files"
+                       : std::string(protocol) == "ftp" ? ":2121/"
+                                                        : ":2222/");
     Connection auth;
     auth.username = "listitest";
     auth.password = "fixture-only";
@@ -249,10 +258,13 @@ int VirtualTest(const std::string &fixtures, const std::string &hosts) {
             std::string(protocol) + " download through jobs");
       FileEntry remoteInfo, downloadedInfo;
       check(StatFile(renamed, remoteInfo) &&
-                StatFile(ChildLocation(root, "renamed space.txt"), downloadedInfo) &&
+                StatFile(ChildLocation(root, "renamed space.txt"),
+                         downloadedInfo) &&
                 remoteInfo.permissions == downloadedInfo.permissions &&
-                (!remoteInfo.modified || remoteInfo.modified == downloadedInfo.modified),
-            std::string(protocol) + " download preserves available mode and mtime");
+                (!remoteInfo.modified ||
+                 remoteInfo.modified == downloadedInfo.modified),
+            std::string(protocol) +
+                " download preserves available mode and mtime");
       auto trash = Run({Action::Trash, {renamed}, root}, hooks);
       check(!trash.errors.empty() && StatFile(renamed, stat),
             std::string(protocol) + " no permanent delete fallback");

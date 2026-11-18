@@ -13,7 +13,8 @@ public:
   int Back() const { return cursor < 0 ? -1 : detached ? cursor : cursor - 1; }
   int Forward() const {
     return !detached && cursor >= 0 && cursor + 1 < int(visits.size())
-               ? cursor + 1 : -1;
+               ? cursor + 1
+               : -1;
   }
   const std::string &At(int index) const { return visits.at(index); }
   size_t Size() const { return visits.size(); }
