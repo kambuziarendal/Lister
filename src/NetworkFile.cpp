@@ -571,16 +571,24 @@ void ChangeNetwork(const Location &l, const char *action,
       command += " " + QuoteSFTP(ParseLocation(destination).path);
     s.Command(command);
   } else {
-    if (l.path.find_first_of("\r\n") != std::string::npos)
-      throw std::runtime_error("Invalid FTP path");
+    // A single slash after the FTP authority in a curl URL denotes the
+    // login directory, not the server's filesystem root. QUOTE commands
+    // must address the same entry that listing and transfer showed.
+    auto relativePath = [](const Location &location) {
+      if (location.path.size() < 2 || location.path.front() != '/' ||
+          location.path.find_first_of("\r\n") != std::string::npos)
+        throw std::runtime_error("Invalid FTP entry path");
+      return location.path.substr(1);
+    };
+    const auto path = relativePath(l);
     if (a == "rename") {
-      s.Command("RNFR " + l.path);
-      s.Command("RNTO " + ParseLocation(destination).path);
+      s.Command("RNFR " + path);
+      s.Command("RNTO " + relativePath(ParseLocation(destination)));
     } else
       s.Command((a == "mkdir"   ? "MKD "
                  : a == "rmdir" ? "RMD "
                                 : "DELE ") +
-                l.path);
+                path);
   }
   s.Set(CURLOPT_QUOTE, s.commands);
   s.Perform();
