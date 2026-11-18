@@ -252,7 +252,12 @@ capabilities. A successful listing does not establish member-data integrity.
 - Archive/local moves refuse unsupported metadata and file types rather than
   silently discarding them, including BFS attributes, source symlinks, special
   files and some hard-link cases. Use Copy to retain originals.
-- RAR writing and mutation of remote, split or nested archives are not supported.
+- With the p7zip RAR5 reader installed, Listi writes single-volume RAR5 using
+  Store (no compression). Ordinary existing RAR5 files, including supported
+  compressed members, can be edited if their metadata can be retained.
+  Rebuilding may increase the file size. RAR4, encrypted or multipart RAR,
+  recovery records and unsupported metadata are not writable.
+- Remote, split and nested archives cannot be edited in place.
 
 A failed or cancelled merge may leave destination copies, and cleanup may stop
 after some verified entries have moved. Inspect both locations before retrying.

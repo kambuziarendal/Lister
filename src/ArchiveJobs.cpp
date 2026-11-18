@@ -5,6 +5,7 @@
 #include "CabWriter.h"
 #include "ArWriter.h"
 #include "ArjWriter.h"
+#include "RarStore.h"
 #include "LhaWriter.h"
 #include "DynamicLibrary.h"
 #include "JobSnapshot.h"
@@ -128,6 +129,7 @@ const ArchiveFormat formats[] = {
     {"cpio", "CPIO (newc)", ".cpio", false},
     {"xar", "XAR", ".xar", true},
     {"ar", "Unix ar", ".ar", false},
+    {"rar5", "RAR5 (Store)", ".rar", false},
     {"arj", "ARJ (Store)", ".arj", false},
     {"cab", "Microsoft Cabinet", ".cab", false},
     {"lha", "LHA", ".lha", true},
@@ -490,6 +492,8 @@ void CreateOutput(int output, const std::string &format,
                   const Hooks &hooks) {
   if (format == "ar" || format == "ar-bsd")
     ArCreate(output, sources, format == "ar-bsd", hooks);
+  else if (format == "rar5")
+    RarStoreWrite(output, sources, hooks);
   else if (format == "arj")
     ArjWrite(output, sources, hooks);
   else if (format == "cab")
@@ -524,6 +528,11 @@ std::string EditFormat(const std::string &path, const Hooks &hooks = {}) {
     return "7z";
   FD fd(open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK));
   Require(fd.n >= 0, "Cannot open archive for editing.");
+  if (sevenZipFormat == "rar5") {
+    Require(RarStoreCanCreate(), "Install p7zip from HaikuDepot to edit RAR5 archives.");
+    RarStoreValidateEdit(fd.n, hooks);
+    return "rar5";
+  }
   if (sevenZipFormat == "arj") {
     Require(ArjCanCreate(), "Install p7zip from HaikuDepot to edit ARJ archives.");
     ArjValidateEdit(fd.n);
@@ -877,6 +886,11 @@ std::vector<ArchiveFormat> WritableArchiveFormats() {
   std::vector<ArchiveFormat> result;
   for (const auto &f : formats)
     try {
+      if (f.id == "rar5") {
+        if (RarStoreCanCreate())
+          result.push_back(f);
+        continue;
+      }
       if (f.id == "ar" || f.id == "arj") {
         if (f.id == "ar" || ArjCanCreate())
           result.push_back(f);
