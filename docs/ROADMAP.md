@@ -155,7 +155,8 @@ handling. Pasted text must not be executed as a command.
 The unreleased development build has a separate Shelf window for local
 references, with original-folder and availability columns, drop support,
 Command+Shift+Y and a confirmed Move all action using the normal queue.
-The collection is session-only. ZIP creation and sharing from the Shelf are
+Create ZIP packs references from different folders through the same queue
+without moving the originals. The collection is session-only. Sharing is
 still planned. Verify Stack & Tile ergonomics during hands-on testing.
 
 ### Send a selection to a phone

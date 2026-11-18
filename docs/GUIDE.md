@@ -128,6 +128,12 @@ keeps its contents; quitting Listi clears it.
 destination, review the confirmation and follow progress in Operations.
 Remove unavailable or replaced references before submitting another move.
 
+**Create ZIP...** packs the whole Shelf into one archive. Choose a new name
+and location in the save panel, then follow progress in Operations. Each
+collected entry appears at the top level under its original name. If two
+entries have the same name, remove one reference before packing. Creating
+a ZIP leaves the originals and the Shelf unchanged.
+
 Local drag-and-drop asks Copy here, Move here or Cancel for the receiving
 panel's current folder, not the row under the pointer. Duplicate and symbolic
 link creation are local, single-entry actions; links can be relative or absolute.
