@@ -16,7 +16,7 @@ public:
   void Accepted(int64 id, const char *title);
   void Started(int64 id);
   void Finished(const BMessage &event);
-  void AppendActivity(const std::string &line);
+  void ShowFileError(const std::string &line);
   void AttachedToWindow() override;
   void MessageReceived(BMessage *) override;
 
@@ -30,6 +30,7 @@ private:
   void SetState(int64 id, const char *state, bool waiting);
   void Display();
   void ClearFinished();
+  void AppendActivity(const std::string &line);
   OperationQueue *queue;
   BPopUpMenu *jobs;
   BButton *previous, *next, *cancelWaiting, *clear;

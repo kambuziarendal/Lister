@@ -116,7 +116,8 @@ void JobResultsView::Finished(const BMessage &event) {
            : event.GetBool("complete", false) ? "Done"
                                               : "Review",
            false);
-  std::string log = event.GetString("result", "");
+  std::string log = id ? "#" + std::to_string(id) + " " : "";
+  log += event.GetString("result", "");
   const char *source, *destination;
   if (event.FindString("retainedSource", &source) == B_OK &&
       event.FindString("retainedDestination", &destination) == B_OK)
@@ -126,6 +127,12 @@ void JobResultsView::Finished(const BMessage &event) {
   for (int i = 0; event.FindString("error", i, &error) == B_OK; ++i)
     log += std::string("\n") + error;
   AppendActivity(log);
+}
+void JobResultsView::ShowFileError(const std::string &line) {
+  selected = 0;
+  first = 0;
+  jobs->ItemAt(0)->SetMarked(true);
+  AppendActivity(line);
 }
 void JobResultsView::AppendActivity(const std::string &line) {
   activity += line + "\n";
@@ -173,13 +180,11 @@ void JobResultsView::Display() {
     }
     previous->SetEnabled(first > 0);
     next->SetEnabled(end < lines);
-  } else {
-    if (row.waiting) {
-      auto cancel = new BMessage(kCancelWaiting);
-      cancel->AddInt64("operation", selected);
-      cancelWaiting->SetMessage(cancel);
-      cancelWaiting->SetEnabled(true);
-    }
+  } else if (row.waiting) {
+    auto cancel = new BMessage(kCancelWaiting);
+    cancel->AddInt64("operation", selected);
+    cancelWaiting->SetMessage(cancel);
+    cancelWaiting->SetEnabled(true);
   }
   text->SetText(page.c_str());
   text->Select(0, 0);

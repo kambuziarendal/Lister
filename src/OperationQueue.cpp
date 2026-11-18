@@ -241,7 +241,7 @@ public:
         break;
       lastError = m->GetString("error", "");
       Expand(true);
-      results->AppendActivity(lastError.String());
+      results->ShowFileError(lastError.String());
       break;
     case kPause: {
       const auto operation = m->GetInt64("operation", 0);

@@ -139,11 +139,13 @@ int main(){
    removed.sources.push_back(root + "/in/pending" + std::to_string(i));
  const auto pending = window->queue->Enqueue(removed);
  const auto following = window->queue->Enqueue(job(20, 103));
+ window->Lock();
  auto picker = dynamic_cast<BMenuField *>(window->FindView("job-picker"));
  auto historyView = dynamic_cast<BTextView *>(window->FindView("history"));
  auto cancelWaiting = dynamic_cast<BButton *>(window->FindView("cancel-waiting"));
  auto nextPage = dynamic_cast<BButton *>(window->FindView("next-results"));
  auto clearReports = dynamic_cast<BButton *>(window->FindView("clear-finished"));
+ window->Unlock();
  // Called under the window lock. Use the same messages as keyboard or mouse input.
  auto select = [&](int64 id) {
    if (!picker)
