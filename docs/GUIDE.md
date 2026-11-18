@@ -100,8 +100,10 @@ as the destination; clipboard Paste uses the active panel. Accepted jobs retain
 their selected paths and target even if you navigate or switch workspace.
 
 The operation queue offers progress, pause, cancellation and conflict choices.
-Cancellation does not undo completed work. A partially copied directory may
-remain. After a failed or partial move, inspect both source and destination.
+Cancellation does not undo completed work. If a local move finishes copying
+but is cancelled before Listi removes any source entries, the queue history
+shows the complete copy's location and the original source path. If copying
+or removal stops partway through a directory, a partial tree may remain. After a failed or partial move, inspect both source and destination.
 Concurrent external edits are not prevented by a filesystem snapshot lock.
 
 Trash and permanent deletion are separate actions. Trash restore does not

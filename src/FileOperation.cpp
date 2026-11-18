@@ -224,7 +224,8 @@ struct Runner {
            a.st_ctim.tv_sec == b.st_ctim.tv_sec &&
            a.st_ctim.tv_nsec == b.st_ctim.tv_nsec;
   }
-  void RemoveCopied(const std::string &root, const Snapshot &before) {
+  void RemoveCopied(const std::string &root, const Snapshot &before,
+                    bool *removedAny = nullptr) {
     Snapshot after;
     SnapshotTree(root, after, before.at(root).st_dev);
     if (before.size() != after.size())
@@ -251,6 +252,8 @@ struct Runner {
             it->first + ": source changed during cleanup; left untouched");
       if (directory ? rmdir(it->first.c_str()) : unlink(it->first.c_str()))
         Fail(it->first);
+      if (removedAny)
+        *removedAny = true;
       // The removal has committed. Poll before the next entry, not after
       // this one: a late cancellation cannot bring the source back.
       if (h.progress)
@@ -533,7 +536,14 @@ struct Runner {
         if (Copy(source, destination)) {
           if (job.action == Action::Move) {
             Guard();
-            RemoveCopied(source, beforeMove);
+            bool removedAny = false;
+            try {
+              RemoveCopied(source, beforeMove, &removedAny);
+            } catch (const Cancelled &) {
+              if (!removedAny)
+                result.retainedMoveCopy.emplace(source, destination);
+              throw;
+            }
           }
           result.completedRoots.emplace_back(source, destination);
           result.completed++;

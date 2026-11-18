@@ -84,7 +84,8 @@ int main() try {
         {first.string(), moved.string()}};
     check(result.errors.empty() && result.cancelled == batch &&
               result.completed == 1 && notifications == 1 &&
-              result.completedRoots == expected && !fs::exists(first) &&
+              result.completedRoots == expected && !result.retainedMoveCopy &&
+              !fs::exists(first) &&
               Read(moved) == "first" &&
               (!batch ||
                (Read(next) == "next" && !fs::exists(dest.path / "next"))),
@@ -96,26 +97,80 @@ int main() try {
   const std::string payload(512 * 1024, 'x');
   Write(large, payload);
   Fixture interrupted(volume);
+  for (const auto action : {Action::Copy, Action::Move}) {
+    Hooks hooks;
+    bool stop = false;
+    hooks.proceed = [&] { return !stop; };
+    hooks.progress = [&](const std::string &, uint64_t bytes) {
+      stop |= bytes > 0;
+    };
+    const auto result =
+        Run({action, {large.string()}, interrupted.path.string()}, hooks);
+    check(result.cancelled && result.errors.empty() && !result.completed &&
+              !result.retainedMoveCopy && Read(large) == payload &&
+              fs::is_empty(interrupted.path),
+          action == Action::Copy
+              ? "cancelled copy has no retained-move notice"
+              : "move cancelled during copy has no retained-copy notice");
+  }
+
   Hooks hooks;
-  bool stop = false;
-  hooks.proceed = [&] { return !stop; };
-  hooks.progress = [&](const std::string &, uint64_t bytes) {
-    stop |= bytes > 0;
+  const auto largeCopy = dest.path / "large";
+  int done = 0, failed = 0;
+  hooks.proceed = [&] { return !fs::exists(largeCopy); };
+  hooks.fileDone = [&](const std::string &, const std::string &) { ++done; };
+  hooks.fileFailed = [&](const std::string &, const std::string &) { ++failed; };
+  auto result = Run({Action::Move, {large.string()}, dest.path.string()}, hooks);
+  check(result.cancelled && !result.completed && result.errors.empty() &&
+            result.completedRoots.empty() && !done && !failed &&
+            result.retainedMoveCopy ==
+                std::make_pair(large.string(), largeCopy.string()) &&
+            Read(large) == payload && Read(largeCopy) == payload,
+        "cancel before removal reports both paths without completing the move");
+
+  const auto folder = source.path / "tree";
+  const auto treeCopy = dest.path / "tree";
+  fs::create_directory(folder);
+  Write(folder / "a", "first child");
+  Write(folder / "z", "last child");
+
+  bool treeCopied = false;
+  hooks = {};
+  hooks.progress = [&](const std::string &path, uint64_t) {
+    if (path == folder)
+      treeCopied = true;
   };
-  auto result =
-      Run({Action::Move, {large.string()}, interrupted.path.string()}, hooks);
-  check(
-      result.cancelled && result.errors.empty() && !result.completed &&
-          Read(large) == payload && fs::is_empty(interrupted.path),
-      "interrupt copying without exposing a partial destination or losing the source");
+  hooks.proceed = [&] { return !treeCopied; };
+  result = Run({Action::Move, {folder.string()}, dest.path.string()}, hooks);
+  check(result.cancelled && result.errors.empty() && !result.completed &&
+            result.retainedMoveCopy ==
+                std::make_pair(folder.string(), treeCopy.string()) &&
+            Read(folder / "a") == "first child" &&
+            Read(folder / "z") == "last child" &&
+            Read(treeCopy / "a") == "first child" &&
+            Read(treeCopy / "z") == "last child",
+        "cancel before directory cleanup reports the two complete trees");
 
   hooks = {};
-  hooks.proceed = [&] { return !fs::exists(dest.path / "large"); };
-  result = Run({Action::Move, {large.string()}, dest.path.string()}, hooks);
-  check(result.cancelled && !result.completed && result.errors.empty() &&
-            result.completedRoots.empty() && Read(large) == payload &&
-            Read(dest.path / "large") == payload,
-        "cancel after copy but before removal retains both complete files");
+  hooks.conflict = [](const std::string &) { return Decision::Replace; };
+  // Reverse snapshot order deletes z first. Cancel before deleting a.
+  hooks.proceed = [&] { return fs::exists(folder / "z"); };
+  result = Run({Action::Move, {folder.string()}, dest.path.string()}, hooks);
+  check(result.cancelled && result.errors.empty() && !result.completed &&
+            result.completedRoots.empty() && !result.retainedMoveCopy &&
+            !fs::exists(folder / "z") && Read(folder / "a") == "first child" &&
+            Read(treeCopy / "a") == "first child" &&
+            Read(treeCopy / "z") == "last child",
+        "cancel during directory cleanup never reports the source as intact");
+
+  const auto blocked = source.path / "blocked";
+  Write(blocked, "source");
+  fs::create_directory(dest.path / blocked.filename());
+  result = Run({Action::Move, {blocked.string()}, dest.path.string()}, {});
+  check(!result.cancelled && result.errors.size() == 1 && !result.completed &&
+            !result.retainedMoveCopy && Read(blocked) == "source",
+        "copy failure has no retained-copy notice");
+
   // Never fill a general-purpose volume. This case is explicitly enabled
   // for a small disposable filesystem, and writes only in the unique fixture.
   const char *diskFull = std::getenv("LISTI_TEST_DISK_FULL");
@@ -139,7 +194,8 @@ int main() try {
             result.errors.front().find(std::strerror(ENOSPC)) !=
                 std::string::npos &&
             !result.cancelled && !result.completed &&
-            result.completedRoots.empty() && Read(oversized) == contents &&
+            result.completedRoots.empty() && !result.retainedMoveCopy &&
+            Read(oversized) == contents &&
             Read(original) == "existing destination" &&
             std::distance(fs::directory_iterator(full.path),
                           fs::directory_iterator()) == 1,

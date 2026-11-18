@@ -2,6 +2,7 @@
 #pragma once
 #include <functional>
 #include <map>
+#include <optional>
 #include <utility>
 #include <stdint.h>
 #include <string>
@@ -71,6 +72,8 @@ struct Result {
   bool cancelled = false;
   std::vector<std::string> errors;
   std::vector<std::pair<std::string, std::string>> completedRoots;
+  // A cancelled local move left a complete copy and removed no source entries.
+  std::optional<std::pair<std::string, std::string>> retainedMoveCopy;
 };
 Result Run(const Job &, const Hooks &);
 std::string Join(const std::string &, const std::string &);

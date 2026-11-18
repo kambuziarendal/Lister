@@ -300,6 +300,17 @@ public:
       summary->SetText(s);
       s << "\n";
       history->Insert(s.String());
+      const char *retainedSource, *retainedDestination;
+      const bool hasRetainedCopy =
+          m->FindString("retainedSource", &retainedSource) == B_OK &&
+          m->FindString("retainedDestination", &retainedDestination) == B_OK;
+      if (hasRetainedCopy) {
+        BString notice;
+        notice << "Complete copy kept at: " << retainedDestination
+               << "\nListi did not remove anything from the source: "
+               << retainedSource << "\n";
+        history->Insert(notice.String());
+      }
       const char *error;
       for (int i = 0; m->FindString("error", i, &error) == B_OK; i++) {
         history->Insert(error);
@@ -318,7 +329,7 @@ public:
         if (!bar->IsHidden())
           bar->Hide();
       }
-      if (m->HasString("error"))
+      if (hasRetainedCopy || m->HasString("error"))
         Expand(true);
       ShowChoices(false);
       activeOperation = -1;
@@ -580,6 +591,11 @@ void OperationQueue::Loop() {
     done.AddString("result", summary);
     done.AddBool("complete", !result.cancelled && result.errors.empty() &&
                                  result.skipped == 0);
+    if (result.retainedMoveCopy) {
+      const auto &[source, destination] = *result.retainedMoveCopy;
+      done.AddString("retainedSource", source.c_str());
+      done.AddString("retainedDestination", destination.c_str());
+    }
     for (auto &e : result.errors)
       done.AddString("error", e.c_str());
     done.AddBool("idle", count.load() == 0);

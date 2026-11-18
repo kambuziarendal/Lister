@@ -4,6 +4,7 @@
 #include <Application.h>
 #include <Window.h>
 #include <StringView.h>
+#include <TextView.h>
 #include <LayoutBuilder.h>
 #include <Directory.h>
 #include <Entry.h>
@@ -71,6 +72,25 @@ int main(){
  // Delayed old progress must not revive a completed operation's controls.
  window->Lock();BMessage stale(kJobUpdate);stale.AddInt64("operation",1);stale.AddString("title","STALE JOB");window->queue->PresentEvent(stale);
  auto title=dynamic_cast<BStringView*>(window->FindView("operation"));check(title&&std::string(title->Text())!="STALE JOB","late progress cannot revive an old job");window->Unlock();
+
+ const auto source = root + "/in/item0";
+ const auto destination = root + "/out/item0";
+ BMessage retained(kJobDone);
+ retained.AddString("result", "Move: 0 completed, 0 skipped, 0 errors. Cancelled;");
+ retained.AddString("retainedSource", source.c_str());
+ retained.AddString("retainedDestination", destination.c_str());
+ window->Lock();
+ window->queue->PresentEvent(retained);
+ auto historyView = dynamic_cast<BTextView *>(window->FindView("history"));
+ const std::string history = historyView ? historyView->Text() : "";
+ check(history.find("0 errors. Cancelled") != std::string::npos &&
+           history.find("Complete copy kept at: " + destination) !=
+               std::string::npos &&
+           history.find("Listi did not remove anything from the source: " +
+                        source) != std::string::npos,
+       "cancelled move history reports both retained paths without an error");
+ window->Unlock();
+
  window->queue->Enqueue(job(0,301));check(wait([&]{return window->conflicts.size()==3;}),"shutdown fixture is genuinely waiting at conflict");
  auto start=system_time();window->Lock();window->Quit();check(system_time()-start<2000000,"queue destruction releases blocked conflict without UI-thread deadlock");
  clean(root);std::cout<<checks<<" checks, "<<failures<<" failures"<<std::endl;return failures?1:0;
