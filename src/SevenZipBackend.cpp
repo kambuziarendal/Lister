@@ -5,6 +5,7 @@
 #include "ArchiveBackend.h"
 #include "ArchivePasswords.h"
 #include "ArchiveVolumes.h"
+#include "ArjWriter.h"
 #include "DynamicLibrary.h"
 #include "vendor/p7zip/CPP/7zip/Archive/IArchive.h"
 #include "vendor/p7zip/CPP/7zip/ICoder.h"
@@ -90,6 +91,8 @@ struct Module {
           key = "rar";
         if (!wcscmp(name.bstrVal, L"Rar5"))
           key = "rar5";
+        if (!wcscmp(name.bstrVal, L"Arj"))
+          key = "arj";
       }
       lib.Function<decltype(&VariantClear)>("VariantClear")(&name);
       if (key.empty())
@@ -522,8 +525,12 @@ struct Archive {
               "volumes");
       Variant size(*s.engine);
       Property(i, kpidSize, size);
-      e.sizeKnown = size.value.vt == VT_UI8;
-      if (e.sizeKnown) {
+      // The ARJ handler exposes its format's 32-bit uncompressed size.
+      const bool arjSize = s.format == "arj" && size.value.vt == VT_UI4;
+      e.sizeKnown = arjSize || size.value.vt == VT_UI8;
+      if (arjSize) {
+        e.size = size.value.ulVal;
+      } else if (e.sizeKnown) {
         Require(size.value.uhVal.QuadPart <= uint64_t(INT64_MAX),
                 "Archive member is too large");
         e.size = size.value.uhVal.QuadPart;
@@ -537,6 +544,18 @@ struct Archive {
       // p7zip encodes UNIX modes in the high word of Win32 attributes.
       Variant host(*s.engine);
       Property(i, kpidHostOS, host);
+      if (s.format == "arj") {
+        Variant position(*s.engine);
+        Property(i, kpidPosition, position);
+        Require(position.value.vt == VT_EMPTY,
+                "Split ARJ entries are not supported.");
+        // This p7zip handler maps UNIX ARJ entries to ordinary files and
+        // interprets epoch timestamps as DOS dates. Do not extract them.
+        const auto os =
+            host.value.vt == VT_BSTR ? UTF8(host.value.bstrVal) : "";
+        Require(os == "MSDOS" || os == "WIN95",
+                "Only DOS or Windows ARJ files can be read safely.");
+      }
       bool rarUnix = s.format == "rar5" && host.value.vt == VT_BSTR &&
                      UTF8(host.value.bstrVal) == "Unix";
       if (!bits && attr.value.vt == VT_UI4 &&
@@ -1010,6 +1029,13 @@ struct UpdateCallback : IArchiveUpdateCallback, ICryptoGetTextPassword2 {
 };
 } // namespace
 bool SevenZipAvailable() { return Engine()->lib.Available(); }
+bool ArjCanCreate() {
+  try {
+    return Engine()->formats.count("arj") != 0;
+  } catch (...) {
+    return false;
+  }
+}
 bool SevenZipCanCreate() {
   try {
     auto engine = Engine();
@@ -1083,7 +1109,7 @@ std::string SevenZipFormat(const std::string &path) {
   int fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   if (fd < 0)
     return "";
-  unsigned char bytes[8]{};
+  unsigned char bytes[11]{};
   struct stat st;
   ssize_t n = 0;
   if (!fstat(fd, &st) && S_ISREG(st.st_mode))
@@ -1095,6 +1121,12 @@ std::string SevenZipFormat(const std::string &path) {
     return "rar";
   if (n >= 8 && !memcmp(bytes, "Rar!\x1a\x07\x01\0", 8))
     return "rar5";
+  if (n >= 11 && bytes[0] == 0x60 && bytes[1] == 0xea) {
+    const unsigned size = bytes[2] | (unsigned(bytes[3]) << 8);
+    if (size >= 30 && size <= 2600 && bytes[4] >= 30 && bytes[4] <= size &&
+        bytes[10] == 2)
+      return "arj";
+  }
   return "";
 }
 std::string SevenZipOpen(const std::string &path, const TransferControl &c) {
