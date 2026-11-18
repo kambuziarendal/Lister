@@ -193,7 +193,7 @@ int main() {
     Check(shelf.Add({first}) == 0 && shelf.Snapshot().entries.front().State() ==
                                          Listi::ShelfState::Replaced,
           "adding the same path does not silently accept a replacement");
-    Refused([&] { shelf.Add({first}, job.expectedSources); }, "dragged entry",
+    Refused([&] { shelf.Add({first}, job.expectedSources); }, "changed",
             "a drag with the old inode cannot collect its replacement");
     Refused(
         [&] {

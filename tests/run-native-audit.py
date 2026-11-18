@@ -18,7 +18,7 @@ for name in names:
  if name=='file-operation-faults': cmd += ['-Wl,--wrap=mkstemp','-Wl,--wrap=write','-Wl,--wrap=unlink','-Wl,--wrap=_ZN5BNode10RemoveAttrEPKc']
  if name=='clipboard-text-file': cmd += ['-Wl,--wrap=write']
  if name=='archive-move-scaling': cmd += ['-Wl,--wrap=lstat']
- if name in ['directory-delivery','operation-queue']: cmd += ['-Wl,--wrap=_ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl']
+ if name in ['directory-delivery','operation-queue','flat-view']: cmd += ['-Wl,--wrap=_ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl']
  if name in ['folder-compare','flat-view']: cmd += ['-Wl,--wrap=opendir']
  if name=='properties-faults': cmd += ['-Wl,--wrap=_ZN5BNode9WriteAttrEPKcjlPKvm','-Wl,--wrap=_ZN5BNode4SyncEv','-Wl,--wrap=fsync']
  subprocess.run(cmd,cwd=src,check=True)

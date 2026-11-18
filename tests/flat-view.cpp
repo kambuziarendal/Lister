@@ -25,8 +25,14 @@ using namespace Listi;
 
 namespace {
 std::string root, denied;
-std::atomic<bool> pauseRoot{false};
+std::atomic<bool> pauseRoot{false}, dropCompletion{false};
 sem_id openedRoot, resumeRoot;
+}
+
+extern "C" status_t __real__ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl(const BMessenger *, BMessage *, BHandler *, bigtime_t);
+extern "C" status_t __wrap__ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl(const BMessenger *target, BMessage *m, BHandler *reply, bigtime_t timeout) {
+  if (m->what == kSearchDone && dropCompletion.load()) return B_TIMED_OUT;
+  return __real__ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl(target,m,reply,timeout);
 }
 
 extern "C" DIR *__real_opendir(const char *);
@@ -232,6 +238,14 @@ int main() {
   scanning.SendMessage(B_QUIT_REQUESTED);
   Check(Await([&] { return !scanning.IsValid(); }),
         "closing a cancelled Flat View joins its worker");
+  dropCompletion = true;
+  auto lost = OpenFlatView(BMessenger(), shelf, root.c_str());
+  Check(Await([&] { return Inspect(lost, [](BWindow &window) {
+      return TextContains(window, "flat status", "Incomplete: results could not be delivered.");
+    }); }), "failed terminal delivery cannot leave Flat View scanning indefinitely");
+  dropCompletion = false;
+  lost.SendMessage(B_QUIT_REQUESTED);
+  Check(Await([&] { return !lost.IsValid(); }), "close after lost completion");
   delete_sem(openedRoot);
   delete_sem(resumeRoot);
 
