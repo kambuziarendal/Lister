@@ -1359,8 +1359,11 @@ public:
             }
           }
           reply.AddString("result", pane->Path());
-        } else if (m->what == B_SET_PROPERTY) {
-          BWindow::MessageReceived(m);
+        } else if (m->what == B_SET_PROPERTY &&
+                   (!strcmp(property, "Workspace") || !strcmp(property, "Busy") ||
+                    !strcmp(property, "PathReady"))) {
+          reply.AddInt32("error", B_NOT_ALLOWED);
+          m->SendReply(&reply);
           return;
         } else if (!strcmp(property, "Workspace"))
           reply.AddString("result", WorkspaceName(prefs.workspace));
