@@ -110,6 +110,7 @@ void *run(void *) {
     check(edited.completed == 1 && StatFile(added, info) && info.directory &&
               PrepareArchiveEditTarget(renamed).archiveFormat == "iso",
           "data ISO contents can be edited and reverified");
+    check(rename(renamed.c_str(), original.c_str()) == 0, "restore renamed ISO fixture");
   }
   mkdir((input+"/edit").c_str(),0700);mkdir((input+"/edit/replacement").c_str(),0700);
   write(input+"/edit/replacement/empty","replacement\n");write(input+"/edit/new.txt","new\n");
