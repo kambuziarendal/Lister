@@ -52,6 +52,7 @@ void *run(void *) {
   auto formats=WritableArchiveFormats();check(!formats.empty(),"optional system writer available");
   std::string archive;std::map<std::string,std::string> madeArchives;
   for(const auto &f:formats){
+    if (f.id == "cab") rmdir((input+"/folder/empty").c_str());
     auto job=PrepareArchiveJob(false,{input+"/folder",input+"/empty"});job.archiveFormat=f.id;
     SetArchiveDestination(job,out,"roundtrip"+f.extension);
     job=DecodeJob(EncodeJob(job,0));auto result=Run(job,{});
@@ -61,13 +62,14 @@ void *run(void *) {
     auto unpack=Run(extract,{});if(!unpack.errors.empty())std::cerr<<unpack.errors.front()<<std::endl;
     check(unpack.completed==1 && unpack.errors.empty(),f.id+" extracts transactionally");
     check(read(extract.destination+"/folder/æ name ; $(no).txt")=="payload\n",f.id+" Unicode and literal shell characters round trip");
-    check(exists(extract.destination+"/folder/empty") && exists(extract.destination+"/empty"),f.id+" empty file and empty folder preserved");
+    check((f.id == "cab" || exists(extract.destination+"/folder/empty")) && exists(extract.destination+"/empty"),f.id+" representable empty entries preserved");
     auto again=Run(job,{});check(!again.errors.empty() && read(extract.destination+"/folder/æ name ; $(no).txt")=="payload\n",f.id+" existing archive is not replaced");
     for(int level:{0,9}) {
       auto variant=job;variant.archiveLevel=level;SetArchiveDestination(variant,out,f.id+std::to_string(level)+f.extension);
       auto done=Run(variant,{});if(!done.errors.empty())std::cerr<<done.errors.front()<<std::endl;
       check(done.completed==1 && done.errors.empty(),f.id+" compression level "+std::to_string(level));
     }
+    if (f.id == "cab") mkdir((input+"/folder/empty").c_str(),0700);
     archive=job.destination;madeArchives[f.id]=job.destination;
   }
   if (madeArchives.count("iso")) {

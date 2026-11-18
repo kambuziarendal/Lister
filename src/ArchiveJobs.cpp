@@ -2,6 +2,8 @@
 #include "ArchiveJobs.h"
 #include "ArchiveBackend.h"
 #include "ArchiveVolumes.h"
+#include "CabWriter.h"
+#include "LhaWriter.h"
 #include "DynamicLibrary.h"
 #include "JobSnapshot.h"
 #include "LocalMoveTree.h"
@@ -103,7 +105,7 @@ struct Writer {
           Check(LIBCALL(lib, archive_write_add_filter_by_name)(a, filter));
       }
     }
-    if (format != "tar" && format != "cpio" && format != "taz") {
+    if (format != "tar" && format != "cpio" && format != "taz" && format != "iso") {
       const std::string option = "compression-level=" + std::to_string(level);
       Check(LIBCALL(lib, archive_write_set_options)(a, option.c_str()));
     }
@@ -123,6 +125,8 @@ const ArchiveFormat formats[] = {
     {"tar", "Tar (uncompressed)", ".tar", false},
     {"cpio", "CPIO (newc)", ".cpio", false},
     {"xar", "XAR", ".xar", true},
+    {"cab", "Microsoft Cabinet", ".cab", false},
+    {"lha", "LHA", ".lha", true},
     {"iso", "ISO 9660 (data disc)", ".iso", false}};
 std::string LocalSource(const std::string &path) {
   auto loc = ParseLocation(path);
@@ -480,7 +484,11 @@ void CreateOutput(int output, const std::string &format,
                   const std::vector<std::string> &sources, int level,
                   bool encryptNames, const ArchiveSecretPtr &secret,
                   const Hooks &hooks) {
-  if (secret && format == "7z")
+  if (format == "cab")
+    CabWrite(output, sources, hooks);
+  else if (format == "lha")
+    LhaCreate(output, sources, level, hooks);
+  else if (secret && format == "7z")
     SevenZipCreate(output, sources, level, encryptNames, secret, hooks);
   else {
     Writer writer;
@@ -540,6 +548,10 @@ std::string EditFormat(const std::string &path, const Hooks &hooks = {}) {
           "Archive is damaged or cannot be inspected for editing.");
   const int detected =
       LIBCALL(lib, archive_format)(reader.value) & ARCHIVE_FORMAT_BASE_MASK;
+  if (detected == ARCHIVE_FORMAT_CAB)
+    CabValidateEdit(fd.n);
+  if (detected == ARCHIVE_FORMAT_LHA)
+    Require(LhaCanCreate(), "Install lha from HaikuDepot to edit this archive.");
   if (detected == ARCHIVE_FORMAT_ISO9660) {
     char recorded[64];
     attr_info info;
@@ -553,6 +565,8 @@ std::string EditFormat(const std::string &path, const Hooks &hooks = {}) {
   }
   std::string format = detected == ARCHIVE_FORMAT_TAR       ? "tar"
                        : detected == ARCHIVE_FORMAT_CPIO    ? "cpio"
+                       : detected == ARCHIVE_FORMAT_CAB     ? "cab"
+                       : detected == ARCHIVE_FORMAT_LHA     ? "lha"
                        : detected == ARCHIVE_FORMAT_XAR     ? "xar"
                        : detected == ARCHIVE_FORMAT_ISO9660 ? "iso"
                                                             : "";
@@ -596,8 +610,10 @@ std::string EditFormat(const std::string &path, const Hooks &hooks = {}) {
           "This archive compression wrapper has no qualified writer. The original is unchanged.");
     }
   }
-  Writer probe;
-  probe.Configure(format, 6);
+  if (format != "cab" && format != "lha") {
+    Writer probe;
+    probe.Configure(format, 6);
+  }
   return format;
 }
 std::string MemberPath(const std::string &path) {
@@ -845,6 +861,11 @@ std::vector<ArchiveFormat> WritableArchiveFormats() {
   for (const auto &f : formats)
     try {
       Writer w;
+      if (f.id == "cab" || f.id == "lha") {
+        if (f.id == "cab" || LhaCanCreate())
+          result.push_back(f);
+        continue;
+      }
       w.Configure(f.id, 6);
       FD fd(open("/dev/null", O_WRONLY));
       Require(fd.n >= 0, "Cannot probe writer.");
