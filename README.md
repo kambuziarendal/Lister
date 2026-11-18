@@ -12,6 +12,17 @@ together in the Smiðja workspace.
 · [Roadmap](docs/ROADMAP.md)
 · [Report a bug](https://github.com/kambuziarendal/listi/issues)
 
+## Implemented since 0.31.1 (not in the download)
+
+The development build adds named workspace layouts, configurable buttons and
+module positions, and optional compact buttons for narrow windows. Operations
+now reports partial local moves per entry and lets you revisit or cancel a
+specific job. Other additions include Miller columns, a session Shelf, previewed
+local bulk rename, image conversion on drop, saving clipboard text or PNG images,
+and additional archive writers.
+
+See the [development workflow guide](https://github.com/kambuziarendal/listi/blob/work/format-review-20261118/docs/GUIDE.md) for menu paths and archive limitations.
+
 | Smiðja: a file workbench | Tvískipt: source and destination |
 |---|---|
 | ![Smiðja workspace with image preview and two file panels](docs/screenshots/listi-smidja-preview-0.31.0.png) | ![Tvískipt workspace with two panels and a file context menu](docs/screenshots/listi-tviskipt-context-dark-0.31.0.png) |

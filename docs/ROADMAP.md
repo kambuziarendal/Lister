@@ -18,6 +18,17 @@ For implemented behaviour, see the [README](../README.md) and
 [workflow guide](GUIDE.md). The ideas below are not a release schedule or a
 commitment to implement them all at once.
 
+## Development status
+
+The goals below describe the released alpha and our direction. Two milestones
+are now implemented on the development branch: **Optional by design** (named
+layouts, configurable buttons, fixed module zones and opt-in compact sizing)
+and **Make existing file work easier to trust** (per-entry outcomes, job review
+and shared command handling). Layout profiles are not saved file sessions, and
+job reports do not survive quitting Listi. Local bulk rename, clipboard text
+and PNG export, and the Shelf also have working implementations. See the
+[development guide](https://github.com/kambuziarendal/listi/blob/work/format-review-20261118/docs/GUIDE.md) before treating an item below as unimplemented.
+
 ## Optional by design
 
 **Depth should be available, not compulsory.** A straightforward file browser
