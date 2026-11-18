@@ -2,6 +2,7 @@
 #include "OperationQueue.h"
 #include "ArchiveJobs.h"
 #include "ArchivePasswords.h"
+#include "BulkRename.h"
 #include "JobSnapshot.h"
 #include <Application.h>
 #include <Button.h>
@@ -278,7 +279,35 @@ int main(){
        "cancelled move history reports both retained paths without an error");
  window->Unlock();
 
- window->queue->Enqueue(job(0,401));check(wait([&]{return window->conflicts.size()==4;}),"shutdown fixture is genuinely waiting at conflict");
+ const auto renameFolder = root + "/in";
+ const auto one = renameFolder + "/item2", two = renameFolder + "/item3";
+ auto swap = FreezeBulkRename(renameFolder, {one, two});
+ swap.bulkNames = {{one, Leaf(two)}, {two, Leaf(one)}};
+ swap.tag = 350;
+ check(!window->queue->CanUndoBulkRename(),
+       "undo is unavailable before any completed batch");
+ const auto swapped = window->queue->Enqueue(swap);
+ check(wait([&] { return finished(swapped, 350, true, false, false); }) &&
+           window->queue->CanUndoBulkRename() &&
+           bytes(one) == std::string(32768, 'D'),
+       "the actual worker retains guarded undo after a successful swap");
+ const auto busy = window->queue->Enqueue(job(0, 351));
+ if (!wait([&] { return window->conflicts.size() == 4; }))
+   return 2;
+ check(!window->queue->CanUndoBulkRename() &&
+           !window->queue->EnqueueBulkRenameUndo() &&
+           window->queue->CancelOperation(busy) &&
+           wait([&] { return !window->queue->Busy(); }),
+       "undo cannot interleave with earlier active operations");
+ const auto restored = window->queue->EnqueueBulkRenameUndo();
+ check(restored && !window->queue->EnqueueBulkRenameUndo() &&
+           wait([&] { return finished(restored, 0, true, false, false); }) &&
+           !window->queue->CanUndoBulkRename() &&
+           bytes(one) == std::string(32768, 'C') &&
+           bytes(two) == std::string(32768, 'D'),
+       "queued undo consumes the last batch exactly once and restores both names");
+
+ window->queue->Enqueue(job(0,401));check(wait([&]{return window->conflicts.size()==5;}),"shutdown fixture is genuinely waiting at conflict");
  window->Lock();
  clearReports->Invoke();
  window->Unlock();

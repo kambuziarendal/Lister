@@ -2,10 +2,22 @@
 #include "BulkRename.h"
 #include "JobSnapshot.h"
 #include "NamedEntry.h"
+#include "Sha256.h"
+#include <Directory.h>
+#include <Path.h>
+#include <algorithm>
+#include <cerrno>
+#include <chrono>
+#include <cstring>
+#include <deque>
+#include <dirent.h>
+#include <fcntl.h>
 #include <map>
+#include <memory>
 #include <set>
 #include <stdexcept>
 #include <sys/stat.h>
+#include <unistd.h>
 
 namespace Listi {
 namespace {
@@ -31,7 +43,8 @@ bool InspectSource(const Job &job, const std::string &source) {
 
 void InspectFolder(const Job &job) {
   struct stat st;
-  if (job.action != Action::BulkRename || job.destinationFolder.empty() ||
+  if ((job.action != Action::BulkRename && job.action != Action::UndoBulkRename) ||
+      job.destinationFolder.empty() ||
       job.destinationFolder.front() != '/' ||
       stat(job.destinationFolder.c_str(), &st) || !S_ISDIR(st.st_mode) ||
       !SameNode(st, job.expectedDestination))
@@ -63,21 +76,26 @@ std::string NewName(const std::string &leaf, bool folder,
   return options.prefix + stem + options.suffix + number + extension;
 }
 
-// Validate the exact names that will be queued, and revalidate the same batch
-// on the worker before the first write. An occupied name is always a blocker,
-// even if another row in this batch would have freed it.
+// A target may be occupied only by the exact selected name that will move.
 void CheckTargets(BulkRenamePreview &preview) {
   std::map<std::string, size_t> counts;
-  for (const auto &row : preview.rows)
-    if (row.error.empty())
+  std::set<std::string> leaving;
+  for (const auto &row : preview.rows) {
+    if (row.error.empty()) {
       ++counts[row.after];
+      if (row.before != row.after)
+        leaving.insert(row.before);
+    }
+  }
   for (auto &row : preview.rows) {
     if (row.error.empty() && row.before != row.after) {
       ++preview.changed;
       try {
         if (counts[row.after] > 1)
           throw std::runtime_error("More than one entry has this new name.");
-        ValidateNewEntryName(preview.job.destinationFolder, row.after);
+        ValidateEntryLeaf(row.after);
+        if (!leaving.count(row.after))
+          ValidateNewEntryName(preview.job.destinationFolder, row.after);
       } catch (const std::runtime_error &error) {
         row.error = error.what();
       }
@@ -86,6 +104,208 @@ void CheckTargets(BulkRenamePreview &preview) {
       ++preview.blocked;
   }
 }
+
+class FileDescriptor {
+public:
+  explicit FileDescriptor(int value) : fd(value) {}
+  ~FileDescriptor() {
+    if (fd >= 0)
+      close(fd);
+  }
+  FileDescriptor(const FileDescriptor &) = delete;
+  FileDescriptor &operator=(const FileDescriptor &) = delete;
+  const int fd;
+};
+
+struct Cancelled {};
+void Check(const Hooks &hooks) {
+  if (hooks.proceed && !hooks.proceed())
+    throw Cancelled();
+}
+
+bool Stat(int parent, const std::string &leaf, struct stat &st) {
+  return fstatat(parent, leaf.c_str(), &st, AT_SYMLINK_NOFOLLOW) == 0;
+}
+
+bool SameStamp(const struct stat &a, const struct stat &b) {
+  return a.st_dev == b.st_dev && a.st_ino == b.st_ino &&
+         a.st_mode == b.st_mode && a.st_size == b.st_size &&
+         a.st_uid == b.st_uid && a.st_gid == b.st_gid &&
+         a.st_nlink == b.st_nlink &&
+         a.st_mtim.tv_sec == b.st_mtim.tv_sec &&
+         a.st_mtim.tv_nsec == b.st_mtim.tv_nsec &&
+         a.st_ctim.tv_sec == b.st_ctim.tv_sec &&
+         a.st_ctim.tv_nsec == b.st_ctim.tv_nsec;
+}
+
+template <class T> void HashValue(Sha256 &hash, T value) {
+  hash.Update(&value, sizeof(value));
+}
+
+void HashStamp(Sha256 &hash, const struct stat &st, bool ctime) {
+  HashValue(hash, st.st_dev);
+  HashValue(hash, st.st_ino);
+  HashValue(hash, st.st_mode);
+  HashValue(hash, st.st_uid);
+  HashValue(hash, st.st_gid);
+  HashValue(hash, st.st_nlink);
+  HashValue(hash, st.st_size);
+  HashValue(hash, st.st_mtim.tv_sec);
+  HashValue(hash, st.st_mtim.tv_nsec);
+  if (ctime) {
+    HashValue(hash, st.st_ctim.tv_sec);
+    HashValue(hash, st.st_ctim.tv_nsec);
+  }
+}
+
+std::string RootStamp(const struct stat &st) {
+  Sha256 hash;
+  HashStamp(hash, st, true);
+  return hash.Finish();
+}
+
+std::vector<std::string> ChildNames(int parent) {
+  const int copy = openat(parent, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (copy < 0)
+    throw std::runtime_error("Cannot open folder for rename verification.");
+  std::unique_ptr<DIR, decltype(&closedir)> dir(fdopendir(copy), closedir);
+  if (!dir) {
+    close(copy);
+    throw std::runtime_error("Cannot list folder for rename verification.");
+  }
+  std::vector<std::string> names;
+  for (;;) {
+    errno = 0;
+    const auto child = readdir(dir.get());
+    if (!child) {
+      if (errno)
+        throw std::runtime_error("Cannot finish listing folder for rename verification.");
+      break;
+    }
+    const std::string name(child->d_name);
+    if (name != "." && name != "..")
+      names.push_back(name);
+    if (names.size() > 200000)
+      throw std::runtime_error("Folder exceeds the rename verification limit.");
+  }
+  std::sort(names.begin(), names.end());
+  return names;
+}
+
+void HashContents(int fd, Sha256 &hash, const Hooks &hooks,
+                  const std::string &leaf, uint64_t &bytesLeft) {
+  char buffer[65536];
+  for (;;) {
+    Check(hooks);
+    const auto count = read(fd, buffer, sizeof(buffer));
+    if (count < 0 && errno == EINTR)
+      continue;
+    if (count < 0)
+      throw std::runtime_error("Cannot read contents for undo: " + leaf);
+    if (!count)
+      break;
+    if (uint64_t(count) > bytesLeft)
+      throw std::runtime_error("Batch exceeds the 512 MiB undo verification limit.");
+    bytesLeft -= count;
+    hash.Update(buffer, count);
+  }
+}
+
+void FingerprintEntry(int parent, const std::string &leaf, Sha256 &hash,
+                      const Hooks &hooks, dev_t device, unsigned depth,
+                      size_t &remaining, uint64_t &bytesLeft) {
+  Check(hooks);
+  struct stat st;
+  if (!remaining || depth > 64 || !Stat(parent, leaf, st) ||
+      st.st_dev != device)
+    throw std::runtime_error("Cannot verify contents for undo: " + leaf);
+  --remaining;
+  // A rename can change the root's ctime. A separate post-move root stamp
+  // guards the final entry until the first inverse step.
+  HashStamp(hash, st, depth != 0);
+  if (S_ISREG(st.st_mode) && (st.st_size < 0 || uint64_t(st.st_size) > bytesLeft))
+    throw std::runtime_error("Batch exceeds the 512 MiB undo verification limit.");
+  if (S_ISREG(st.st_mode) || S_ISDIR(st.st_mode)) {
+    FileDescriptor entry(openat(parent, leaf.c_str(),
+                                O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
+    struct stat opened;
+    if (entry.fd < 0 || fstat(entry.fd, &opened) || !SameStamp(st, opened))
+      throw std::runtime_error("Cannot verify contents for undo: " + leaf);
+    if (S_ISDIR(st.st_mode)) {
+      const auto children = ChildNames(entry.fd);
+      HashValue(hash, children.size());
+      for (const auto &name : children) {
+        HashValue(hash, name.size());
+        hash.Update(name.data(), name.size());
+        FingerprintEntry(entry.fd, name, hash, hooks, device, depth + 1,
+                         remaining, bytesLeft);
+      }
+    } else {
+      HashContents(entry.fd, hash, hooks, leaf, bytesLeft);
+    }
+  }
+  // Symlinks are never followed, and their text cannot change in place.
+  struct stat after;
+  if (!Stat(parent, leaf, after) || !SameStamp(st, after))
+    throw std::runtime_error("Entry changed during undo verification: " + leaf);
+}
+
+std::string Fingerprint(int parent, const std::string &leaf,
+                        const Hooks &hooks, const NodeIdentity &identity,
+                        size_t &remaining, uint64_t &bytesLeft) {
+  struct stat st;
+  if (!Stat(parent, leaf, st) || !SameNode(st, identity))
+    throw std::runtime_error("The renamed entry changed: " + leaf);
+  Sha256 hash;
+  FingerprintEntry(parent, leaf, hash, hooks, st.st_dev, 0, remaining,
+                   bytesLeft);
+  return hash.Finish();
+}
+
+void MoveName(int parent, const std::string &before, const std::string &after,
+              const NodeIdentity &identity, const std::string &stamp = {}) {
+  struct stat st;
+  if (!Stat(parent, before, st) || !SameNode(st, identity) ||
+      (!stamp.empty() && RootStamp(st) != stamp))
+    throw std::runtime_error("Source changed: " + before);
+  if (Stat(parent, after, st))
+    throw std::runtime_error("Destination already exists: " + after);
+  if (errno != ENOENT)
+    throw std::runtime_error("Cannot check destination: " + after);
+  // Haiku's BEntry::MoveTo(false) likewise checks then renames. A directory
+  // descriptor pins both parents, but Haiku lacks an atomic no-replace flag.
+  if (renameat(parent, before.c_str(), parent, after.c_str()))
+    throw std::runtime_error(before + " -> " + after + ": " + strerror(errno));
+}
+
+std::string TemporaryName(int parent, const std::set<std::string> &reserved) {
+  const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    auto name = ".listi-rename-" + std::to_string(getpid()) + "-" +
+                std::to_string(nonce) + "-" + std::to_string(attempt);
+    if (reserved.count(name))
+      continue;
+    struct stat st;
+    if (Stat(parent, name, st))
+      continue;
+    if (errno == ENOENT)
+      return name;
+    break;
+  }
+  throw std::runtime_error("Cannot find a free temporary rename name.");
+}
+
+std::string CurrentFolder(const Job &job) {
+  const node_ref ref(job.expectedDestination.device,
+                     job.expectedDestination.inode);
+  BDirectory directory(&ref);
+  BEntry entry;
+  BPath path;
+  if (directory.GetEntry(&entry) == B_OK && entry.GetPath(&path) == B_OK)
+    return path.Path();
+  return {};
+}
+
 } // namespace
 
 Job FreezeBulkRename(const std::string &folder,
@@ -128,7 +348,10 @@ BulkRenamePreview PreviewBulkRename(const Job &job,
     BulkRenameRow row{Leaf(source), "", ""};
     try {
       const auto folder = InspectSource(job, source);
-      row.after = NewName(row.before, folder, options, i);
+      const auto override = options.overrides.find(source);
+      row.after = override == options.overrides.end()
+                      ? NewName(row.before, folder, options, i)
+                      : override->second;
       preview.job.bulkNames.emplace(source, row.after);
     } catch (const std::runtime_error &error) {
       row.error = error.what();
@@ -141,6 +364,7 @@ BulkRenamePreview PreviewBulkRename(const Job &job,
 
 Result RunBulkRename(const Job &job, const Hooks &hooks) {
   Result result;
+  const bool undo = job.action == Action::UndoBulkRename;
   for (const auto &source : job.sources) {
     const auto target = job.bulkNames.find(source);
     std::string destination;
@@ -148,17 +372,17 @@ Result RunBulkRename(const Job &job, const Hooks &hooks) {
       destination = Join(job.destinationFolder, target->second);
     result.outcomes.push_back({source, destination, "unprocessed", ""});
   }
-  if (hooks.proceed && !hooks.proceed()) {
-    result.cancelled = true;
-    return result;
-  }
+
+  BulkRenamePreview confirmed;
+  confirmed.job = job;
   try {
+    Check(hooks);
     InspectFolder(job);
-    if (job.sources.size() < 2 || job.bulkNames.size() != job.sources.size() ||
-        job.expectedSources.size() != job.sources.size())
+    if (job.sources.size() < (undo ? 1u : 2u) ||
+        job.bulkNames.size() != job.sources.size() ||
+        job.expectedSources.size() != job.sources.size() ||
+        (undo && job.bulkFingerprints.size() != job.sources.size()))
       throw std::runtime_error("The selected batch is incomplete.");
-    BulkRenamePreview confirmed;
-    confirmed.job = job;
     std::set<std::string> unique;
     for (const auto &source : job.sources) {
       const auto name = job.bulkNames.find(source);
@@ -188,44 +412,213 @@ Result RunBulkRename(const Job &job, const Hooks &hooks) {
         result.errors.push_back("There are no changed names to apply.");
       return result;
     }
-    size_t remaining = confirmed.changed;
-    for (auto &outcome : result.outcomes) {
-      const auto &source = outcome.source;
-      const auto &name = job.bulkNames.at(source);
-      if (Leaf(source) == name) {
-        outcome.status = "skipped";
-        outcome.detail = "Name unchanged.";
-        continue;
-      }
-      Job rename;
-      rename.action = Action::Rename;
-      rename.sources.push_back(source);
-      rename.destination = Join(job.destinationFolder, name);
-      rename.destinationFolder = job.destinationFolder;
-      rename.expectedSources.emplace(source, job.expectedSources.at(source));
-      rename.expectedDestination = job.expectedDestination;
-      auto row = Run(rename, hooks);
-      if (!row.errors.empty()) {
-        outcome.status = "failed";
-        outcome.detail = row.errors.front();
-      }
-      if (row.completed) {
-        outcome.status = "moved";
-        ++result.completed;
-        --remaining;
-        result.completedRoots.emplace_back(source, rename.destination);
-      }
-      if (row.cancelled || !row.errors.empty()) {
-        result.cancelled = row.cancelled;
-        result.errors = std::move(row.errors);
-        // Count unattempted changes separately from the row with an error.
-        result.skipped = remaining - (result.errors.empty() ? 0 : 1);
-        break;
-      }
+  } catch (const Cancelled &) {
+    result.cancelled = true;
+    return result;
+  } catch (const std::runtime_error &error) {
+    result.errors.push_back(error.what());
+    return result;
+  }
+
+  FileDescriptor folder(open(job.destinationFolder.c_str(),
+                             O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+  struct stat parent;
+  if (folder.fd < 0 || fstat(folder.fd, &parent) ||
+      !SameNode(parent, job.expectedDestination)) {
+    result.errors.push_back("The selected folder changed or is unavailable.");
+    return result;
+  }
+
+  struct Step { size_t row; std::string before, after; };
+  std::vector<Step> history;
+  history.reserve(confirmed.changed * 2);
+  std::map<std::string, size_t> pending, incoming;
+  std::set<std::string> reserved;
+  std::vector<std::string> current;
+  std::vector<const NodeIdentity *> identities;
+  std::deque<size_t> ready;
+  for (size_t i = 0; i < confirmed.rows.size(); ++i) {
+    const auto &row = confirmed.rows[i];
+    current.push_back(row.before);
+    identities.push_back(&job.expectedSources.at(job.sources[i]));
+    reserved.insert(row.before);
+    reserved.insert(row.after);
+    if (row.before != row.after) {
+      pending.emplace(row.before, i);
+      incoming.emplace(row.after, i);
+    } else {
+      result.outcomes[i].status = "skipped";
+      result.outcomes[i].detail = "Name unchanged.";
     }
+  }
+  for (const auto &item : pending)
+    if (!pending.count(confirmed.rows[item.second].after))
+      ready.push_back(item.second);
+
+  auto released = [&](const std::string &name) {
+    const auto dependent = incoming.find(name);
+    if (dependent != incoming.end())
+      ready.push_back(dependent->second);
+  };
+  std::map<size_t, std::string> rootStamps;
+  std::map<std::string, std::string> fingerprints;
+  constexpr size_t kUndoEntryLimit = 200000;
+  constexpr uint64_t kUndoByteLimit = 512ull * 1024 * 1024;
+  size_t entriesLeft = kUndoEntryLimit;
+  uint64_t bytesLeft = kUndoByteLimit;
+  auto move = [&](size_t i, const std::string &target) {
+    Check(hooks);
+    InspectFolder(job);
+    Step step{i, current[i], target};
+    const auto stamp = rootStamps.find(i);
+    if (undo && Fingerprint(folder.fd, step.before, hooks, *identities[i],
+                    entriesLeft, bytesLeft) !=
+            job.bulkFingerprints.at(job.sources[i]).contents)
+      throw std::runtime_error("Undo stopped: contents changed: " + job.sources[i]);
+    MoveName(folder.fd, step.before, step.after, *identities[i],
+             stamp == rootStamps.end() ? "" : stamp->second);
+    history.push_back(std::move(step));
+    current[i] = target;
+    struct stat st;
+    if (!Stat(folder.fd, target, st) || !SameNode(st, *identities[i]))
+      throw std::runtime_error("Cannot confirm the renamed entry: " + target);
+    rootStamps[i] = RootStamp(st);
+  };
+
+  try {
+    if (!undo) {
+      // Freeze content before touching names, so edits during the batch cannot
+      // become the baseline for undo. Unreadable entries do not block renaming.
+      try {
+        for (const auto &item : pending)
+          fingerprints.emplace(item.first, Fingerprint(
+              folder.fd, item.first, hooks, *identities[item.second],
+              entriesLeft, bytesLeft));
+      } catch (const std::runtime_error &) {
+        fingerprints.clear();
+      }
+    } else {
+      for (const auto &item : pending) {
+        const size_t i = item.second;
+        const auto &source = job.sources[i];
+        const auto expected = job.bulkFingerprints.find(source);
+        struct stat st;
+        if (expected == job.bulkFingerprints.end() ||
+            !Stat(folder.fd, item.first, st) ||
+            RootStamp(st) != expected->second.rootStamp ||
+            Fingerprint(folder.fd, item.first, hooks, *identities[i],
+                        entriesLeft, bytesLeft) != expected->second.contents)
+          throw std::runtime_error("Undo stopped: the renamed entry changed: " + source);
+        rootStamps.emplace(i, expected->second.rootStamp);
+      }
+      // At most one row per cycle is verified a second time after staging.
+      entriesLeft = kUndoEntryLimit * 2;
+      bytesLeft = kUndoByteLimit * 2;
+    }
+
+    // Rename chains from the free end. In a cycle, free one original by moving
+    // it to a temporary leaf, then finish that row after its target is free.
+    while (!pending.empty() || !ready.empty()) {
+      if (ready.empty()) {
+        const auto anchor = pending.begin()->second;
+        const auto original = confirmed.rows[anchor].before;
+        const auto stage = TemporaryName(folder.fd, reserved);
+        move(anchor, stage);
+        pending.erase(original);
+        released(original);
+      }
+      const size_t i = ready.front();
+      ready.pop_front();
+      const auto &row = confirmed.rows[i];
+      const auto before = current[i];
+      move(i, row.after);
+      pending.erase(before);
+      released(before);
+    }
+    Check(hooks);
+    InspectFolder(job);
+    for (size_t i = 0; i < confirmed.rows.size(); ++i) {
+      const auto &row = confirmed.rows[i];
+      if (row.before == row.after)
+        continue;
+      struct stat st;
+      if (!Stat(folder.fd, current[i], st) || !SameNode(st, *identities[i]))
+        throw std::runtime_error("Cannot confirm the final entry: " + current[i]);
+    }
+  } catch (const Cancelled &) {
+    result.cancelled = true;
   } catch (const std::runtime_error &error) {
     result.errors.push_back(error.what());
   }
+
+  if (result.cancelled || !result.errors.empty()) {
+    // Ignore cancellation during recovery. Never replace an entry introduced
+    // since the failed step, and continue restoring independent rows.
+    for (auto step = history.rbegin(); step != history.rend(); ++step) {
+      try {
+        MoveName(folder.fd, step->after, step->before, *identities[step->row]);
+        current[step->row] = step->before;
+      } catch (const std::runtime_error &error) {
+        result.errors.push_back(std::string("Could not restore ") + step->before +
+                                ": " + error.what());
+        result.bulkRenameRecoveryNeeded = true;
+      }
+    }
+
+    const auto actualFolder = CurrentFolder(job);
+    for (size_t i = 0; i < confirmed.rows.size(); ++i) {
+      if (confirmed.rows[i].before == confirmed.rows[i].after)
+        continue;
+      auto &outcome = result.outcomes[i];
+      struct stat st;
+      const bool located = !actualFolder.empty() &&
+                           Stat(folder.fd, current[i], st) &&
+                           SameNode(st, *identities[i]);
+      outcome.destination = located ? Join(actualFolder, current[i]) : "";
+      if (!located) {
+        outcome.status = "unconfirmed";
+        outcome.detail = "Last known name: " + current[i];
+        result.bulkRenameRecoveryNeeded |= !history.empty();
+      } else if (outcome.destination != outcome.source) {
+        outcome.status = "retained";
+        outcome.detail = "Entry remains at this location.";
+        result.bulkRenameRecoveryNeeded = true;
+      } else {
+        outcome.status = "preserved";
+        outcome.detail = "Original name retained or restored.";
+        ++result.skipped;
+      }
+    }
+    return result;
+  }
+
+  Job reverse;
+  reverse.action = Action::UndoBulkRename;
+  reverse.destinationFolder = job.destinationFolder;
+  reverse.expectedDestination = job.expectedDestination;
+  for (size_t i = 0; i < confirmed.rows.size(); ++i) {
+    const auto &row = confirmed.rows[i];
+    if (row.before == row.after)
+      continue;
+    auto &outcome = result.outcomes[i];
+    outcome.status = "moved";
+    ++result.completed;
+    result.completedRoots.emplace_back(outcome.source, outcome.destination);
+    if (!undo) {
+      reverse.sources.push_back(outcome.destination);
+      reverse.bulkNames.emplace(outcome.destination, row.before);
+      reverse.expectedSources.emplace(outcome.destination, *identities[i]);
+      if (const auto fingerprint = fingerprints.find(row.before);
+          fingerprint != fingerprints.end())
+        reverse.bulkFingerprints.emplace(
+            outcome.destination, BulkRenameGuard{fingerprint->second,
+                                                 rootStamps.at(i)});
+    }
+    if (hooks.fileDone)
+      hooks.fileDone(outcome.source, outcome.destination);
+  }
+  if (!undo && reverse.bulkFingerprints.size() == reverse.sources.size())
+    result.bulkRenameUndo = std::move(reverse);
   return result;
 }
 } // namespace Listi

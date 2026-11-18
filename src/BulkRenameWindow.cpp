@@ -17,7 +17,8 @@
 #include <stdexcept>
 
 namespace {
-constexpr uint32 kOptionsChanged = 'broc', kPreview = 'brpv', kApply = 'brap';
+constexpr uint32 kOptionsChanged = 'broc', kPreview = 'brpv', kApply = 'brap',
+                 kSelectRow = 'brsr', kSetName = 'brsn', kResetName = 'brrn';
 
 unsigned Number(const BTextControl *field, const char *error) {
   unsigned value;
@@ -33,6 +34,9 @@ class BulkRenameWindow : public BWindow {
   const BMessenger target;
   Listi::BulkRenameOptions previewOptions;
   Listi::BulkRenamePreview preview;
+  std::map<std::string, std::string> overrides;
+  BTextControl *rowName;
+  BButton *setName, *resetName;
   BTextControl *search, *replacement, *prefix, *suffix, *start, *digits;
   BCheckBox *number;
   BColumnListView *rows;
@@ -53,6 +57,7 @@ class BulkRenameWindow : public BWindow {
     options.prefix = prefix->Text();
     options.suffix = suffix->Text();
     options.number = number->Value() == B_CONTROL_ON;
+    options.overrides = overrides;
     if (options.number) {
       options.start = Number(start, "Enter a nonnegative starting number.");
       options.digits = Number(digits, "Enter a number width from 1 to 9.");
@@ -69,13 +74,28 @@ class BulkRenameWindow : public BWindow {
              current.replacement == previewOptions.replacement &&
              current.number == previewOptions.number &&
              current.start == previewOptions.start &&
-             current.digits == previewOptions.digits;
+             current.digits == previewOptions.digits &&
+             current.overrides == previewOptions.overrides;
     } catch (const std::runtime_error &) {
       return false;
     }
   }
 
-  void Render() {
+  int32 SelectedRow() const {
+    auto *selected = rows->CurrentSelection();
+    return selected ? rows->IndexOf(selected) : -1;
+  }
+
+  void UpdateRowEditor() {
+    const auto index = SelectedRow();
+    const bool selected = index >= 0 && size_t(index) < preview.rows.size();
+    rowName->SetText(selected ? preview.rows[index].after.c_str() : "");
+    rowName->SetEnabled(selected);
+    setName->SetEnabled(selected);
+    resetName->SetEnabled(selected && overrides.count(frozen.sources[index]));
+  }
+
+  void Render(int32 selected = -1) {
     rows->Clear();
     preview = {};
     try {
@@ -95,6 +115,9 @@ class BulkRenameWindow : public BWindow {
                     2);
       rows->AddRow(row);
     }
+    if (selected >= 0 && size_t(selected) < preview.rows.size())
+      rows->AddToSelection(rows->RowAt(selected));
+    UpdateRowEditor();
     apply->SetEnabled(preview.CanApply());
     if (!preview.error.empty()) {
       status->SetText(preview.error.c_str());
@@ -130,7 +153,13 @@ public:
     rows->AddColumn(
         new BStringColumn("Status", 325, 100, 1200, B_TRUNCATE_END), 2);
     rows->SetSortingEnabled(false);
+    rows->SetSelectionMode(B_SINGLE_SELECTION_LIST);
+    rows->SetSelectionMessage(new BMessage(kSelectRow));
+    rows->SetTarget(this);
     rows->SetExplicitMinSize(BSize(630, 200));
+    rowName = new BTextControl("row-name", "Selected new name:", "", nullptr);
+    setName = new BButton("Set name", new BMessage(kSetName));
+    resetName = new BButton("Use rules", new BMessage(kResetName));
     status = new BStringView("rename status", "");
     apply = new BButton("Apply rename", new BMessage(kApply));
     BLayoutBuilder::Group<>(this, B_VERTICAL, 8)
@@ -153,6 +182,11 @@ public:
             "rename hint",
             "Replacements are case-sensitive. File extensions are kept."))
         .Add(rows, 1)
+        .AddGroup(B_HORIZONTAL, 8)
+            .Add(rowName)
+            .Add(setName)
+            .Add(resetName)
+        .End()
         .Add(status)
         .AddGroup(B_HORIZONTAL, 8)
             .Add(new BButton("Update preview", new BMessage(kPreview)))
@@ -160,7 +194,7 @@ public:
             .Add(new BButton("Cancel", new BMessage(B_QUIT_REQUESTED)))
             .Add(apply)
         .End();
-    for (auto field : {search, replacement, prefix, suffix, start, digits})
+    for (auto field : {search, replacement, prefix, suffix, start, digits, rowName})
       field->SetTarget(this);
     Render();
     search->MakeFocus();
@@ -176,6 +210,7 @@ public:
       digits->SetEnabled(number->Value() == B_CONTROL_ON);
       if (!HasCurrentPreview()) {
         rows->Clear();
+        UpdateRowEditor();
         apply->SetEnabled(false);
         status->SetText("Update the preview to check the new names.");
       }
@@ -183,6 +218,22 @@ public:
     case kPreview:
       Render();
       break;
+    case kSelectRow:
+      UpdateRowEditor();
+      break;
+    case kSetName:
+    case kResetName: {
+      const auto index = SelectedRow();
+      if (index >= 0 && size_t(index) < preview.rows.size()) {
+        const auto &source = frozen.sources[index];
+        if (message->what == kSetName)
+          overrides[source] = rowName->Text();
+        else
+          overrides.erase(source);
+        Render(index);
+      }
+      break;
+    }
     case kApply:
       if (!queued && preview.CanApply() && HasCurrentPreview()) {
         auto accepted = Listi::EncodeJob(preview.job, kBulkRenameAccepted);

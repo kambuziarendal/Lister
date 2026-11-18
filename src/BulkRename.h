@@ -5,6 +5,7 @@
 namespace Listi {
 struct BulkRenameOptions {
   std::string prefix, suffix, search, replacement;
+  std::map<std::string, std::string> overrides; // Frozen source path to exact new name.
   bool number = false;
   unsigned start = 1, digits = 1;
 };

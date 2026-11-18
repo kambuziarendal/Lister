@@ -439,7 +439,7 @@ class MainWindow : public BWindow {
   BMenuItem *previewMenu, *einnMenu, *askrMenu, *tviskiptMenu, *smidjaMenu;
   BMenuBar *menu;
   BMenu *fileView;
-  BMenuItem *saveClipboardTextItem, *saveClipboardImageItem;
+  BMenuItem *saveClipboardTextItem, *saveClipboardImageItem, *undoBulkRenameItem;
   BSplitView *split;
   BSplitView *terminalSplit;
   Listi::TerminalPanel *terminalPanel;
@@ -1113,6 +1113,9 @@ public:
       else
         files->AddItem(new BMenuItem(c.label, new BMessage(c.action), c.key));
     }
+    undoBulkRenameItem = new BMenuItem("Undo last bulk rename", new BMessage(kUndoBulkRename));
+    undoBulkRenameItem->SetEnabled(false);
+    files->AddItem(undoBulkRenameItem);
     files->AddItem(new BMenuItem("Open with...", new BMessage(kOpenWith), 'O',
                                  B_SHIFT_KEY));
     files->AddItem(new BMenuItem("Open with system application",
@@ -1341,6 +1344,7 @@ public:
                          Listi::CanSaveClipboardIn(panes[source]->Path());
     saveClipboardTextItem->SetEnabled(canSave);
     saveClipboardImageItem->SetEnabled(canSave);
+    undoBulkRenameItem->SetEnabled(!actionArea->Pending() && queue->CanUndoBulkRename());
   }
 
   bool QuitRequested() override {
@@ -1947,6 +1951,10 @@ public:
       break;
     case kBulkRename:
       BulkRename();
+      break;
+    case kUndoBulkRename:
+      if (!m->IsSourceRemote() && !actionArea->Pending() && queue->EnqueueBulkRenameUndo())
+        queue->Show();
       break;
     case kBulkRenameAccepted: {
       if (auto job = Listi::DecodeSubmittedJob(*m, {Listi::Action::BulkRename}))

@@ -63,6 +63,29 @@ partial batches and job results when UI notifications are delayed or lost.
 Injected syscall failures also run when normal permission bits alone would not
 prevent the test user from writing.
 
+### Bulk rename and undo
+
+In the bulk rename preview, select a row, enter its exact new leaf name and
+click **Set name**. To swap two names, do this for both rows, then apply the
+checked preview. **Use rules** removes a row override. With the queue idle,
+**Files → Undo last bulk rename** checks the names, entry identities and
+contents again before moving anything. Undo is session-only, covers the latest
+successful batch, and does not overwrite an occupied original name. An
+unreadable, unusually deep or large batch can rename without undo; undo
+verification is limited to 512 MiB and 200,000 entries per batch.
+
+The native regression injects failures after staging, checks rollback and verifies
+that an entry blocking recovery is retained. If rollback cannot finish, the
+operation report lists verified locations (including hidden
+`.listi-rename-*` names) or says when an entry could not be located. Inspect
+these paths before retrying. There is no crash-recovery journal.
+
+Haiku does not provide atomic no-replace or identity-conditional rename.
+Listi pins the parent directory and checks the source and target immediately
+before each step, but an unrelated writer changing either name between the
+checks and the kernel call can defeat the guard. Do not run a batch while another
+application is renaming entries in the same folder.
+
 ### Moving between volumes
 
 The opt-in `cross-volume-move` audit needs a writable directory on a different

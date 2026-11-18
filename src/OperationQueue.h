@@ -13,6 +13,8 @@ public:
   explicit OperationQueue(BMessenger main);
   ~OperationQueue();
   int64 Enqueue(const Listi::Job &);
+  bool CanUndoBulkRename();
+  int64 EnqueueBulkRenameUndo();
   void SetCompact(bool);
   void Show();
   void Toggle();
@@ -44,6 +46,7 @@ private:
     int64 operation = 0;
     Listi::Job job;
   };
+  int64 EnqueueLocked(const Listi::Job &);
   void Loop();
   void Publish(const BMessage &);
   void Finish(BMessage &, Listi::Result);
@@ -57,6 +60,7 @@ private:
   std::mutex mutex;
   std::condition_variable changed;
   std::deque<QueuedJob> jobs;
+  std::optional<Listi::Job> lastBulkRename;
   std::vector<BMessage> events;
   std::map<int64, std::shared_ptr<const JobReport>> reports;
   std::unique_ptr<BMessageRunner> eventTimer;

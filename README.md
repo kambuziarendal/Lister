@@ -15,7 +15,7 @@ together in the Smiðja workspace.
 ## What changed in 0.32.0
 
 - **Customise the workspace:** choose and order command buttons, position modules in fixed zones, and save named layouts. Compact buttons for narrow windows are opt-in.
-- **Work across folders:** browse in Miller columns, collect local files on the session Shelf, preview bulk renames, convert a dropped image, or save clipboard text and PNG images as files.
+- **Work across folders:** browse in Miller columns, collect local files on the session Shelf, preview bulk renames and swaps with guarded undo, convert a dropped image, or save clipboard text and PNG images as files.
 - **Review file operations:** inspect or cancel a specific queued job. Partial local moves report which entries were moved and which sources were retained. If a destination copy changes before cleanup, Listi stops rather than deleting the source.
 - **Keep actions on the intended file:** a replacement at the same local path no longer inherits selection on refresh. Paste and drop reject colliding output names. Restore refuses an original folder redirected into Trash. Unreadable settings are preserved.
 - **Work with more archives:** supported single-volume RAR5 archives can be rebuilt in Store mode. CAB, ARJ and LHA/LZH have format-specific writing limits and optional dependencies. See the [archive guide](docs/GUIDE.md#archives) before editing an existing archive.

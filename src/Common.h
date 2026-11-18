@@ -61,6 +61,7 @@ enum : uint32 {
   kRename = 'rnam',
   kBulkRename = 'brnm',
   kBulkRenameAccepted = 'brac',
+  kUndoBulkRename = 'ubrn',
   kView = 'view',
   kEdit = 'edit',
   kAll = 'sall',

@@ -720,7 +720,7 @@ struct Runner {
 };
 } // namespace
 Result Run(const Job &j, const Hooks &h) {
-  if (j.action == Action::BulkRename)
+  if (j.action == Action::BulkRename || j.action == Action::UndoBulkRename)
     return RunBulkRename(j, h);
   if (j.action == Action::ConvertImage)
     return RunImageConversion(j, h);

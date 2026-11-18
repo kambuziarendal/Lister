@@ -2,7 +2,10 @@
 #include "BulkRename.h"
 #include "JobSnapshot.h"
 #include <Application.h>
+#include <Node.h>
+#include <cerrno>
 #include <cstdio>
+#include <fcntl.h>
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
@@ -12,6 +15,39 @@
 #include <unistd.h>
 
 using namespace Listi;
+
+namespace {
+int renameCalls = 0, failRename = 0;
+std::string blockRestore;
+bool simulateLarge = false;
+}
+extern "C" int __real_renameat(int, const char *, int, const char *);
+extern "C" int __wrap_renameat(int from, const char *before, int to,
+                                const char *after) {
+  if (++renameCalls == failRename) {
+    if (!blockRestore.empty()) {
+      int fd = openat(to, blockRestore.c_str(), O_WRONLY | O_CREAT | O_EXCL,
+                      0600);
+      if (fd < 0 || write(fd, "other", 5) != 5)
+        abort();
+      close(fd);
+    }
+    errno = EIO;
+    return -1;
+  }
+  return __real_renameat(from, before, to, after);
+}
+// BFS may allocate blocks for extending a file. Simulate an oversized
+// entry in the worker's stat call rather than consuming 512 MiB on disk.
+extern "C" int __real_fstatat(int, const char *, struct stat *, int);
+extern "C" int __wrap_fstatat(int fd, const char *name, struct stat *st,
+                               int flags) {
+  const int status = __real_fstatat(fd, name, st, flags);
+  if (!status && simulateLarge && std::string(name) == "oversized")
+    st->st_size = 512ll * 1024 * 1024 + 1;
+  return status;
+}
+
 namespace {
 void Check(bool ok, const char *label) {
   printf("%s %s\n", ok ? "PASS" : "FAIL", label);
@@ -109,8 +145,66 @@ int main() {
           "duplicate generated name blocks both rows");
     collapse.replacement = "xx";
     collision = PreviewBulkRename(FreezeBulkRename(folder, {x, y}), collapse);
-    Check(!collision.CanApply() && collision.blocked == 1,
-          "a name occupied by another selected entry is not interchangeable");
+    Check(collision.CanApply() && collision.changed == 2,
+          "preview accepts a chain ending at an unused name");
+    const auto z = Join(folder, "filexxxx");
+    auto chain = Run(collision.job, {});
+    Check(chain.completed == 2 && chain.bulkRenameUndo && !Exists(x) &&
+              Read(y) == "x" && Read(z) == "y",
+          "chain moves the blocking source first without clobbering either file");
+    Write(x, "other");
+    auto undo = Run(*chain.bulkRenameUndo, {});
+    Check(!undo.completed && !undo.errors.empty() && Read(x) == "other" &&
+              Read(y) == "x" && Read(z) == "y",
+          "undo refuses an unrelated entry at an original name");
+    unlink(x.c_str());
+    Write(y, "changed");
+    undo = Run(*chain.bulkRenameUndo, {});
+    Check(!undo.completed && !undo.errors.empty() && !Exists(x) &&
+              Read(y) == "changed" && Read(z) == "y",
+          "undo refuses content edits even when the renamed inode still exists");
+    rename(y.c_str(), x.c_str());
+    rename(z.c_str(), y.c_str());
+    Write(x, "x");
+
+    BulkRenameOptions swapNames;
+    swapNames.overrides = {{x, Leaf(y)}, {y, Leaf(x)}};
+    const auto swapPreview = PreviewBulkRename(FreezeBulkRename(folder, {x, y}),
+                                               swapNames);
+    Check(swapPreview.CanApply() && swapPreview.changed == 2,
+          "exact per-row overrides preview a two-file swap");
+    const auto swap = swapPreview.job;
+    renameCalls = 0;
+    failRename = 3;
+    auto failedSwap = Run(swap, {});
+    Check(!failedSwap.completed && !failedSwap.errors.empty() &&
+              !failedSwap.bulkRenameRecoveryNeeded && Read(x) == "x" &&
+              Read(y) == "y" && failedSwap.outcomes[0].destination == x &&
+              failedSwap.outcomes[1].destination == y,
+          "failure after staging and moving rolls the entire cycle back");
+
+    renameCalls = 0;
+    failRename = 2;
+    blockRestore = Leaf(x);
+    failedSwap = Run(swap, {});
+    blockRestore.clear();
+    failRename = 0;
+    const auto retained = failedSwap.outcomes[0].destination;
+    Check(!failedSwap.completed && failedSwap.bulkRenameRecoveryNeeded &&
+              failedSwap.outcomes[0].status == "retained" && retained != x &&
+              Read(retained) == "x" && Read(x) == "other" && Read(y) == "y",
+          "rollback collision preserves the new entry and reports the temporary location");
+    unlink(x.c_str());
+    rename(retained.c_str(), x.c_str());
+
+    auto swapped = Run(swap, {});
+    Check(swapped.completed == 2 && swapped.bulkRenameUndo &&
+              Read(x) == "y" && Read(y) == "x",
+          "swap uses a temporary name and preserves both payloads");
+    undo = Run(*swapped.bulkRenameUndo, {});
+    Check(undo.completed == 2 && !undo.bulkRenameUndo && Read(x) == "x" &&
+              Read(y) == "y",
+          "guarded undo restores a cycle without creating a redo record");
 
     auto job = DecodeJob(EncodeJob(preview.job, 'brrt'));
     Check(job.action == Action::BulkRename && job.bulkNames == preview.job.bulkNames,
@@ -156,31 +250,32 @@ int main() {
     if (rmdir(folder.c_str()) || rename(moved.c_str(), folder.c_str()))
       throw std::runtime_error("Cannot restore fixture folder");
 
-    // Simulate a later collision after the first committed move.
-    hooks.fileDone = [&](const auto &, const auto &) { Write(occupied, "other"); };
+    // Introduce a new target as soon as one rename syscall has returned.
+    renameCalls = 0;
+    bool injected = false;
+    hooks.proceed = [&] {
+      if (renameCalls == 1 && !injected) {
+        Write(occupied, "other");
+        injected = true;
+      }
+      return true;
+    };
     result = Run(job, hooks);
     const auto renamedFolder = Join(folder, preview.rows[0].after);
-    Check(result.completed == 1 && result.skipped == 1 &&
-              result.errors.size() == 1 && result.completedRoots.size() == 1 &&
-              result.outcomes.size() == 3 && result.outcomes[0].status == "moved" &&
-              result.outcomes[1].status == "failed" &&
-              result.outcomes[2].status == "unprocessed" &&
-              !prompted && !Exists(b) && Exists(renamedFolder) &&
-              Read(occupied) == "other" && Read(a) == "asset" && Exists(c),
-          "late collision keeps completed moves and accurately reports partial success");
-    if (unlink(occupied.c_str()) || rename(renamedFolder.c_str(), b.c_str()))
-      throw std::runtime_error("Cannot restore partial batch fixture");
+    Check(!result.completed && result.skipped == 3 && !result.errors.empty() &&
+              !result.bulkRenameRecoveryNeeded && !prompted && Exists(a) &&
+              Exists(b) && Exists(c) && !Exists(renamedFolder) &&
+              Read(occupied) == "other",
+          "late collision rolls back earlier changes without replacing the new entry");
+    unlink(occupied.c_str());
 
-    bool keepGoing = true;
-    hooks.fileDone = [&](const auto &, const auto &) { keepGoing = false; };
-    hooks.proceed = [&] { return keepGoing; };
+    renameCalls = 0;
+    hooks.proceed = [&] { return renameCalls == 0; };
     result = Run(job, hooks);
-    Check(result.cancelled && result.completed == 1 && result.skipped == 2 &&
-              result.errors.empty() && Exists(renamedFolder) && Exists(a) &&
-              Exists(c),
-          "cancellation between rows keeps and reports the committed change");
-    if (rename(renamedFolder.c_str(), b.c_str()))
-      throw std::runtime_error("Cannot restore cancelled batch fixture");
+    Check(result.cancelled && !result.completed && result.skipped == 3 &&
+              result.errors.empty() && !Exists(renamedFolder) && Exists(b) &&
+              Exists(a) && Exists(c),
+          "cancellation between rename steps restores committed names");
 
     result = Run(job, {});
     struct stat st;
@@ -190,6 +285,36 @@ int main() {
               !lstat(renamedLink.c_str(), &st) && S_ISLNK(st.st_mode) &&
               !Exists(a) && !Exists(b) && !Exists(c),
           "ready batch moves entries in place, preserving payload and link type");
+    Check(result.bulkRenameUndo.has_value(), "full rename records a guarded inverse");
+    const auto child = Join(renamedFolder, "new child");
+    Write(child, "new content");
+    undo = Run(*result.bulkRenameUndo, {});
+    Check(!undo.completed && !undo.errors.empty() && Read(child) == "new content" &&
+              !Exists(b) && Exists(renamedLink),
+          "undo refuses changes inside a renamed directory");
+    const auto attrJob = Run(swap, {});
+    Check(attrJob.bulkRenameUndo.has_value(), "swap has an inverse before attribute edit");
+    BNode attrNode(x.c_str());
+    if (attrNode.WriteAttr("listi:test", B_STRING_TYPE, 0, "edited", 6) != 6)
+      throw std::runtime_error("Cannot create BFS attribute fixture");
+    undo = Run(*attrJob.bulkRenameUndo, {});
+    Check(!undo.completed && !undo.errors.empty() && Read(x) == "y" &&
+              Read(y) == "x",
+          "undo refuses a BFS attribute change on a renamed root");
+
+    const auto oversized = Join(folder, "oversized");
+    Write(oversized, "bounded fixture");
+    const auto movedLarge = Join(folder, "new-large");
+    auto largeJob = FreezeBulkRename(folder, {oversized, x});
+    largeJob.bulkNames = {{oversized, Leaf(movedLarge)}, {x, Leaf(x)}};
+    simulateLarge = true;
+    const auto bounded = Run(largeJob, {});
+    simulateLarge = false;
+    Check(bounded.completed == 1 && bounded.errors.empty() &&
+              !bounded.bulkRenameUndo && Exists(movedLarge) && !Exists(oversized),
+          "unverifiable oversized batches can rename without promising undo");
+    unlink(movedLarge.c_str());
+    unlink(child.c_str());
     unlink(x.c_str());
     unlink(y.c_str());
     unlink(occupied.c_str());

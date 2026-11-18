@@ -86,15 +86,10 @@ file is never overwritten. No submenu should be necessary.
    View](GUIDE.md#filtering-and-search) for selecting local files and adding
    references to the Shelf. Multi-folder rename comes only once preview and
    job results identify every original.
-2. **Bulk rename chains, then guarded undo.** The current preflight deliberately
-   rejects an occupied target, even within the batch. Permit chains by ordering
-   dependent renames; use collision-checked temporary names for cycles such as
-   a swap. Never replace an unrelated entry. Inject a failure between steps:
-   either restore the originals safely or report where each entry remains.
-   Offer undo of the last batch only when identities and destinations still
-   match; job history alone is not sufficient. Later add regex and date/time
-   or typed BFS attribute placeholders with per-row previews. External-editor
-   name lists can wait until row identity survives edits and reordering.
+2. **Extend bulk rename rules.** Chains, swaps and guarded session undo are
+   available. Later add regex, date/time and typed BFS attribute placeholders
+   with per-row previews. External-editor name lists can wait until row
+   identity survives edits and reordering.
 3. **BFS attribute columns, then searchable attributes.** Let users choose
    typed columns in Details and distinguish missing values from empty ones.
    Start with existing indexes and live queries, including tag searches.

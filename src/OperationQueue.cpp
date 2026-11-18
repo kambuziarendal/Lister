@@ -91,6 +91,8 @@ const char *Verb(Listi::Action a) {
     return "Rename";
   case Listi::Action::BulkRename:
     return "Bulk rename";
+  case Listi::Action::UndoBulkRename:
+    return "Undo bulk rename";
   default:
     return "Create directory";
   }
@@ -410,27 +412,37 @@ void OperationQueue::ErrorInfo(const char *text) {
   display.SendMessage(&error);
 }
 int64 OperationQueue::Enqueue(const Listi::Job &j) {
-  int64 operation;
-  {
-    std::lock_guard<std::mutex> l(mutex);
-    operation = ++operationSerial;
-    // Publish acceptance under the same lock as insertion so a fast worker or
-    // a cancellation can never present the terminal event before the job exists.
-    BMessage accepted(kJobAccepted);
-    accepted.AddInt64("operation", operation);
-    std::string title = Verb(j.action);
-    const auto leaf =
-        Listi::Leaf(j.sources.empty() ? j.destination : j.sources.front());
-    if (!leaf.empty()) {
-      title += ": " + leaf;
-      if (j.sources.size() > 1)
-        title += " (+" + std::to_string(j.sources.size() - 1) + ")";
-    }
-    accepted.AddString("title", title.c_str());
-    events.push_back(accepted);
-    jobs.push_back({operation, j});
-    count++;
+  std::lock_guard<std::mutex> lock(mutex);
+  return EnqueueLocked(j);
+}
+bool OperationQueue::CanUndoBulkRename() {
+  std::lock_guard<std::mutex> lock(mutex);
+  return !count && !stopping && lastBulkRename.has_value();
+}
+int64 OperationQueue::EnqueueBulkRenameUndo() {
+  std::lock_guard<std::mutex> lock(mutex);
+  if (count || stopping || !lastBulkRename)
+    return 0;
+  return EnqueueLocked(*lastBulkRename);
+}
+int64 OperationQueue::EnqueueLocked(const Listi::Job &j) {
+  const int64 operation = ++operationSerial;
+  // Publish acceptance under the same lock as insertion so a fast worker or
+  // a cancellation can never present the terminal event before the job exists.
+  BMessage accepted(kJobAccepted);
+  accepted.AddInt64("operation", operation);
+  std::string title = Verb(j.action);
+  const auto leaf =
+      Listi::Leaf(j.sources.empty() ? j.destination : j.sources.front());
+  if (!leaf.empty()) {
+    title += ": " + leaf;
+    if (j.sources.size() > 1)
+      title += " (+" + std::to_string(j.sources.size() - 1) + ")";
   }
+  accepted.AddString("title", title.c_str());
+  events.push_back(accepted);
+  jobs.push_back({operation, j});
+  count++;
   changed.notify_all();
   return operation;
 }
@@ -689,8 +701,16 @@ void OperationQueue::Loop() {
       main.SendMessage(&file, (BHandler *)nullptr, 500000);
     };
     auto result = Listi::Run(job, hooks);
+    const bool renameBatch = job.action == Listi::Action::BulkRename;
+    const bool undoBatch = job.action == Listi::Action::UndoBulkRename;
+    const bool undoAvailable = result.bulkRenameUndo.has_value();
     {
       std::lock_guard<std::mutex> l(mutex);
+      if (renameBatch && result.completed)
+        lastBulkRename = std::move(result.bulkRenameUndo);
+      if ((undoBatch && result.completed) || result.bulkRenameRecoveryNeeded)
+        lastBulkRename.reset();
+      result.bulkRenameUndo.reset();
       runningOperation = 0;
       --count;
     }
@@ -710,8 +730,13 @@ void OperationQueue::Loop() {
     summary << Verb(job.action) << ": " << result.completed << " completed, "
             << result.skipped << " skipped, " << int32(result.errors.size())
             << " errors";
-    if (result.cancelled)
-      summary << ". Cancelled; completed entries kept.";
+    if (result.bulkRenameRecoveryNeeded)
+      summary << ". Check entry locations in the operation report.";
+    else if (result.cancelled)
+      summary << (renameBatch || undoBatch ? ". Cancelled; originals retained."
+                                           : ". Cancelled; completed entries kept.");
+    else if (renameBatch && result.completed && !undoAvailable)
+      summary << ". Undo unavailable: contents could not be verified.";
     done.AddString("result", summary);
     done.AddBool("complete", !result.cancelled && result.errors.empty() &&
                                  result.skipped == 0);

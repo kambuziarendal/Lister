@@ -24,12 +24,16 @@ enum class Action {
   EditArchive,
   MoveArchive,
   BulkRename,
-  ConvertImage
+  ConvertImage,
+  UndoBulkRename
 };
 enum class Decision { Replace, ReplaceAll, Skip, SkipAll, Abort };
 struct NodeIdentity {
   int32_t device = -1;
   int64_t inode = -1;
+};
+struct BulkRenameGuard {
+  std::string contents, rootStamp;
 };
 struct Job {
   Action action = Action::Copy;
@@ -64,6 +68,8 @@ struct Job {
   std::map<std::string, std::string> archiveRenames;
   // BulkRename maps each frozen source to its previewed leaf (also unchanged).
   std::map<std::string, std::string> bulkNames;
+  // Undo guards are worker-owned; never supplied by a submitted BMessage.
+  std::map<std::string, BulkRenameGuard> bulkFingerprints;
   std::string
       destinationFolder; // Captured parent for rename/new-folder questions.
 };
@@ -86,6 +92,8 @@ struct Result {
   std::optional<std::pair<std::string, std::string>> retainedMoveCopy;
   // Selected roots and individual entries visited during a non-atomic transfer.
   std::vector<EntryOutcome> outcomes;
+  std::optional<Job> bulkRenameUndo;
+  bool bulkRenameRecoveryNeeded = false;
 };
 Result Run(const Job &, const Hooks &);
 std::string Join(const std::string &, const std::string &);
