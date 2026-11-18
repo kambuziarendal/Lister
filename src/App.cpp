@@ -123,9 +123,12 @@ static BString SettingsPath(const char *name = "Lister_settings") {
 }
 class Services : public BLooper {
   BMessenger app;
+  const bool preferencesWritable;
 
 public:
-  Services(BMessenger a) : BLooper("file viewer and launcher"), app(a) {}
+  Services(BMessenger a, bool canSavePreferences)
+      : BLooper("file viewer and launcher"), app(a),
+        preferencesWritable(canSavePreferences) {}
   void MessageReceived(BMessage *m) override {
     if (m->what == kImageDropProbe) {
       BMessenger target;
@@ -184,6 +187,8 @@ public:
       return;
     }
     if (m->what == kSavePreferences) {
+      if (!preferencesWritable)
+        return;
       try {
         Listi::SaveMessageStore(SettingsPath().String(), *m);
       } catch (const std::exception &e) {
@@ -2212,7 +2217,7 @@ public:
     } catch (const std::exception &e) {
       settingsError = e.what();
     }
-    services = new Services(BMessenger(this));
+    services = new Services(BMessenger(this), settingsError.empty());
     services->Run();
     Listi::SavedPlaces places;
     std::string placesError;
@@ -2235,7 +2240,7 @@ public:
     mainWindow = BMessenger(window);
     window->Show();
     if (!settingsError.empty())
-      Notice((std::string("Could not load preferences. Defaults are shown: ") +
+      Notice((std::string("Could not load preferences. Changes apply only to this session; the original settings file is preserved: ") +
               settingsError)
                  .c_str());
     if (!searchesError.empty()) {
