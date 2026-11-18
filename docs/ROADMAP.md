@@ -70,6 +70,16 @@ are session information, not a persistent audit log or an undo mechanism.
 
 ## Priorities after 0.32.0
 
+### Immediate usability fix: paste clipboard contents directly
+
+In a writable local file panel, ordinary Paste (keyboard shortcut or context
+menu) should use the clipboard type. Keep existing file-reference Copy/Cut
+behaviour first. For plain text, open the existing filename prompt immediately
+with the name selected so the user can type `Listi-forslag.md` and press Enter.
+For an image, offer the existing PNG save flow. Keep ordinary text paste in
+editable fields unchanged. Check cancellation creates nothing and an existing
+file is never overwritten. No submenu should be necessary.
+
 ### Directory Opus workflows to tackle first
 
 Prioritise the everyday reason to use two panels: assemble the right selection,
