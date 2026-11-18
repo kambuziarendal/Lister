@@ -514,10 +514,11 @@ struct Runner {
           status_t s = e.MoveTo(&dir, leaf.c_str(), false);
           if (s == B_OK) {
             result.completedRoots.emplace_back(source, destination);
+            ++result.completed;
             if (h.fileDone)
               h.fileDone(source, destination);
-            Tick(source);
-            result.completed++;
+            if (h.progress)
+              h.progress(source, 0);
             continue;
           }
           if (s != B_CROSS_DEVICE_LINK)

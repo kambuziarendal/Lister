@@ -153,6 +153,31 @@ int SelfTest() {
   check(r.errors.empty() && !exists(Join(root, "src/large")) &&
             exists(Join(root, "dst/large")),
         "same-volume move completes");
+  // A cancellation after an atomic move cannot undo that move. Only
+  // unstarted entries should remain in the source folder.
+  for (bool hasNext : {false, true}) {
+    std::string name = hasNext ? "batch-first" : "only-entry";
+    std::string first = Join(root, "src/" + name);
+    std::string moved = Join(root, "dst/" + name);
+    write(first, "first");
+    Job move{Action::Move, {first}, Join(root, "dst")};
+    std::string next = Join(root, "src/batch-next");
+    if (hasNext) {
+      write(next, "next");
+      move.sources.push_back(next);
+    }
+    Hooks afterMove;
+    afterMove.proceed = [&] { return !exists(moved); };
+    r = Run(move, afterMove);
+    check(r.errors.empty() && r.cancelled == hasNext && r.completed == 1 &&
+              r.completedRoots.size() == 1 &&
+              r.completedRoots.front() == std::make_pair(first, moved) &&
+              !exists(first) && text(moved) == "first" &&
+              (!hasNext ||
+               (text(next) == "next" && !exists(Join(root, "dst/batch-next")))),
+          hasNext ? "cancel between moves counts first and leaves next in place"
+                  : "cancel after last atomic move does not undo completion");
+  }
   r = Run(
       {Action::Rename, {Join(root, "dst/large")}, Join(root, "dst/renamed")},
       hooks);
