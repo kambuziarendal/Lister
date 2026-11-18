@@ -119,6 +119,18 @@ void TestText(const std::string &path) {
     assert(Inspector::ReadText(input, truncated).size() == 256 * 1024 - 1);
     assert(truncated);
   }
+  // A complete 1024-byte file is not a deliberately truncated probe.
+  Write(path, std::string(1023, 'a') + char(0xc3));
+  {
+    Inspector::Input input(path);
+    assert(Inspector::Identify("transport.ts", input) == Inspector::Kind::Video);
+  }
+  // A cut-off sequence can still contain a provably invalid second byte.
+  Write(path, std::string(1022, 'a') + char(0xf0) + "XYZ");
+  {
+    Inspector::Input input(path);
+    assert(Inspector::Identify("transport.ts", input) == Inspector::Kind::Video);
+  }
   Write(path, std::string("bad\0input", 9));
   {
     Inspector::Input input(path);

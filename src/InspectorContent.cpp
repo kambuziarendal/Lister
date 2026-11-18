@@ -96,8 +96,6 @@ size_t Utf8Length(std::string_view text, bool prefix) {
     size_t width = first < 0xe0 ? 2 : first < 0xf0 ? 3 : 4;
     if (first < 0xc2 || first > 0xf4)
       throw std::runtime_error("Text preview requires UTF-8");
-    if (width > text.size() - i && prefix)
-      return i;
     for (size_t j = 1; j < width; ++j) {
       unsigned char min = 0x80, max = 0xbf;
       if (j == 1) {
@@ -106,7 +104,12 @@ size_t Utf8Length(std::string_view text, bool prefix) {
         if (first == 0xf0) min = 0x90;
         if (first == 0xf4) max = 0x8f;
       }
-      if (i + j >= text.size() || static_cast<unsigned char>(text[i + j]) < min ||
+      if (j >= text.size() - i) {
+        if (prefix)
+          return i;
+        throw std::runtime_error("Text preview requires UTF-8");
+      }
+      if (static_cast<unsigned char>(text[i + j]) < min ||
           static_cast<unsigned char>(text[i + j]) > max)
         throw std::runtime_error("Text preview requires UTF-8");
     }
@@ -332,7 +335,8 @@ Kind Identify(const std::string &leaf, Input &input) {
   std::string ext = dot == std::string::npos ? "" : leaf.substr(dot + 1);
   for (char &c : ext)
     if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
-  const auto bytes = ReadPrefix(input, 1024);
+  constexpr size_t probeSize = 1024;
+  const auto bytes = ReadPrefix(input, probeSize + 1);
   if (bytes.rfind("%PDF-", 0) == 0 || ext == "pdf")
     return Kind::Pdf;
   if (IsOneOf(ext, {"png", "jpg", "jpeg", "gif", "bmp", "webp", "tif", "tiff",
@@ -360,7 +364,7 @@ Kind Identify(const std::string &leaf, Input &input) {
     return Kind::Audio;
   bool text = true;
   try {
-    Utf8Length(bytes, bytes.size() == 1024);
+    Utf8Length(std::string_view(bytes).substr(0, probeSize), bytes.size() > probeSize);
   } catch (const std::runtime_error &) {
     text = false;
   }
