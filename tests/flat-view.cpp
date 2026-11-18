@@ -1,0 +1,245 @@
+// SPDX-License-Identifier: MIT
+#include "FileSearch.h"
+#include "FlatViewWindow.h"
+#include "SearchWorker.h"
+#include "Shelf.h"
+#include <Application.h>
+#include <Button.h>
+#include <ColumnListView.h>
+#include <ColumnTypes.h>
+#include <String.h>
+#include <StringView.h>
+#include <TextControl.h>
+#include <Window.h>
+#include <atomic>
+#include <cerrno>
+#include <dirent.h>
+#include <fstream>
+#include <iostream>
+#include <set>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <string>
+
+using namespace Listi;
+
+namespace {
+std::string root, denied;
+std::atomic<bool> pauseRoot{false};
+sem_id openedRoot, resumeRoot;
+}
+
+extern "C" DIR *__real_opendir(const char *);
+extern "C" DIR *__wrap_opendir(const char *path) {
+  if (denied == path) {
+    errno = EACCES;
+    return nullptr;
+  }
+  if (root == path && pauseRoot.load()) {
+    release_sem(openedRoot);
+    acquire_sem_etc(resumeRoot, 1, B_RELATIVE_TIMEOUT, 5000000);
+  }
+  return __real_opendir(path);
+}
+
+namespace {
+int failures = 0;
+
+void Check(bool success, const char *label) {
+  failures += !success;
+  std::cout << (success ? "PASS " : "FAIL ") << label << std::endl;
+}
+
+template <class Condition> bool Await(Condition condition) {
+  const auto deadline = system_time() + 3000000;
+  do {
+    if (condition())
+      return true;
+    snooze(10000);
+  } while (system_time() < deadline);
+  return false;
+}
+
+template <class CheckWindow>
+bool Inspect(const BMessenger &target, CheckWindow check) {
+  if (!target.LockTarget())
+    return false;
+  BLooper *looper = nullptr;
+  auto window = dynamic_cast<BWindow *>(target.Target(&looper));
+  const bool passed = window && check(*window);
+  looper->Unlock();
+  return passed;
+}
+
+bool TextContains(BWindow &window, const char *view, const char *text) {
+  auto label = dynamic_cast<BStringView *>(window.FindView(view));
+  return label && BString(label->Text()).FindFirst(text) >= 0;
+}
+
+BColumnListView *Results(BWindow &window) {
+  return dynamic_cast<BColumnListView *>(window.FindView("flat results"));
+}
+
+std::set<std::string> Folders(const BColumnListView &results) {
+  std::set<std::string> folders;
+  for (int32 i = 0; i < results.CountRows(); ++i) {
+    auto field =
+        static_cast<const BStringField *>(results.RowAt(i)->GetField(1));
+    folders.insert(field->String());
+  }
+  return folders;
+}
+
+void SetFilter(BWindow &window, const char *text) {
+  auto field = static_cast<BTextControl *>(window.FindView("flat filter"));
+  field->SetText(text);
+  window.PostMessage(field->ModificationMessage());
+}
+}
+
+int main() {
+  BApplication app("application/x-vnd.Listi-FlatViewTest");
+  char pattern[] = "/boot/home/listi-flat-view-XXXXXX";
+  if (!mkdtemp(pattern))
+    return 2;
+  root = pattern;
+  denied = root + "/denied";
+  const auto nested = root + "/Kitchen";
+  const auto first = root + "/same.txt";
+  const auto second = nested + "/same.txt";
+  mkdir(nested.c_str(), 0700);
+  mkdir(denied.c_str(), 0700);
+  std::ofstream(first) << "root";
+  std::ofstream(second) << "nested";
+  std::ofstream(denied + "/unreadable.txt") << "unreadable";
+  symlink(root.c_str(), (nested + "/cycle").c_str());
+  symlink(first.c_str(), (root + "/file-link").c_str());
+
+  SearchRequest request;
+  request.flat = true;
+  request.root = root;
+  request.resultLimit = 1;
+  auto bounded = SearchFiles(
+      request, [] { return true; }, [](const SearchHit &) { return true; });
+  Check(bounded.limited && bounded.matched == 1,
+        "Flat View explicitly reports a bounded result set");
+  request.resultLimit = 5000;
+  request.visitLimit = 1;
+  bounded = SearchFiles(
+      request, [] { return true; }, [](const SearchHit &) { return true; });
+  Check(bounded.limited && bounded.visited == 1,
+        "Flat View bounds traversal even where no file matches yet");
+
+  auto shelf = std::make_shared<Shelf>();
+  auto flat = OpenFlatView(BMessenger(), shelf, root.c_str());
+  Check(
+      Await([&] {
+        return Inspect(flat, [&](BWindow &window) {
+          auto rows = Results(window);
+          return rows && rows->CountRows() == 2 &&
+                 Folders(*rows) == std::set<std::string>{".", "Kitchen"} &&
+                 TextContains(window, "flat status", "Incomplete: 1");
+        });
+      }),
+      "duplicate names retain their origin; links and denied branch are not traversed");
+  Inspect(flat, [&](BWindow &window) {
+    if (auto rows = Results(window)) {
+      for (int32 i = 0; i < rows->CountRows(); ++i) {
+        auto row = rows->RowAt(i);
+        auto folder = static_cast<BStringField *>(row->GetField(1));
+        if (BString(folder->String()) == ".")
+          rows->AddToSelection(row);
+      }
+      rows->SelectionChanged();
+    }
+    SetFilter(window, "KITCHEN");
+    return true;
+  });
+  Check(Await([&] {
+          return Inspect(flat, [&](BWindow &window) {
+            auto rows = Results(window);
+            return rows && rows->CountRows() == 1 &&
+                   !rows->CurrentSelection() &&
+                   Folders(*rows) == std::set<std::string>{"Kitchen"};
+          });
+        }),
+        "folder filtering preserves shown origins and deselects hidden files");
+  Inspect(flat, [&](BWindow &window) {
+    SetFilter(window, "sAmE");
+    return true;
+  });
+  Check(Await([&] {
+          return Inspect(flat, [&](BWindow &window) {
+            auto rows = Results(window);
+            if (!rows || rows->CountRows() != 2)
+              return false;
+            rows->AddToSelection(rows->RowAt(0));
+            rows->AddToSelection(rows->RowAt(1));
+            rows->SelectionChanged();
+            auto button =
+                static_cast<BButton *>(window.FindView("add flat selection"));
+            button->Invoke();
+            return true;
+          });
+        }),
+        "case-insensitive name filter shows both originals for selection");
+  Check(Await([&] {
+          const auto snapshot = shelf->Snapshot();
+          std::set<std::string> paths;
+          for (const auto &entry : snapshot.entries)
+            paths.insert(entry.path);
+          return paths == std::set<std::string>{first, second};
+        }),
+        "multi-selection adds the exact originals to the shared Shelf");
+
+  shelf->Clear();
+  rename(second.c_str(), (second + ".old").c_str());
+  std::ofstream(second) << "replacement";
+  Inspect(flat, [&](BWindow &window) {
+    auto button = static_cast<BButton *>(window.FindView("add flat selection"));
+    button->Invoke();
+    return true;
+  });
+  Check(
+      Await([&] {
+        return Inspect(flat, [&](BWindow &window) {
+          return TextContains(window, "flat Shelf status", "changed");
+        });
+      }) &&
+          shelf->Snapshot().entries.empty(),
+      "a replacement rejects the entire frozen selection instead of collecting its new identity");
+
+  flat.SendMessage(B_QUIT_REQUESTED);
+  Check(Await([&] { return !flat.IsValid(); }), "Flat View closes cleanly");
+
+  openedRoot = create_sem(0, "flat test worker started");
+  resumeRoot = create_sem(0, "flat test worker may finish");
+  pauseRoot = true;
+  auto scanning = OpenFlatView(BMessenger(), shelf, root.c_str());
+  Check(acquire_sem_etc(openedRoot, 1, B_RELATIVE_TIMEOUT, 3000000) == B_OK,
+        "scan is running on a worker while the window is open");
+  scanning.SendMessage(kSearchStop);
+  Check(
+      Await([&] {
+        return Inspect(scanning, [&](BWindow &window) {
+          return TextContains(window, "flat status",
+                              "Incomplete: scan stopped.");
+        });
+      }),
+      "Stop marks a partial snapshot incomplete without waiting for the scanner");
+  pauseRoot = false;
+  release_sem(resumeRoot);
+  scanning.SendMessage(B_QUIT_REQUESTED);
+  Check(Await([&] { return !scanning.IsValid(); }),
+        "closing a cancelled Flat View joins its worker");
+  delete_sem(openedRoot);
+  delete_sem(resumeRoot);
+
+  for (const auto &path : {first, second, second + ".old", nested + "/cycle",
+                           root + "/file-link", denied + "/unreadable.txt"})
+    unlink(path.c_str());
+  rmdir(nested.c_str());
+  rmdir(denied.c_str());
+  rmdir(root.c_str());
+  return failures ? 1 : 0;
+}

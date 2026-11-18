@@ -66,6 +66,8 @@ class SearchWorker : public BLooper {
             item.AddString("path", hit.path.c_str());
             item.AddInt64("device", hit.device);
             item.AddInt64("node", hit.node);
+            if (!hit.relativeFolder.empty())
+              item.AddString("folder", hit.relativeFolder.c_str());
             batch.AddMessage("hit", &item);
             return ++count < 40 || flush();
           },
@@ -108,6 +110,7 @@ public:
       request.expression = m->GetString("expression", "");
       request.predicate = m->GetBool("predicate", false);
       request.includeTrash = m->GetBool("trash", false);
+      request.flat = m->GetBool("flat", false);
       try {
         request.filters = ReadSearchFilters(*m);
       } catch (const std::exception &e) {

@@ -72,7 +72,9 @@ SearchSummary SearchFiles(const SearchRequest &request,
   if (!alive())
     return out;
   if (request.root.empty() || request.root[0] != '/' ||
-      (request.expression.empty() && (request.predicate || !filters.active)) ||
+      (request.flat && request.predicate) ||
+      (request.expression.empty() &&
+       (request.predicate || (!request.flat && !filters.active))) ||
       request.expression.size() > 4096 ||
       request.expression.find('\0') != std::string::npos ||
       request.root.find('\0') != std::string::npos || !request.resultLimit ||
@@ -109,7 +111,8 @@ SearchSummary SearchFiles(const SearchRequest &request,
     out.error = "This scope is in Trash. Enable Include Trash to search it.";
     return out;
   }
-  auto accept = [&](const std::string &path, const struct stat &st) {
+  auto accept = [&](const std::string &path, const struct stat &st,
+                    const std::string &relativeFolder) {
     if (!alive())
       return false;
     if (!filters.Matches(path, st))
@@ -118,7 +121,7 @@ SearchSummary SearchFiles(const SearchRequest &request,
       out.limited = true;
       return false;
     }
-    if (!deliver({path, st.st_dev, st.st_ino})) {
+    if (!deliver({path, st.st_dev, st.st_ino, relativeFolder})) {
       out.cancelled = true;
       return false;
     }
@@ -167,7 +170,7 @@ SearchSummary SearchFiles(const SearchRequest &request,
           path.Path() == root || excluded(path.Path()) ||
           InPrivateSubtree(path.Path(), root))
         continue;
-      if (!accept(path.Path(), st))
+      if (!accept(path.Path(), st, {}))
         break;
     }
     return out;
@@ -195,6 +198,11 @@ SearchSummary SearchFiles(const SearchRequest &request,
     }
     if (!seen.insert(opened.st_ino).second)
       continue;
+    std::string folder;
+    if (request.flat)
+      folder = current.depth == 0
+                   ? "."
+                   : current.path.substr(root == "/" ? 1 : root.size() + 1);
     while (alive()) {
       errno = 0;
       auto item = readdir(dir.get());
@@ -224,8 +232,10 @@ SearchSummary SearchFiles(const SearchRequest &request,
         ++out.skipped;
         continue;
       }
-      if (Fold(item->d_name).find(needle) != std::u32string::npos &&
-          !accept(path, st))
+      if ((!request.flat || S_ISREG(st.st_mode)) &&
+          (needle.empty() ||
+           Fold(item->d_name).find(needle) != std::u32string::npos) &&
+          !accept(path, st, folder))
         break;
       // Never recurse through symlinks or other mounted volumes. Bound depth,
       // visited entries and result storage, reporting all truncation explicitly.

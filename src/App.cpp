@@ -8,6 +8,7 @@
 #include "ClipboardTextFile.h"
 #include "FileClipboard.h"
 #include "FileDrop.h"
+#include "FlatViewWindow.h"
 #include "FileContextMenu.h"
 #include "NamedEntry.h"
 #include "JobSnapshot.h"
@@ -388,6 +389,8 @@ public:
 class MainWindow : public BWindow {
   Preferences prefs;
   BMessenger searchWindow;
+  BMessenger flatViewWindow;
+  BMenuItem *flatViewItem;
   BMessenger bulkRenameWindow;
   std::shared_ptr<Listi::Shelf> shelf = std::make_shared<Listi::Shelf>();
   BMessenger shelfWindow;
@@ -1182,6 +1185,10 @@ public:
     resetView->AddInt32("mode", -1);
     fileView->AddSeparatorItem();
     fileView->AddItem(new BMenuItem("Use workspace default", resetView));
+    fileView->AddSeparatorItem();
+    flatViewItem =
+        new BMenuItem("Flat View…", new BMessage(Listi::kFlatView));
+    fileView->AddItem(flatViewItem);
     viewMenu->AddItem(fileView);
     menu->AddItem(viewMenu);
     auto view = new BMenu("Listi");
@@ -1328,6 +1335,8 @@ public:
     BWindow::MenusBeginning();
     for (int32 i = 0; i < ViewModeCount; ++i)
       fileView->ItemAt(i)->SetMarked(i == panes[source]->CurrentView());
+    const char *path = panes[source]->Path();
+    flatViewItem->SetEnabled(path[0] == '/' && !Listi::IsVirtual(path));
     const bool canSave = !actionArea->Pending() &&
                          Listi::CanSaveClipboardIn(panes[source]->Path());
     saveClipboardTextItem->SetEnabled(canSave);
@@ -1404,6 +1413,9 @@ public:
       break;
     case Listi::kAddToShelf:
       AddToShelf();
+      break;
+    case Listi::kRefreshShelf:
+      RefreshShelf();
       break;
     case Listi::kSubmitShelfTransfer: {
       auto job = Listi::DecodeSubmittedJob(
@@ -1648,6 +1660,15 @@ public:
         searchWindow = OpenFileSearch(BMessenger(this), source,
                                       panes[source]->Path(), SearchStore());
       break;
+    case Listi::kFlatView: {
+      const char *path = panes[source]->Path();
+      if (path[0] != '/' || Listi::IsVirtual(path))
+        break;
+      if (!flatViewWindow.IsValid() ||
+          flatViewWindow.SendMessage(Listi::kFlatView) != B_OK)
+        flatViewWindow = Listi::OpenFlatView(BMessenger(this), shelf, path);
+      break;
+    }
     case kRevealSearch: {
       int32 which = m->GetInt32("pane", -1);
       if (which < 0 || which > 1)

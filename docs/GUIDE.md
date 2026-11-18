@@ -236,6 +236,23 @@ wildcard expansion. Hidden rows are deselected; Select All and file operations
 act on visible selections. New navigation clears the filter; refreshing the same
 folder preserves it.
 
+**View > File view > Flat View…** opens a read-only recursive snapshot of the
+active panel's local folder. The **Relative folder** column distinguishes
+identical filenames; `.` means the starting folder itself. Filter by a literal
+name or relative-folder fragment without rescanning. Filtered-out files are
+deselected.
+
+Select files and click **Add to Shelf** to collect references to those exact
+originals. If an original is unavailable or has been replaced since the scan,
+the selection is not added. Flat View itself has no file-changing actions.
+Close it to return to the same panel, selection and workspace. To scan another
+folder or take a fresh snapshot, close and reopen Flat View from that folder.
+
+The scan runs in the background and lists regular files on the same persistent
+local volume. It does not follow symbolic links or enter Trash. **Stop scan**
+keeps the rows received so far. A stopped scan, unreadable branch or scan limit
+(5,000 results or 250,000 entries examined) is reported as incomplete.
+
 **Listi > Find files** combines a name fragment or BFS formula with extension,
 size and date criteria. Saved searches store criteria, not copies of results.
 Advanced BFS queries can subscribe to live changes. Search results refer to

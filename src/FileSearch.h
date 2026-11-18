@@ -11,10 +11,12 @@ struct SearchRequest {
   bool predicate = false, includeTrash = false;
   size_t resultLimit = 5000, visitLimit = 250000;
   SearchFilters filters;
+  bool flat = false; // Recursive regular files with a root-relative parent.
 };
 struct SearchHit {
   std::string path;
   int64_t device = -1, node = -1;
+  std::string relativeFolder = {};
 };
 struct SearchSummary {
   size_t visited = 0, matched = 0, skipped = 0;

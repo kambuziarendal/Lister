@@ -74,7 +74,7 @@ size_t Shelf::Add(const std::vector<std::string> &paths,
       if (original == expected.end() ||
           entry.identity.device != original->second.device ||
           entry.identity.inode != original->second.inode)
-        throw std::runtime_error("A dragged entry changed. Drag it again.");
+        throw std::runtime_error("An entry changed after it was selected.");
     }
     additions.push_back(std::move(entry));
   }

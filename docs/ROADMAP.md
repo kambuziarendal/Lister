@@ -82,13 +82,10 @@ file is never overwritten. No submenu should be necessary.
 
 ### Next workflows, in priority order
 
-1. **Directory Opus-style Flat View.** Start with files only under a chosen
-   local root. Show each file's relative parent as a column; filtering the list
-   must not hide its origin. Enumerate off the UI thread, allow cancellation,
-   bound result count and mark incomplete results. Test duplicate basenames,
-   unreadable branches and directory-link cycles. Switching back restores the
-   ordinary view. Start read-only with selection and Add to Shelf; multi-folder
-   rename comes only once preview and job results identify every original.
+1. **Flat View follow-up.** The development build has a read-only [Flat
+   View](GUIDE.md#filtering-and-search) for selecting local files and adding
+   references to the Shelf. Multi-folder rename comes only once preview and
+   job results identify every original.
 2. **Bulk rename chains, then guarded undo.** The current preflight deliberately
    rejects an occupied target, even within the batch. Permit chains by ordering
    dependent renames; use collision-checked temporary names for cycles such as
