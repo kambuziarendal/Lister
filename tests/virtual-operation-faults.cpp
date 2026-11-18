@@ -11,7 +11,7 @@
 namespace {
 struct Remote { std::string data; int64_t modified = 1; };
 std::map<std::string, Remote> files;
-bool truncateUpload = false;
+bool truncateUpload = false, omitStageSize = false;
 bool failCommit = false, failRollback = false, failPartCleanup = false,
      failBackupCleanup = false, cancelAfterBackup = false, cancelled = false,
      mutateDestination = false, loseBackupReply = false, loseCommitReply = false;
@@ -35,6 +35,7 @@ bool StatNetwork(const Location &l, FileEntry &entry, const TransferControl &c) 
   auto it = files.find(l.URL());
   if (it == files.end()) return false;
   entry.path = l.URL(); entry.name = LocationLeaf(entry.path);
+  entry.sizeKnown = !omitStageSize || !suffix(l.URL(), ".part");
   entry.size = it->second.data.size(); entry.modified = it->second.modified;
   return true;
 }
@@ -98,7 +99,7 @@ int main() {
     std::cout << (ok ? "PASS " : "FAIL ") << label << '\n';
   };
   auto reset = [&] {
-    truncateUpload = false;
+    truncateUpload = omitStageSize = false;
     files = {{destination, {"old contents", 1}}}; done = 0;
     failCommit = failRollback = failPartCleanup = failBackupCleanup = false;
     cancelAfterBackup = cancelled = mutateDestination = loseBackupReply = loseCommitReply = false;
@@ -123,6 +124,14 @@ int main() {
   check(!r.completed && !done && !r.errors.empty() && files.size() == 1 &&
         files.at(destination).data == "old contents",
         "acknowledged short upload cannot replace the original");
+  reset(); omitStageSize = true; r = RunVirtual(job, hooks);
+  check(r.completed == 1 && done == 1 && r.errors.empty() && files.size() == 1 &&
+        files.at(destination).data == "new contents",
+        "valid upload with no server size is verified by reading back the stage");
+  reset(); omitStageSize = truncateUpload = true; r = RunVirtual(job, hooks);
+  check(!r.completed && !done && !r.errors.empty() && files.size() == 1 &&
+        files.at(destination).data == "old contents",
+        "short upload with no server size cannot replace the original");
   reset(); loseBackupReply = true; r = RunVirtual(job, hooks);
   check(!r.completed && !done && !r.errors.empty() && files.size()==1 &&
         files.at(destination).data=="old contents",

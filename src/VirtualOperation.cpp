@@ -297,6 +297,17 @@ struct Runner {
           (check.sizeKnown && (check.size < 0 || uint64_t(check.size) != stagedBytes)))
         throw std::runtime_error(
             "Uploaded file is missing or incomplete; destination was not replaced");
+      if (!check.sizeKnown) {
+        uint64_t received = 0;
+        ReadFile(staged, [&](const char *, size_t n) {
+          if (n > stagedBytes - received)
+            throw std::runtime_error("Uploaded file is larger than the source");
+          received += n;
+        }, Control(src, false));
+        if (received != stagedBytes)
+          throw std::runtime_error(
+              "Uploaded file is incomplete; destination was not replaced");
+      }
       bool now = StatFile(dst, check, control);
       if (now != exists || (now && !Same(target, check)))
         throw std::runtime_error(
