@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include "TransferCommand.h"
 #include "Shelf.h"
 #include "ArchiveJobs.h"
 #include <algorithm>
@@ -154,17 +155,10 @@ Job PrepareShelfMove(const ShelfSnapshot &shelf, const std::string &folder) {
     throw std::runtime_error("Choose an available local destination folder.");
   job.expectedDestination = Identity(st);
   for (const auto &entry : shelf.entries) {
-    if (Parent(entry.path) == job.destination)
-      throw std::runtime_error("A Shelf entry is already in that folder: " +
-                               entry.path);
-    if (entry.directory && (job.destination == entry.path ||
-                            job.destination.rfind(entry.path + "/", 0) == 0))
-      throw std::runtime_error(
-          "A folder cannot move into itself or its contents.");
     job.sources.push_back(entry.path);
     job.expectedSources.emplace(entry.path, entry.identity);
   }
-  return job;
+  return PrepareTransfer(std::move(job));
 }
 
 Job PrepareShelfZip(const ShelfSnapshot &shelf) {

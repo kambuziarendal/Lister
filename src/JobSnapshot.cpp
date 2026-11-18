@@ -2,6 +2,7 @@
 #include "JobSnapshot.h"
 #include "VirtualFile.h"
 #include <sys/stat.h>
+#include <algorithm>
 namespace Listi {
 void FreezeLocalJob(Job &job, const std::string &folder) {
   for (const auto &path : job.sources) {
@@ -11,12 +12,21 @@ void FreezeLocalJob(Job &job, const std::string &folder) {
     if (lstat(path.c_str(), &st))
       throw std::runtime_error(
           "Selected entry is unavailable. Select it again.");
-    job.expectedSources[path] = {int32_t(st.st_dev), int64_t(st.st_ino)};
+    auto inserted = job.expectedSources.emplace(
+        path, NodeIdentity{int32_t(st.st_dev), int64_t(st.st_ino)});
+    const auto &expected = inserted.first->second;
+    if (expected.device != st.st_dev || expected.inode != st.st_ino)
+      throw std::runtime_error("The selected entry was replaced: " + path);
   }
   if (!folder.empty() && !IsVirtual(folder)) {
     struct stat st;
     if (stat(folder.c_str(), &st) || !S_ISDIR(st.st_mode))
       throw std::runtime_error("The destination folder is unavailable.");
+    if (job.expectedDestination.device >= 0 &&
+        (job.expectedDestination.device != st.st_dev ||
+         job.expectedDestination.inode != st.st_ino))
+      throw std::runtime_error(
+          "The selected destination folder was replaced: " + folder);
     job.expectedDestination = {int32_t(st.st_dev), int64_t(st.st_ino)};
     job.destinationFolder = folder;
   }
@@ -101,5 +111,14 @@ Job DecodeJob(const BMessage &m) {
     job.expectedArchiveSets[item.GetString("path", "")] =
         item.GetString("fingerprint", "");
   return job;
+}
+std::optional<Job> DecodeSubmittedJob(const BMessage &message,
+                                      std::initializer_list<Action> allowed) {
+  int32 value;
+  if (message.IsSourceRemote() || message.FindInt32("action", &value) != B_OK ||
+      std::find(allowed.begin(), allowed.end(), static_cast<Action>(value)) ==
+          allowed.end())
+    return std::nullopt;
+  return DecodeJob(message);
 }
 }

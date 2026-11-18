@@ -10,6 +10,16 @@ int main() {
   std::string base=root,src=base+"/file",dst=base+"/dest";mkdir(dst.c_str(),0755);
   int failures=0,checks=0;
   auto check=[&](bool ok,const char*text){++checks;failures+=!ok;std::cout<<(ok?"PASS ":"FAIL ")<<text<<std::endl;};
+  {
+    const auto rename = Listi::EncodeJob(Listi::Job{Listi::Action::Rename, {src}, dst}, 'test');
+    check(!Listi::DecodeSubmittedJob(rename, {Listi::Action::Trash, Listi::Action::Delete}),
+          "a confirmation cannot submit a different command");
+    check(!Listi::DecodeSubmittedJob(BMessage('test'), {Listi::Action::Copy}),
+          "a missing action does not default to an approved copy");
+    const auto accepted = Listi::DecodeSubmittedJob(rename, {Listi::Action::Rename});
+    check(accepted && accepted->sources.front() == src && accepted->destination == dst,
+          "a valid confirmation carries its original paths");
+  }
   for(auto action:{Listi::Action::Trash,Listi::Action::Delete,Listi::Action::Rename,Listi::Action::Copy,Listi::Action::Move}) {
     {std::ofstream f(src);f<<"original";}
     Listi::Job job{action,{src},dst};

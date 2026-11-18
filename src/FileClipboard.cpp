@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include "TransferCommand.h"
 #include "FileClipboard.h"
 #include "ClipboardLock.h"
 #include "ArchiveJobs.h"
@@ -260,17 +261,11 @@ ClipboardPaste PrepareFilePaste(const std::string &destination,
           throw std::runtime_error(
               "An archive changed since Copy. Select the entries again.");
       ClipboardPaste paste;
-      if (cut)
-        job = PrepareArchiveMove(job);
-      else if (ParseLocation(destination).Archive())
-        job = PrepareArchiveCopy(job);
-      else {
-        if (destination.empty() || destination[0] != '/')
-          throw std::runtime_error(
-              "Paste into a local folder or a writable archive.");
-        FreezeLocalJob(job, destination);
-      }
-      paste.jobs.push_back(job);
+      if (!cut && !ParseLocation(destination).Archive() &&
+          (destination.empty() || destination[0] != '/'))
+        throw std::runtime_error(
+            "Paste into a local folder or a writable archive.");
+      paste.jobs.push_back(PrepareTransfer(std::move(job)));
       if (cut) {
         static std::atomic<int64> serial{0};
         paste.archiveCut = true;
@@ -305,8 +300,7 @@ ClipboardPaste PrepareFilePaste(const std::string &destination,
       throw std::runtime_error(
           "Cut or copy one selection at a time into an archive.");
     transfer.action = cut ? Action::Move : Action::Copy;
-    paste.jobs.push_back(cut ? PrepareArchiveMove(transfer)
-                             : PrepareArchiveCopy(transfer));
+    paste.jobs.push_back(PrepareTransfer(std::move(transfer)));
     if (cut) {
       static std::atomic<int64> serial{0};
       paste.lease = std::to_string(getpid()) +
@@ -338,17 +332,14 @@ ClipboardPaste PrepareFilePaste(const std::string &destination,
   copy.destination = move.destination = canonical;
   copy.expectedDestination = move.expectedDestination = destinationNode;
   for (auto &item : paste.items) {
-    if (Join(canonical, Leaf(item.path)) == item.path)
-      throw std::runtime_error(
-          "Choose a different folder before pasting these files.");
     Job &job = item.cut ? move : copy;
     job.sources.push_back(item.path);
     job.expectedSources.emplace(item.path, item.node);
   }
   if (!copy.sources.empty())
-    paste.jobs.push_back(copy);
+    paste.jobs.push_back(PrepareTransfer(std::move(copy)));
   if (!move.sources.empty()) {
-    paste.jobs.push_back(move);
+    paste.jobs.push_back(PrepareTransfer(std::move(move)));
     static std::atomic<int64> serial{0};
     paste.lease = std::to_string(getpid()) + ":" +
                   std::to_string(system_time()) + ":" +

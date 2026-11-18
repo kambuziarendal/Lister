@@ -53,6 +53,15 @@ int main(int argc, char **argv) {
     Check(ReadFileClipboard(Data(clip)).size()==2,"copy clipboard remains reusable");
     Check(Run(PrepareFilePaste(c,&clip).jobs[0],{}).completed==2,"copy can paste to another folder");
     Check(Rejected([&]{PrepareFilePaste(a,&clip);}),"same-folder paste rejected before mutation");
+    mkdir((a+"/child").c_str(), 0755);
+    symlink((a+"/child").c_str(), (root+"/child-alias").c_str());
+    PutFileClipboard({a},true,&clip);
+    Check(Rejected([&]{PrepareFilePaste(root+"/child-alias",&clip);}),
+          "Cut rejects a descendant through an alias before reserving the clipboard");
+    paste=PrepareFilePaste(b,&clip);
+    Check(paste.jobs.size()==1 && !paste.lease.empty(),
+          "rejected target leaves the same Cut selection available for a valid destination");
+    FinishFilePaste(paste,{},&clip);
     PutFileClipboard({a+"/one"},true,&clip);
     Check(Exists(a+"/one") && ReadFileClipboard(Data(clip))[0].cut,"cut only marks source");
     paste=PrepareFilePaste(b,&clip);

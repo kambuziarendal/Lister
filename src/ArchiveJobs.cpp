@@ -1069,7 +1069,11 @@ void FreezeArchiveTargets(Job &transfer) {
     if (!location.Archive())
       return;
     const auto set = FindArchiveVolumes(location.archive);
-    transfer.expectedArchiveSets[set.files.front().path] = set.Fingerprint();
+    const auto fingerprint = set.Fingerprint();
+    const auto inserted = transfer.expectedArchiveSets.emplace(
+        set.files.front().path, fingerprint);
+    Require(inserted.first->second == fingerprint,
+            "Archive parts changed after selection. Select the archive again.");
   };
   capture(transfer.destination);
   for (const auto &source : transfer.sources)
