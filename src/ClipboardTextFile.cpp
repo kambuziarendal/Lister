@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "ClipboardTextFile.h"
-#include "NamedEntry.h"
 #include "ClipboardImage.h"
+#include "ClipboardLock.h"
+#include "NamedEntry.h"
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
@@ -45,6 +46,23 @@ bool CanSaveClipboardIn(const std::string &folder) {
     return false;
   FD directory(open(folder.c_str(), O_RDONLY | O_DIRECTORY));
   return IsWritable(directory.value);
+}
+
+std::optional<ClipboardContent> DetectClipboardSaveContent(BClipboard *clipboard) {
+  ClipboardLock lock(clipboard);
+  const BMessage *message = clipboard->Data();
+  if (!message)
+    throw std::runtime_error("Could not read the clipboard.");
+  if (HasClipboardFiles(*message))
+    return std::nullopt;
+  // Prefer actual image data to an accompanying text representation.
+  if (message->HasData("image/png", B_MIME_TYPE) ||
+      message->HasMessage("image/bitmap") ||
+      message->HasMessage("image/x-be-bitmap"))
+    return ClipboardContent::Image;
+  if (message->HasData("text/plain", B_MIME_TYPE))
+    return ClipboardContent::Text;
+  throw std::runtime_error("Copy files, plain text, or an image before pasting.");
 }
 
 ClipboardFile PrepareClipboardFile(const std::string &folder,

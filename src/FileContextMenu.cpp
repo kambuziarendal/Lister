@@ -66,7 +66,10 @@ void FileActions(BMenu &menu, const ContextMenuOptions &options) {
   const bool single = options.selected == 1, directory = options.directory;
   const bool local = options.local, dual = options.dual;
   auto add = [&](const char *label, uint32 action, bool enabled = true) {
-    auto item = new BMenuItem(label, new BMessage(action));
+    auto message = new BMessage(action);
+    if (action == kClipboardPaste)
+      message->AddBool("folderContext", true);
+    auto item = new BMenuItem(label, message);
     item->SetEnabled(enabled);
     menu.AddItem(item);
   };
@@ -84,6 +87,8 @@ void FileActions(BMenu &menu, const ContextMenuOptions &options) {
   menu.AddSeparatorItem();
   add("Copy", kClipboardCopy, local || options.archiveRemove);
   add("Cut", kClipboardCut, local || options.archiveRemove);
+  add("Paste here", kClipboardPaste,
+      options.folderLocal || options.folderArchive);
   add("Copy to other panel", kCopy, dual);
   add("Move to other panel", kMove, (local || options.archiveRemove) && dual);
   menu.AddSeparatorItem();

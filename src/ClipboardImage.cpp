@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "ClipboardImage.h"
 #include "ClipboardLock.h"
+#include "FileClipboard.h"
 #include <Message.h>
 #include <Bitmap.h>
 #include <BitmapStream.h>
@@ -91,8 +92,7 @@ std::string ReadClipboardPNG(BClipboard *clipboard) {
     const BMessage &message = *clipboard->Data();
     type_code type;
     int32 count;
-    if (message.CountNames(B_REF_TYPE) ||
-        message.GetInfo("listi:archive-copy", &type) == B_OK)
+    if (HasClipboardFiles(message))
       throw std::runtime_error(
           "The clipboard contains files. Use Paste to copy or move them.");
     if (message.GetInfo("image/png", &type, &count) == B_OK) {

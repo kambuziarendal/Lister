@@ -105,13 +105,18 @@ void Commit(BClipboard *clipboard, const BMessage &message) {
 }
 } // namespace
 
+bool HasClipboardFiles(const BMessage &message) {
+  type_code type;
+  return message.CountNames(B_REF_TYPE) ||
+         message.GetInfo("listi:archive-copy", &type) == B_OK;
+}
+
 std::string ReadClipboardText(BClipboard *clipboard) {
   ClipboardLock lock(clipboard);
   const BMessage &message = *clipboard->Data();
-  type_code type;
-  if (message.CountNames(B_REF_TYPE) ||
-      message.GetInfo("listi:archive-copy", &type) == B_OK)
+  if (HasClipboardFiles(message))
     throw std::runtime_error("The clipboard contains files. Use Paste to copy or move them.");
+  type_code type;
   int32 count;
   const void *bytes;
   ssize_t size;

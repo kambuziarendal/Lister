@@ -711,6 +711,10 @@ class MainWindow : public BWindow {
             "A clipboard transfer is still running. Let it finish before pasting again.");
         return;
       }
+      if (auto content = Listi::DetectClipboardSaveContent()) {
+        AskToSaveClipboardFile(*content);
+        return;
+      }
       clipboardPaste = Listi::PrepareFilePaste(panes[source]->Path());
       if (clipboardPaste.jobs.size() == 1 &&
           (clipboardPaste.jobs[0].action == Listi::Action::EditArchive ||
@@ -1075,13 +1079,11 @@ public:
       uint32 action;
       char key;
     };
-    auto clipboard = new BMenu("Clipboard");
-    clipboard->AddItem(
-        new BMenuItem("Copy", new BMessage(kClipboardCopy), 'C'));
-    clipboard->AddItem(new BMenuItem("Cut", new BMessage(kClipboardCut), 'X'));
-    clipboard->AddItem(new BMenuItem("Paste into active folder",
-                                     new BMessage(kClipboardPaste), 'V'));
-    clipboard->AddSeparatorItem();
+    files->AddItem(new BMenuItem("Copy", new BMessage(kClipboardCopy), 'C'));
+    files->AddItem(new BMenuItem("Cut", new BMessage(kClipboardCut), 'X'));
+    files->AddItem(new BMenuItem("Paste into active folder",
+                                 new BMessage(kClipboardPaste), 'V'));
+    auto clipboard = new BMenu("Save clipboard as");
     saveClipboardTextItem = new BMenuItem("Save clipboard text as file...",
                                           new BMessage(kClipboardSaveText));
     clipboard->AddItem(saveClipboardTextItem);

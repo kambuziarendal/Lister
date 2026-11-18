@@ -119,9 +119,18 @@ int main(int argc, char **argv) {
     Check(CanSaveClipboardIn(folder) && !CanSaveClipboardIn("@disks") &&
               !CanSaveClipboardIn(folder + "/missing"),
           "only available local destinations are allowed");
-    auto first =
-        PrepareClipboardFile(folder, ClipboardContent::Text, &clipboard);
+    const auto textContent = DetectClipboardSaveContent(&clipboard);
+    Check(textContent == ClipboardContent::Text, "direct Paste detects text");
+    auto first = PrepareClipboardFile(folder, *textContent, &clipboard);
     Check(first.suggestedName == "Clipboard.txt", "default text filename");
+    Check(access((folder + "/" + first.suggestedName).c_str(), F_OK) != 0 &&
+              errno == ENOENT,
+          "preparing or dismissing the filename prompt writes nothing");
+    Check(Rejected([&] {
+            PrepareClipboardFile("sftp://example.invalid/", *textContent,
+                                 &clipboard);
+          }),
+          "direct Paste of content does not target virtual folders");
     std::ofstream(folder + "/Clipboard.txt") << "existing";
     auto frozen =
         PrepareClipboardFile(folder, ClipboardContent::Text, &clipboard);
@@ -164,7 +173,7 @@ int main(int argc, char **argv) {
               Read(folder + "/replaced.txt") == "replacement" &&
               Read(movedOutput) == original,
           "output replaced during writing is preserved, not reported as a successful save");
-    BMessage refs = MakeFileSelection({folder + "/Clipboard.txt"});
+    BMessage refs = MakeFileSelection({folder + "/Clipboard.txt"}, true);
     Set(clipboard, refs);
     Check(Rejected([&] {
             PrepareClipboardFile(folder, ClipboardContent::Text, &clipboard);
@@ -172,6 +181,8 @@ int main(int argc, char **argv) {
           "native file references are not text");
     refs.AddData("text/plain", B_MIME_TYPE, original.data(), original.size());
     Set(clipboard, refs);
+    Check(!DetectClipboardSaveContent(&clipboard),
+          "direct Paste keeps file Cut ahead of clipboard text");
     Check(Rejected([&] {
             PrepareClipboardFile(folder, ClipboardContent::Text, &clipboard);
           }),
@@ -179,18 +190,24 @@ int main(int argc, char **argv) {
     BMessage archive;
     text.AddMessage("listi:archive-copy", &archive);
     Set(clipboard, text);
+    Check(!DetectClipboardSaveContent(&clipboard),
+          "direct Paste keeps archive selections ahead of clipboard text");
     Check(Rejected([&] {
             PrepareClipboardFile(folder, ClipboardContent::Text, &clipboard);
           }),
           "archive selection is not converted");
     Set(clipboard, BMessage());
+    Check(Rejected([&] { DetectClipboardSaveContent(&clipboard); }),
+          "direct Paste rejects an empty clipboard");
     Check(Rejected([&] {
             PrepareClipboardFile(folder, ClipboardContent::Text, &clipboard);
           }),
           "empty clipboard is rejected");
     Set(clipboard, bitmap);
-    const auto image =
-        PrepareClipboardFile(folder, ClipboardContent::Image, &clipboard);
+    const auto imageContent = DetectClipboardSaveContent(&clipboard);
+    Check(imageContent == ClipboardContent::Image,
+          "direct Paste detects a native clipboard bitmap");
+    const auto image = PrepareClipboardFile(folder, *imageContent, &clipboard);
     Check(image.suggestedName == "Clipboard.png", "default PNG filename");
     Set(clipboard, Text("later"));
     SaveClipboardFile(image, "image.png");
@@ -202,12 +219,17 @@ int main(int argc, char **argv) {
           "native image saved as PNG with original dimensions and pixel");
     BMessage png;
     png.AddData("image/png", B_MIME_TYPE, saved.data(), saved.size());
+    png.AddData("text/plain", B_MIME_TYPE, original.data(), original.size());
     Set(clipboard, png);
+    Check(DetectClipboardSaveContent(&clipboard) == ClipboardContent::Image,
+          "direct Paste prefers PNG over accompanying text");
     Check(PrepareClipboardFile(folder, ClipboardContent::Image, &clipboard)
                   .bytes == saved,
           "encoded PNG clipboard data preserved unchanged");
     refs.AddData("image/png", B_MIME_TYPE, saved.data(), saved.size());
     Set(clipboard, refs);
+    Check(!DetectClipboardSaveContent(&clipboard),
+          "direct Paste keeps file Cut ahead of clipboard images");
     Check(Rejected([&] {
             PrepareClipboardFile(folder, ClipboardContent::Image, &clipboard);
           }),
