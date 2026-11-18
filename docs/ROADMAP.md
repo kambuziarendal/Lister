@@ -67,21 +67,21 @@ are session information, not a persistent audit log or an undo mechanism.
 
 ## Feature directions and current foundations
 
-Status here refers to the 0.31.1 alpha. A related foundation is not the same as a
-finished feature.
+Status here includes the unreleased development build. A related foundation is
+not the same as a finished feature.
 
 | Direction | Available now | Planned or exploratory work |
 |---|---|---|
 | Duplicate finder | SHA-256 folder comparison; Duplicate creates another copy | Search one or more chosen folders for duplicate contents and review groups |
-| Bulk rename | Single-entry rename | Multi-file preview, transformations, numbering and collision checks |
-| Miller columns and adaptive views | Four preset layouts and optional Miller columns, default in Einn | User-controlled adaptive layouts |
+| Bulk rename | Local multi-file preview, text replacement, numbering and collision checks | Broader rename transformations |
+| Miller columns and adaptive views | Four preset layouts and optional Miller columns, default in Einn | Opt-in compact buttons are implemented; automatic file-view changes remain exploratory |
 | Directory synchronisation | Read-only recursive size/SHA-256 comparison | Previewed, conflict-aware one-way or two-way synchronisation |
 | Clipboard contents to a new file | Copy/Cut/Paste of file references; development build saves text and PNG images | Explore additional clipboard formats when useful |
 | Rich built-in inspectors | Image preview/thumbnails, a basic text viewer, archive browsing, local properties | Broader code/document inspection, detailed images and camera EXIF/GPS metadata |
-| Copy queues and pause | Worker queue, progress, pause/resume and cancellation | Stronger job results and finer per-job control |
+| Copy queues and pause | Per-job results, pause/resume and targeted cancellation | Persistent history is not implemented |
 | Automatic rules and drop folders | Manual file actions, search filters and live BFS queries | Opt-in sorting rules and configured drop targets for extract/rename/move workflows |
 | Colour coding and tags | Configurable file/folder/link colours and typed BFS attribute editing | Dedicated per-item labels, tag editing/filtering and optional colour rules |
-| Saved project sessions | Four workspace layouts, saved places and folder view modes | Named sets of open locations, future tabs/cards, views, sorting and layout |
+| Saved project sessions | Named layout profiles, four presets, saved places and folder view modes | Named sets of open locations, future tabs/cards, views, sorting and layout |
 | Git status in file lists | No built-in Git status display | Optional status badges or columns without blocking browsing |
 | Built-in text/file diff | Read-only folder comparison by size or SHA-256 | Side-by-side text differences and file-level comparison tools |
 
