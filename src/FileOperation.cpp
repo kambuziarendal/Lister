@@ -251,7 +251,10 @@ struct Runner {
             it->first + ": source changed during cleanup; left untouched");
       if (directory ? rmdir(it->first.c_str()) : unlink(it->first.c_str()))
         Fail(it->first);
-      Tick(it->first);
+      // The removal has committed. Poll before the next entry, not after
+      // this one: a late cancellation cannot bring the source back.
+      if (h.progress)
+        h.progress(it->first, 0);
     }
   }
   void Commit(const std::string &tmp, const std::string &dst, bool replace,

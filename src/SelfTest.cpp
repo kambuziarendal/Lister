@@ -191,6 +191,13 @@ int SelfTest() {
   r = Run({Action::Delete, {Join(root, "dst/linked-directory")}, ""}, hooks);
   check(r.errors.empty() && exists(Join(root, "src/tree/nested/file")),
         "delete symbolic link leaves target untouched");
+  const auto removed = Join(root, "dst/delete-last");
+  write(removed, "last");
+  Hooks afterDelete;
+  afterDelete.proceed = [&] { return exists(removed); };
+  r = Run({Action::Delete, {removed}, ""}, afterDelete);
+  check(!r.cancelled && r.completed == 1 && r.errors.empty() && !exists(removed),
+        "cancel after the last removal does not undo deletion");
   mkdir(Join(root, "merge").c_str(), 0755);
   mkdir(Join(root, "merge/tree").c_str(), 0755);
   r = Run({Action::Move, {Join(root, "src/tree")}, Join(root, "merge")}, hooks);

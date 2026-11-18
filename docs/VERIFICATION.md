@@ -44,6 +44,24 @@ setup. They are not all run by `make test`. Diagnostic probes under
 [`tests/probes`](../tests/probes/) have historical reproduction exit meanings and
 must not be mistaken for normal passing regressions.
 
+### Moving between volumes
+
+The opt-in `cross-volume-move` audit needs a writable directory on a different
+mounted volume from `/tmp`. It creates unique test folders and checks both
+volumes after cancellation during copying, before source removal, after the
+last removal and between two selected files.
+
+```sh
+LISTI_TEST_VOLUME=/path/to/test-volume python3 tests/run-native-audit.py cross-volume-move
+```
+
+To also test running out of space during replacement, use a **dedicated,
+disposable** test volume (for example, a freshly mounted 32 MiB BFS RAM disk)
+and set `LISTI_TEST_DISK_FULL=1` in the same command. This case deliberately
+exhausts the volume during staging. It verifies the original file, the existing
+destination and removal of the temporary file. Do not use a shared volume.
+The audit does not format or mount disks itself.
+
 ## UI and package checks
 
 Automated tests do not replace installed-package checks in Haiku. Relevant
