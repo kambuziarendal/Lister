@@ -575,8 +575,10 @@ struct Archive {
       if (time.value.vt == VT_FILETIME) {
         uint64_t ticks = (uint64_t(time.value.filetime.dwHighDateTime) << 32) |
                          time.value.filetime.dwLowDateTime;
-        if (ticks >= 116444736000000000ULL)
+        if (ticks >= 116444736000000000ULL) {
           e.modified = (ticks - 116444736000000000ULL) / 10000000;
+          e.modifiedKnown = true;
+        }
       }
       out.push_back(e);
     }
@@ -1032,6 +1034,13 @@ bool SevenZipAvailable() { return Engine()->lib.Available(); }
 bool ArjCanCreate() {
   try {
     return Engine()->formats.count("arj") != 0;
+  } catch (...) {
+    return false;
+  }
+}
+bool RarStoreCanCreate() {
+  try {
+    return Engine()->formats.count("rar5") != 0;
   } catch (...) {
     return false;
   }
