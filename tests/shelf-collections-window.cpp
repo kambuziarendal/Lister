@@ -169,6 +169,7 @@ bool SelectMissing(BWindow *window) {
     if (!field || std::strcmp(field->String(), "Unavailable") != 0)
       return false;
     list->AddToSelection(row);
+    list->SelectionChanged();
     return true;
   });
 }
