@@ -81,7 +81,7 @@ struct Writer {
       else {
         Require(format == "tar" || format == "tgz" || format == "txz" ||
                     format == "tbz2" || format == "tlz" || format == "tzst" ||
-                    format == "tlz4" || format == "tlzip",
+                    format == "tlz4" || format == "tlzip" || format == "taz",
                 "Unknown archive format.");
         Check(LIBCALL(lib, archive_write_set_format_pax_restricted)(a));
         const char *filter = format == "tgz"     ? "gzip"
@@ -90,13 +90,14 @@ struct Writer {
                              : format == "tlz"   ? "lzma"
                              : format == "tzst"  ? "zstd"
                              : format == "tlz4"  ? "lz4"
+                             : format == "taz"   ? "compress"
                              : format == "tlzip" ? "lzip"
                                                  : "none";
         if (format != "tar")
           Check(LIBCALL(lib, archive_write_add_filter_by_name)(a, filter));
       }
     }
-    if (format != "tar" && format != "cpio") {
+    if (format != "tar" && format != "cpio" && format != "taz") {
       const std::string option = "compression-level=" + std::to_string(level);
       Check(LIBCALL(lib, archive_write_set_options)(a, option.c_str()));
     }
@@ -111,6 +112,7 @@ const ArchiveFormat formats[] = {{"zip", "ZIP", ".zip", true},
                                  {"tzst", "Tar + Zstandard", ".tar.zst", true},
                                  {"tlz4", "Tar + LZ4", ".tar.lz4", true},
                                  {"tlzip", "Tar + lzip", ".tar.lz", true},
+                                 {"taz", "Tar + Unix compress", ".tar.Z", false},
                                  {"tar", "Tar (uncompressed)", ".tar", false},
                                  {"cpio", "CPIO (newc)", ".cpio", false},
                                  {"xar", "XAR", ".xar", true}};
@@ -449,6 +451,9 @@ std::string EditFormat(const std::string &path) {
       break;
     case ARCHIVE_FILTER_LZ4:
       format = "tlz4";
+      break;
+    case ARCHIVE_FILTER_COMPRESS:
+      format = "taz";
       break;
     case ARCHIVE_FILTER_LZIP:
       format = "tlzip";
