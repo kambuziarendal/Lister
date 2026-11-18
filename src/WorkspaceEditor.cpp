@@ -53,6 +53,13 @@ void ClearList(BListView *list) {
     delete item;
 }
 
+// BListView does not own the BListItems added to it.
+class WorkspaceList : public BListView {
+public:
+  using BListView::BListView;
+  ~WorkspaceList() override { ClearList(this); }
+};
+
 void AddLabel(BListView *list, const char *label) {
   list->AddItem(new BStringItem(label));
 }
@@ -257,8 +264,8 @@ class WorkspaceEditor : public BWindow {
   }
 
   BGroupView *ActionPage() {
-    available = new BListView("available actions", B_SINGLE_SELECTION_LIST);
-    actions = new BListView("visible actions", B_SINGLE_SELECTION_LIST);
+    available = new WorkspaceList("available actions", B_SINGLE_SELECTION_LIST);
+    actions = new WorkspaceList("visible actions", B_SINGLE_SELECTION_LIST);
     for (auto list : {available, actions}) {
       list->SetSelectionMessage(new BMessage(kActionSelection));
       list->SetTarget(this);
@@ -346,7 +353,7 @@ class WorkspaceEditor : public BWindow {
   }
 
   BGroupView *ProfilePage() {
-    profileList = new BListView("saved profiles", B_SINGLE_SELECTION_LIST);
+    profileList = new WorkspaceList("saved profiles", B_SINGLE_SELECTION_LIST);
     profileList->SetSelectionMessage(new BMessage(kProfileSelection));
     profileList->SetInvocationMessage(new BMessage(kLoadProfile));
     profileList->SetTarget(this);

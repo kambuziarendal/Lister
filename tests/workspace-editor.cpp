@@ -5,6 +5,8 @@
 #include <Button.h>
 #include <CheckBox.h>
 #include <ListView.h>
+#include <StringItem.h>
+#include <atomic>
 #include <TextControl.h>
 #include <TabView.h>
 #include <Window.h>
@@ -12,6 +14,14 @@
 #include <iostream>
 
 namespace {
+std::atomic<int> destroyedItems{0};
+
+class TrackedItem : public BStringItem {
+public:
+  TrackedItem() : BStringItem("Test item") {}
+  ~TrackedItem() override { ++destroyedItems; }
+};
+
 class Receiver : public BLooper {
 public:
   sem_id saved = create_sem(0, "workspace saved");
@@ -80,6 +90,12 @@ int main() {
       return 2;
     BMessage close(*Control<BButton>(window, save ? "save workspace"
                                                    : "cancel workspace")->Message());
+    const auto expected = destroyedItems.load() + 3;
+    tabs->Select(0);
+    Control<BListView>(window, "visible actions")->AddItem(new TrackedItem);
+    Control<BListView>(window, "available actions")->AddItem(new TrackedItem);
+    tabs->Select(2);
+    Control<BListView>(window, "saved profiles")->AddItem(new TrackedItem);
     window->Unlock();
     dialog.SendMessage(&close);
     Check((acquire_sem_etc(receiver->saved, 1, B_RELATIVE_TIMEOUT,
@@ -88,6 +104,9 @@ int main() {
     for (int i = 0; i < 100 && dialog.IsValid(); ++i)
       snooze(20000);
     Check(!dialog.IsValid(), "workspace editor closed");
+    for (int i = 0; i < 100 && destroyedItems.load() != expected; ++i)
+      snooze(20000);
+    Check(destroyedItems.load() == expected, "editor releases all lists' items on close");
   }
   receiver->Lock();
   BMessage layoutMessage, profilesMessage;

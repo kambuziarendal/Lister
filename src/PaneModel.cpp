@@ -11,7 +11,8 @@ std::string FileTypeKey(const std::string &name) {
       c += 'a' - 'A';
   // A compressed TAR is a different type from a single compressed stream.
   for (const char *suffix :
-       {".tar.gz", ".tar.bz2", ".tar.xz", ".tar.lzma", ".tar.lz", ".tar.zst"}) {
+       {".tar.gz", ".tar.bz2", ".tar.xz", ".tar.lzma", ".tar.lz", ".tar.zst",
+        ".tar.lz4", ".tar.z"}) {
     const std::string ending = suffix;
     if (folded.size() > ending.size() &&
         folded.compare(folded.size() - ending.size(), ending.size(), ending) ==
