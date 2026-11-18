@@ -105,6 +105,22 @@ int main() {
     Check(cancelled.cancelled && !Exists(target) && Read(source) == png,
           "cancellation after exclusive creation removes partial output");
 
+    bool replaced = false;
+    Hooks replaceOutput;
+    replaceOutput.proceed = [&] {
+      if (!replaced && Exists(target)) {
+        replaced = true;
+        unlink(target.c_str());
+        Write(target, "user replacement");
+      }
+      return true;
+    };
+    auto interrupted = Run(job, replaceOutput);
+    Check(replaced && !interrupted.completed && !interrupted.errors.empty() &&
+              Read(target) == "user replacement",
+          "a replaced output survives and is not reported as a converted image");
+    unlink(target.c_str());
+
     auto sameFolder = PrepareFileDrop(drag, root, true);
     sameFolder.action = job.action;
     sameFolder.imageFormat = job.imageFormat;

@@ -49,6 +49,7 @@ FileEntry Entry(const std::string &p, const struct stat &st) {
   e.link = S_ISLNK(st.st_mode);
   e.size = st.st_size;
   e.modified = st.st_mtime;
+  e.modifiedKnown = true;
   e.permissions = st.st_mode & 0777;
   return e;
 }

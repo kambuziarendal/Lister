@@ -36,6 +36,7 @@ void Fill(FileEntry &e, const Location &l, const struct stat &st) {
   e.link = S_ISLNK(st.st_mode);
   e.size = st.st_size;
   e.modified = st.st_mtime;
+  e.modifiedKnown = true;
   e.permissions = st.st_mode & 0777;
 }
 struct SMBSession {
@@ -268,6 +269,7 @@ FileEntry ParseList(const std::string &line, const Location &l, bool mlsd) {
   FileEntry e;
   bool hasPermissions = false;
   if (mlsd) {
+    e.sizeKnown = false;
     auto at = line.find(' ');
     if (at == std::string::npos)
       throw std::runtime_error("Invalid FTP MLSD response");
@@ -285,13 +287,18 @@ FileEntry ParseList(const std::string &line, const Location &l, bool mlsd) {
       std::transform(key.begin(), key.end(), key.begin(),
                      [](unsigned char c) { return std::tolower(c); });
       if (key == "type") {
+        std::transform(v.begin(), v.end(), v.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
         if (v == "cdir" || v == "pdir")
           return {};
         e.directory = v == "dir";
         e.link = v.find("slink") != std::string::npos;
-      } else if (key == "size")
+      } else if (key == "size") {
+        if (v.empty() || v.find_first_not_of("0123456789") != std::string::npos)
+          throw std::runtime_error("Invalid FTP file size");
         e.size = std::stoll(v);
-      else if (key == "unix.mode") {
+        e.sizeKnown = true;
+      } else if (key == "unix.mode") {
         e.permissions = std::stoul(v, nullptr, 8) & 0777;
         hasPermissions = true;
       }

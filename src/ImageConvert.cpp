@@ -322,7 +322,13 @@ public:
       throw std::runtime_error(name + ": could not sync the converted image.");
   }
 
-  void Commit() { complete = true; }
+  void Commit() {
+    struct stat current;
+    if (fstatat(directory, name.c_str(), &current, AT_SYMLINK_NOFOLLOW) ||
+        current.st_dev != identity.st_dev || current.st_ino != identity.st_ino)
+      throw std::runtime_error(name + ": converted file was moved or replaced.");
+    complete = true;
+  }
 };
 
 void VerifyFolder(const Job &job, int directory) {
