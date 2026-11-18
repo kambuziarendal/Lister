@@ -2,6 +2,7 @@
 #include "TransferCommand.h"
 #include "Shelf.h"
 #include "ArchiveJobs.h"
+#include "ShelfIdentity.h"
 #include <algorithm>
 #include <cstdlib>
 #include <limits.h>
@@ -50,7 +51,8 @@ ShelfEntry Capture(const std::string &path) {
     if (stat(parent.c_str(), &parentStat) || st.st_dev != parentStat.st_dev)
       throw std::runtime_error("The Shelf cannot collect volume roots.");
   }
-  return {source, Identity(st), S_ISDIR(st.st_mode)};
+  return {source, Identity(st), S_ISDIR(st.st_mode),
+          CaptureShelfProof(source, st)};
 }
 } // namespace
 
@@ -58,6 +60,15 @@ ShelfState ShelfEntry::State() const {
   struct stat st;
   if (lstat(path.c_str(), &st))
     return ShelfState::Missing;
+  if (restored || proof) {
+    if (!proof)
+      return ShelfState::Ambiguous;
+    auto state = CheckShelfProof(*proof, st);
+    if (state != ShelfState::Ready)
+      return state;
+    if (unresolved || !Matches(identity, st))
+      return ShelfState::Ambiguous;
+  }
   return Matches(identity, st) ? ShelfState::Ready : ShelfState::Replaced;
 }
 
@@ -116,6 +127,56 @@ void Shelf::Clear() {
   }
 }
 
+void Shelf::Load(std::vector<ShelfEntry> entries, size_t revision) {
+  ResolveShelfReferences(entries);
+  std::lock_guard<std::mutex> lock(mutex);
+  if (current.revision != revision)
+    throw std::runtime_error("The Shelf changed. Load the collection again.");
+  current.entries = std::move(entries);
+  ++current.revision;
+}
+
+void Shelf::RefreshSavedReferences() {
+  auto next = Snapshot();
+  ResolveShelfReferences(next.entries);
+  std::lock_guard<std::mutex> lock(mutex);
+  if (current.revision != next.revision)
+    return;
+  for (size_t i = 0; i < next.entries.size(); ++i) {
+    auto &old = current.entries[i];
+    auto &updated = next.entries[i];
+    if (old.path != updated.path || old.unresolved != updated.unresolved ||
+        old.identity.device != updated.identity.device) {
+      current.entries = std::move(next.entries);
+      ++current.revision;
+      return;
+    }
+  }
+}
+
+void Shelf::Relink(const std::string &oldPath, const std::string &newPath,
+                   size_t revision) {
+  auto replacement = Capture(newPath);
+  std::lock_guard<std::mutex> lock(mutex);
+  if (current.revision != revision)
+    throw std::runtime_error("The Shelf changed. Choose the reference again.");
+  auto &entries = current.entries;
+  auto selected = std::find_if(entries.begin(), entries.end(),
+                               [&](const auto &entry) {
+                                 return entry.path == oldPath;
+                               });
+  if (selected == entries.end())
+    throw std::runtime_error("That reference is no longer on the Shelf.");
+  if (selected->State() == ShelfState::Ready)
+    throw std::runtime_error("That reference is already available.");
+  if (std::any_of(entries.begin(), entries.end(), [&](const auto &entry) {
+        return entry.path != oldPath && entry.path == replacement.path;
+      }))
+    throw std::runtime_error("That entry is already on the Shelf.");
+  *selected = std::move(replacement);
+  ++current.revision;
+}
+
 ShelfSnapshot Shelf::Snapshot() const {
   std::lock_guard<std::mutex> lock(mutex);
   return current;
@@ -127,7 +188,7 @@ void CheckShelfSources(const ShelfSnapshot &shelf, Action action) {
   std::set<std::string> names;
   for (const auto &entry : shelf.entries) {
     if (entry.State() != ShelfState::Ready)
-      throw std::runtime_error("Remove the missing or replaced reference: " +
+      throw std::runtime_error("Relink or remove the missing or replaced reference (including ambiguous identity): " +
                                entry.path);
     const auto name = Leaf(entry.path);
     if (!names.insert(name).second)
@@ -176,7 +237,7 @@ Job PrepareShelfArchive(const ShelfSnapshot &shelf) {
     const auto &captured = job.expectedSources.at(entry.path);
     if (captured.device != entry.identity.device ||
         captured.inode != entry.identity.inode)
-      throw std::runtime_error("Remove the missing or replaced reference: " +
+      throw std::runtime_error("Relink or remove the missing or replaced reference (including ambiguous identity): " +
                                entry.path);
   }
   return job;

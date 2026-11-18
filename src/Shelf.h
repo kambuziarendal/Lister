@@ -2,15 +2,35 @@
 #pragma once
 #include "FileOperation.h"
 #include <mutex>
+#include <optional>
 #include <set>
 
 namespace Listi {
-enum class ShelfState { Ready, Missing, Replaced };
+enum class ShelfState { Ready, Missing, Replaced, Ambiguous };
+
+struct ShelfNodeStamp {
+  int64_t inode;
+  int64_t seconds;
+  int32_t nanoseconds;
+  bool operator==(const ShelfNodeStamp &other) const {
+    return inode == other.inode && seconds == other.seconds &&
+           nanoseconds == other.nanoseconds;
+  }
+};
+
+struct ShelfProof {
+  std::string device;
+  ShelfNodeStamp volumeRoot, parent, entry;
+  uint32_t kind;
+};
 
 struct ShelfEntry {
   std::string path;
-  NodeIdentity identity;
-  bool directory;
+  NodeIdentity identity{};
+  bool directory = false;
+  std::optional<ShelfProof> proof;
+  bool restored = false;
+  bool unresolved = false;
 
   ShelfState State() const;
 };
@@ -29,6 +49,10 @@ public:
              const std::map<std::string, NodeIdentity> &expected = {});
   void Remove(const std::set<std::string> &paths);
   void Clear();
+  void Load(std::vector<ShelfEntry> entries, size_t revision);
+  void RefreshSavedReferences();
+  void Relink(const std::string &oldPath, const std::string &newPath,
+              size_t revision);
   ShelfSnapshot Snapshot() const;
 
 private:

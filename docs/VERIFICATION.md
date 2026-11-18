@@ -34,6 +34,20 @@ Selected tests can be requested by name, for example:
 python3 tests/run-native-audit.py selection-model search-filters
 ```
 
+For Shelf collections, run:
+
+```sh
+python3 tests/run-native-audit.py shelf shelf-collections
+```
+
+To test a restart and mount cycle, use a disposable BFS
+volume and keep the test program and settings file on a different volume. With
+the fixture mounted, run `shelf-collections --save-reference STORE FILE`.
+Run `shelf-collections --check-reference STORE FILE ready` from a separate
+process. Unmount the fixture and check for `missing`. After remounting it on
+the same device path, check for `ready` again using the current absolute file
+path. Use the full path to the test binary in `build/native-audit-tests`.
+
 The runner currently expects objects under
 `src/objects.x86_64-cc13-release`. A different compiler/object-directory name
 requires adjusting that path. Some tests require optional packages or prepared

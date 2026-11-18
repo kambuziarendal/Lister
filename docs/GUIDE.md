@@ -182,12 +182,28 @@ original folders and status. You can also drop local entries onto the list.
 Select one or more rows and click **Remove from Shelf** to remove just those
 references. **Clear Shelf** removes every reference. Neither action deletes or
 moves the original files. Closing and reopening the Shelf keeps its contents;
-quitting Listi clears it.
+quitting Listi clears the working Shelf.
+
+Use **Collections > Save current Shelf...** to keep a named snapshot of the
+references. **Collections > Load** restores a snapshot to the working Shelf;
+it does not start file jobs. Changes to the working Shelf are not written into
+the saved snapshot until you save again and confirm replacement. Deleting a
+collection only deletes its saved references.
+
+On BFS, load and **Refresh** check volume and file identity. They can find a
+rename in the known parent directory or use the volume's indexed name search
+after a same-volume move that kept its name. Automatic lookup is bounded and
+does not search other volumes or assume a replacement at the old path is the
+original. A move that also changed the name, an unavailable volume, or an
+unverifiable reference can require manual attention. Select one unavailable
+row and choose **Relink...** to point it at a file or folder you recognize,
+then save again to keep that change. On filesystems without a supported
+identity proof, reloaded paths require explicit relinking.
 
 **Copy all...** and **Move all...** act on the whole Shelf, not just
 highlighted rows. Choose a destination folder and follow progress in
 Operations. Copy leaves the originals and the Shelf references in place.
-Remove unavailable or replaced references before submitting another job.
+Relink or remove unavailable references before submitting another job.
 
 **Create archive...** opens the archive dialog for the whole Shelf. Choose
 the destination, archive name and format. Use **Change format...** if the
