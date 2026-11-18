@@ -199,3 +199,9 @@ For behaviour and known limits, see the [workflow guide](GUIDE.md).
 Haiku versions, exact reproduction steps, error messages and whether files were
 changed or left in a partial state. Prefer a minimal synthetic example. Do not
 include passwords, private filenames or private file contents in a public report.
+
+For the optional host-driven network interruption matrix, set
+`LISTI_NETWORK_TEST_BINARY` to the absolute path of the freshly linked
+`network-interruptions` test in the Haiku guest. Set
+`LISTI_NETWORK_KNOWN_HOSTS` to the guest's known-hosts file for the disposable
+SFTP fixture. This avoids testing a binary left by an older checkout.

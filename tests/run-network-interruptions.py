@@ -1,16 +1,20 @@
 # SPDX-License-Identifier: MIT
 # Report directory contains ssh wrapper and network/share from the owned fixture.
 from pathlib import Path
-import os,subprocess,urllib.request,json,hashlib,sys,time
+import os,shlex,subprocess,urllib.request,json,hashlib,sys,time
 if len(sys.argv)<2:raise SystemExit('Usage: run-network-interruptions.py REPORT [smb ftp sftp]')
 r=Path(sys.argv[1]).resolve();share=r/'network/share'
 protocols=sys.argv[2:] or ['smb','ftp','sftp']
+if any(protocol not in ('smb','ftp','sftp') for protocol in protocols):
+ raise SystemExit('Unknown network protocol')
+guest_binary=os.environ.get('LISTI_NETWORK_TEST_BINARY','/boot/home/listi-024-final/build/native-audit-tests/network-interruptions')
+guest_known_hosts=os.environ.get('LISTI_NETWORK_KNOWN_HOSTS','/boot/home/listi-network-known-hosts')
 results=[]
 for protocol in protocols:
  for mode in ['none','download','upload','publish-before','backup-reply','publish-reply','cleanup','cancel-download']:
   if os.getenv('NET_CASES') and protocol+':'+mode not in os.environ['NET_CASES'].split():continue
   urllib.request.urlopen('http://127.0.0.1:23990/reset/'+('none' if mode=='cancel-download' else mode)).read()
-  cmd='cd /boot/home/listi-024-final && build/native-audit-tests/network-interruptions '+protocol+' '+mode+' /boot/home/listi-network-known-hosts'
+  cmd=shlex.join([guest_binary,protocol,mode,guest_known_hosts])
   start=time.monotonic()
   try:p=subprocess.run([str(r/'ssh'),cmd],text=True,capture_output=True,timeout=80)
   except subprocess.TimeoutExpired as e:
