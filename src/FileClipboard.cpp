@@ -24,6 +24,7 @@ namespace {
 constexpr int32 kCopyMode = 'Tcsl', kCutMode = 'Tmsl';
 constexpr const char *kLease = "listi:paste-lease";
 constexpr size_t kMaximumEntries = 1024;
+constexpr size_t kMaximumTextBytes = 4 * 1024 * 1024;
 void Require(status_t status, const char *operation) {
   if (status != B_OK)
     throw std::runtime_error(std::string(operation) + ": " + strerror(status));
@@ -112,6 +113,26 @@ void Commit(BClipboard *clipboard, const BMessage &message) {
   Require(clipboard->Commit(true), "Save clipboard");
 }
 } // namespace
+
+std::string ReadClipboardText(BClipboard *clipboard) {
+  Lock lock(clipboard);
+  const BMessage &message = *clipboard->Data();
+  type_code type;
+  if (message.CountNames(B_REF_TYPE) ||
+      message.GetInfo("listi:archive-copy", &type) == B_OK)
+    throw std::runtime_error("The clipboard contains files. Use Paste to copy or move them.");
+  int32 count;
+  const void *bytes;
+  ssize_t size;
+  if (message.GetInfo("text/plain", &type, &count) != B_OK ||
+      type != B_MIME_TYPE || count != 1 ||
+      message.FindData("text/plain", B_MIME_TYPE, &bytes, &size) != B_OK ||
+      size <= 0)
+    throw std::runtime_error("Copy some plain text before saving from the clipboard.");
+  if (size_t(size) > kMaximumTextBytes)
+    throw std::runtime_error("Clipboard text exceeds the 4 MiB limit.");
+  return std::string(static_cast<const char *>(bytes), size);
+}
 
 std::vector<ClipboardItem> ReadFileClipboard(const BMessage &message) {
   if (message.FlattenedSize() > 2 * 1024 * 1024)

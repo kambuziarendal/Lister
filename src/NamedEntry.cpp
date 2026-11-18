@@ -65,13 +65,16 @@ std::vector<std::string> Components(const std::string &path) {
   return parts;
 }
 }
-void ValidateNewEntryName(const std::string &folder, const std::string &name) {
+void ValidateEntryLeaf(const std::string &name) {
   if (name.empty() || name == "." || name == ".." ||
       name.find('/') != std::string::npos ||
       name.find('\0') != std::string::npos)
     throw std::runtime_error("Enter one file or folder name, without a slash.");
   if (name.size() >= B_FILE_NAME_LENGTH)
     throw std::runtime_error("That name is too long. Use fewer characters.");
+}
+void ValidateNewEntryName(const std::string &folder, const std::string &name) {
+  ValidateEntryLeaf(name);
   if (Exists(Join(folder, name)))
     throw std::runtime_error(
         "That name already exists. Choose a different name; nothing will be replaced.");

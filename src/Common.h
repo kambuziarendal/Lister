@@ -43,6 +43,7 @@ enum : uint32 {
   kClipboardCopy = 'ccpy',
   kClipboardCut = 'ccut',
   kClipboardPaste = 'cpst',
+  kClipboardSaveText = 'ctsf',
   kDuplicate = 'dupl',
   kCreateLink = 'link',
   kCreateArchive = 'arcr',
