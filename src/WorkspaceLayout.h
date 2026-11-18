@@ -68,7 +68,7 @@ inline const char *SidebarModeLabel(SidebarMode mode) {
 // A snapshot of layout controls only. Folder-specific views, addresses, and
 // general preferences are deliberately not part of a named profile.
 struct WorkspaceLayout {
-  static constexpr int32 ActionButtonCount = 12;
+  static constexpr int32 ActionButtonCount = 13;
   bool buttons = true, command = false;
   bool bankTop = false, commandTop = false, inspectorLeft = false;
   bool panelsStacked = false;

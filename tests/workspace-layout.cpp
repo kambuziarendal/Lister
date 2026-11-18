@@ -94,7 +94,7 @@ int main() {
             !restored.inspectorLeft && !restored.panelsStacked &&
             !restored.treeRight && !restored.filterBottom &&
             !restored.adaptive &&
-            restored.actionButtons.size() == WorkspaceLayout::ActionButtonCount,
+            restored.actionButtons == WorkspaceLayout{}.actionButtons,
         "reset restores only factory layout defaults");
   check(
       restored.profiles.Find("Work bench") == profile && !restored.icons &&

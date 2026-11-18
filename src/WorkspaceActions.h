@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Common.h"
+#include "TerminalPanel.h"
 #include <iterator>
 
 struct WorkspaceAction {
@@ -24,5 +25,7 @@ inline constexpr WorkspaceAction kWorkspaceActions[] = {
     {"Invert", "Invert selection", kInvert, "I"},
     {"New folder", "New folder", kMkdir, "N"},
     {"Terminal", "Terminal here", kTerminal, "T"},
-    {"Operations", "Operations", kShowJobs, "O"}};
+    {"Operations", "Operations", kShowJobs, "O"},
+    {"CLI window", "Open Listi CLI in its own window", Listi::kShowFloatingTerminal,
+     "Shift+T"}};
 static_assert(std::size(kWorkspaceActions) == WorkspaceLayout::ActionButtonCount);

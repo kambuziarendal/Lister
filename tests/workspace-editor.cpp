@@ -10,6 +10,7 @@
 #include <MenuItem.h>
 #include <StringItem.h>
 #include <atomic>
+#include <cstring>
 #include <TextControl.h>
 #include <TabView.h>
 #include <Window.h>
@@ -69,13 +70,23 @@ int main() {
       return 2;
     BMessenger dialog(window);
     auto *actions = Control<BListView>(window, "visible actions");
-    Check(actions->CountItems() == WorkspaceLayout::ActionButtonCount,
-          "all standard actions begin in order");
+    Check(actions->CountItems() == int32(prefs.actionButtons.size()),
+          "the standard action bank is unchanged");
+    auto *available = Control<BListView>(window, "available actions");
+    auto *floating = dynamic_cast<BStringItem *>(available->ItemAt(0));
+    Check(floating && !strcmp(floating->Text(), "Open Listi CLI in its own window"),
+          "floating CLI can be added without expanding existing banks");
+    available->Select(0);
+    BMessage appendCLI(*Control<BButton>(window, "add action")->Message());
+    window->Unlock();
+    BMessage reply;
+    dialog.SendMessage(&appendCLI, &reply);
+    if (!window->Lock())
+      return 2;
     actions->Select(1);
     BMessage move(*Control<BButton>(window, "move action up")->Message());
     window->Unlock();
 
-    BMessage reply;
     dialog.SendMessage(&move, &reply);
     if (!window->Lock())
       return 2;
@@ -128,6 +139,8 @@ int main() {
   Check(layout.adaptive && layout.actionButtons.size() >= 2 &&
             layout.actionButtons[0] == 1 && layout.actionButtons[1] == 0,
         "saved layout preserves reordered actions and explicit adaptation");
+  Check(!layout.actionButtons.empty() && layout.actionButtons.back() == 12,
+        "saved layout retains the floating CLI action");
   const auto *profile = profiles.Find("Small screen");
   Check(profile && profile->layout.adaptive &&
             layout.smidjaSidebar[0] == SidebarMode::Favorites &&
