@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "CabWriter.h"
 #include "ArchivePasswords.h"
+#include "DynamicLibrary.h"
+#include <zlib.h>
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -218,8 +220,9 @@ struct Packed {
   }
 };
 
-uint32_t Checksum(const unsigned char *data, uint32_t size) {
-  uint32_t checksum = size | (size << 16);
+uint32_t Checksum(const unsigned char *data, uint32_t size,
+                  uint32_t originalSize) {
+  uint32_t checksum = size | (originalSize << 16);
   while (size >= 4) {
     checksum ^= U32(data);
     size -= 4;
@@ -230,18 +233,71 @@ uint32_t Checksum(const unsigned char *data, uint32_t size) {
     tail = (tail << 8) | data[i];
   return checksum ^ tail;
 }
-void WriteBlock(int output, const unsigned char *bytes, size_t size) {
-  unsigned char header[8]{};
-  Put32(header, Checksum(bytes, size));
-  Put16(header + 4, size);
-  Put16(header + 6, size);
-  Write(output, header, sizeof(header));
-  Write(output, bytes, size);
+// Each MSZIP block contains "CK" and an independent raw Deflate stream.
+// zlib's compress2 writes that same stream between a two-byte zlib header
+// (no preset dictionary) and a four-byte Adler-32 trailer (RFC 1950).
+struct Zlib {
+  DynamicLibrary library{"libz.so.1", "libz.so"};
+  decltype(&compress2) compress = nullptr;
+  decltype(&compressBound) bound = nullptr;
+  Zlib() {
+    if (library.Available()) {
+      bound = LIBCALL(library, compressBound);
+      compress = LIBCALL(library, compress2);
+    }
+  }
+};
+const Zlib &Codec() {
+  static const Zlib codec;
+  return codec;
 }
+struct BlockEncoder {
+  decltype(&compress2) compress = nullptr;
+  std::vector<unsigned char> buffer;
+
+  explicit BlockEncoder(int level) {
+    if (level && CabCanCompress()) {
+      compress = Codec().compress;
+      buffer.resize(Codec().bound(kBlockSize));
+    }
+  }
+  size_t WriteBlock(int output, const unsigned char *bytes, size_t originalSize,
+                    int level) {
+    size_t size = originalSize;
+    if (compress) {
+      uLongf length = buffer.size();
+      Require(compress(buffer.data(), &length, bytes, originalSize, level) ==
+                      Z_OK &&
+                  length >= 6 && length - 4 <= UINT16_MAX,
+              "Cannot compress Cabinet data.");
+      buffer[0] = 'C';
+      buffer[1] = 'K';
+      bytes = buffer.data();
+      size = length - 4;
+    }
+    unsigned char header[8]{};
+    Put32(header, Checksum(bytes, size, originalSize));
+    Put16(header + 4, size);
+    Put16(header + 6, originalSize);
+    Write(output, header, sizeof(header));
+    Write(output, bytes, size);
+    return sizeof(header) + size;
+  }
+};
 } // namespace
 
-void CabWrite(int output, const std::vector<std::string> &sources,
+bool CabCanCompress() {
+  try {
+    return Codec().compress != nullptr;
+  } catch (const std::runtime_error &) {
+    return false;
+  }
+}
+
+void CabWrite(int output, const std::vector<std::string> &sources, int level,
               const Hooks &hooks) {
+  Require(level >= 0 && level <= 9, "Invalid Cabinet compression level.");
+  BlockEncoder encoder(level);
   Packed packed{hooks};
   for (const auto &source : sources)
     packed.Capture(source, Leaf(source));
@@ -249,10 +305,9 @@ void CabWrite(int output, const std::vector<std::string> &sources,
 
   const uint32_t blocks = (packed.totalBytes + kBlockSize - 1) / kBlockSize;
   const uint32_t dataOffset = kFilesOffset + packed.fileTableSize;
-  const uint32_t cabinetSize = dataOffset + packed.totalBytes + blocks * 8;
+  uint32_t cabinetSize = dataOffset;
   unsigned char header[kFilesOffset]{};
   memcpy(header, "MSCF", 4);
-  Put32(header + 8, cabinetSize);
   Put32(header + 16, kFilesOffset);
   header[24] = 3;
   header[25] = 1;
@@ -260,6 +315,7 @@ void CabWrite(int output, const std::vector<std::string> &sources,
   Put16(header + 28, packed.files.size());
   Put32(header + 36, dataOffset);
   Put16(header + 40, blocks);
+  Put16(header + 42, encoder.compress ? 1 : 0);
   Write(output, header, sizeof(header));
 
   uint32_t fileOffset = 0;
@@ -294,7 +350,7 @@ void CabWrite(int output, const std::vector<std::string> &sources,
       used += size;
       offset += size;
       if (used == kBlockSize) {
-        WriteBlock(output, buffer.get(), used);
+        cabinetSize += encoder.WriteBlock(output, buffer.get(), used, level);
         used = 0;
       }
       if (hooks.progress)
@@ -302,8 +358,15 @@ void CabWrite(int output, const std::vector<std::string> &sources,
     }
   }
   if (used)
-    WriteBlock(output, buffer.get(), used);
+    cabinetSize += encoder.WriteBlock(output, buffer.get(), used, level);
   packed.Verify();
+  unsigned char sizeField[4];
+  Put32(sizeField, cabinetSize);
+  ssize_t wrote;
+  do {
+    wrote = pwrite(output, sizeField, sizeof(sizeField), 8);
+  } while (wrote < 0 && errno == EINTR);
+  Require(wrote == sizeof(sizeField), "Cannot finalize Cabinet size.");
 }
 
 void CabValidateEdit(int input) {

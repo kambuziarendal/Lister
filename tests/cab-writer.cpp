@@ -96,6 +96,24 @@ int main() {
     Check(Read(ChildLocation(child, "zero.txt")).empty(),
           "Packed empty file round-trips");
 
+    unsigned char method = 255;
+    Check(pread(out.fd, &method, 1, 42) == 1 && method == 0,
+          "Level zero uses Cabinet Store");
+    if (CabCanCompress()) {
+      auto compressed = root.path + "/compressed.cab";
+      File packed(compressed, O_CREAT | O_RDWR | O_TRUNC);
+      CabWrite(packed.fd, {folder}, 6, {});
+      CabValidateEdit(packed.fd);
+      Check(pread(packed.fd, &method, 1, 42) == 1 && method == 1 &&
+                std::filesystem::file_size(compressed) < payload.size() / 2,
+            "MSZIP method reduces a compressible multi-block input");
+      auto packedChild = ChildLocation(OpenArchive(compressed), "content");
+      Check(Read(ChildLocation(packedChild, name)) == payload &&
+                Read(ChildLocation(packedChild, "tiny.txt")) == "tiny" &&
+                Read(ChildLocation(packedChild, "zero.txt")).empty(),
+            "Independent Cabinet reader decodes MSZIP blocks and UTF-8 names");
+    }
+
     auto zeroCab = root.path + "/zero.cab";
     File zeroOut(zeroCab, O_CREAT | O_RDWR | O_TRUNC);
     CabWrite(zeroOut.fd, {folder + "/zero.txt"}, {});
