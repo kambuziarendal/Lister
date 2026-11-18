@@ -139,6 +139,19 @@ panel's current folder, not the row under the pointer. Duplicate and symbolic
 link creation are local, single-entry actions; links can be relative or absolute.
 Archive and network drops remain copy-only.
 
+**Convert here (development build):** Drop one local image onto a local panel,
+choose **Convert here**, select a format and confirm **Convert**. The choices
+depend on the image and the installed Haiku translators. Listi creates a new
+file in the receiving folder and won't replace the original or an existing
+output file.
+
+**Bulk rename (development build):** Select two or more entries in one local
+folder and choose **Files > Bulk rename...**. Compare current and proposed names
+as you enter a prefix, suffix, case-sensitive replacement or sequence number.
+File extensions are kept. Occupied or duplicate names block the batch. Choose
+**Apply rename** to queue the displayed changes. If interrupted, completed
+renames stay in place; check operation history before retrying.
+
 **Files > Properties** pins one local entry and exposes timestamps, numeric
 ownership, ordinary octal permissions and supported typed BFS attributes. Saves
 are explicit. System namespaces, unsupported binary data and metadata beyond the

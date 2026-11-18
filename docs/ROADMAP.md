@@ -88,9 +88,8 @@ duplicate. Show groups, origins and the reason for a match. Handle unreadable or
 changing files, links and cancellation honestly. Keep review separate from any
 cleanup action; finding a duplicate must never delete it automatically.
 
-Bulk rename should show old and proposed names before changing anything, with
-search/replace, numbering and prefix/suffix options. Check collisions, invalid
-names and source changes, and make partial results understandable. Configurable
+The development build previews local bulk renames with search/replace,
+numbering, prefix/suffix, collision checks and guarded execution. Configurable
 actions should operate on frozen selections and pass filenames as data, not
 shell code.
 
@@ -171,9 +170,9 @@ parent folders. Show when sharing is active, when it expires and how to stop it.
 
 - Let tool windows such as the Shelf participate in native **Stack & Tile** or
   remain independent, rather than implementing Listi's own docking system.
-- Explore **drag-and-convert** with the Translation Kit: offer output formats
-  supported by installed translators and write a new file without replacing the
-  source. An ordinary drag should keep its normal meaning.
+- The development build offers **Convert here** for a single local image drop,
+  using installed Translation Kit output formats without overwriting files.
+  Ordinary Copy and Move choices remain available for cross-folder drops.
 - Explore an optional desktop **Replicant** as a drop zone. A first use could be
   adding files to the Shelf without bringing a Listi window to the front.
 
