@@ -29,7 +29,8 @@ int main() {
   live.singlePane = 1;
   live.SetDefaultMode(Workspace::smidja, 2);
   live.SetPaneMode(0, 3);
-  live.SetTree(0, false);
+  live.SetSidebar(0, SidebarMode::Hidden);
+  live.SetSidebar(1, SidebarMode::Favorites);
   live.SetPreview(false);
   live.command = true;
   live.buttons = false;
@@ -67,7 +68,9 @@ int main() {
   check(profile && profile->layout.workspace == Workspace::smidja &&
             profile->layout.singlePane == 1 && profile->layout.panelsStacked &&
             profile->layout.DefaultMode(Workspace::smidja) == 2 &&
-            profile->layout.PaneMode(0) == 3 && !profile->layout.Tree(0) &&
+            profile->layout.PaneMode(0) == 3 &&
+            profile->layout.Sidebar(0) == SidebarMode::Hidden &&
+            profile->layout.Sidebar(1) == SidebarMode::Favorites &&
             !profile->layout.Preview() && profile->layout.command &&
             !profile->layout.buttons,
         "stored profile retains the original workspace snapshot");
@@ -77,6 +80,14 @@ int main() {
             restored.actionButtons == std::vector<int32>({7, 2, 10}) &&
             restored.splitWeights[0] == 0.5f,
         "personal layout options and action order survive reload");
+  restored.workspace = Workspace::tviskipt;
+  check(restored.Sidebar(0) == SidebarMode::Hidden &&
+            restored.Sidebar(1) == SidebarMode::Hidden,
+        "Smiðja sidebars do not affect Tvískipt");
+  restored.workspace = Workspace::smidja;
+  check(restored.Sidebar(0) == SidebarMode::Hidden &&
+            restored.Sidebar(1) == SidebarMode::Favorites,
+        "Smiðja retains distinct sidebar choices after switching workspace");
   restored.ResetLayout();
   check(restored.workspace == Workspace::tviskipt && restored.buttons &&
             !restored.command && !restored.bankTop && !restored.commandTop &&

@@ -108,13 +108,20 @@ void Shelf::Remove(const std::set<std::string> &paths) {
   }
 }
 
+void Shelf::Clear() {
+  std::lock_guard<std::mutex> lock(mutex);
+  if (!current.entries.empty()) {
+    current.entries.clear();
+    ++current.revision;
+  }
+}
+
 ShelfSnapshot Shelf::Snapshot() const {
   std::lock_guard<std::mutex> lock(mutex);
   return current;
 }
 
-namespace {
-void CheckShelfEntries(const ShelfSnapshot &shelf) {
+void CheckShelfSources(const ShelfSnapshot &shelf, Action action) {
   if (shelf.entries.empty())
     throw std::runtime_error("Add entries to the Shelf first.");
   std::set<std::string> names;
@@ -128,11 +135,8 @@ void CheckShelfEntries(const ShelfSnapshot &shelf) {
           "Two Shelf entries have the same name: " + name +
           ". Remove one reference and try again.");
   }
-}
-} // namespace
-
-void CheckShelfSources(const ShelfSnapshot &shelf) {
-  CheckShelfEntries(shelf);
+  if (action != Action::Move)
+    return;
   std::set<std::string> paths;
   for (const auto &entry : shelf.entries)
     paths.insert(entry.path);
@@ -145,10 +149,11 @@ void CheckShelfSources(const ShelfSnapshot &shelf) {
   }
 }
 
-Job PrepareShelfMove(const ShelfSnapshot &shelf, const std::string &folder) {
-  CheckShelfSources(shelf);
+Job PrepareShelfTransfer(const ShelfSnapshot &shelf, Action action,
+                         const std::string &folder) {
+  CheckShelfSources(shelf, action);
   Job job;
-  job.action = Action::Move;
+  job.action = action;
   job.destination = job.destinationFolder = Resolve(folder);
   struct stat st;
   if (stat(job.destination.c_str(), &st) || !S_ISDIR(st.st_mode))
@@ -161,8 +166,8 @@ Job PrepareShelfMove(const ShelfSnapshot &shelf, const std::string &folder) {
   return PrepareTransfer(std::move(job));
 }
 
-Job PrepareShelfZip(const ShelfSnapshot &shelf) {
-  CheckShelfEntries(shelf);
+Job PrepareShelfArchive(const ShelfSnapshot &shelf) {
+  CheckShelfSources(shelf, Action::CreateArchive);
   std::vector<std::string> paths;
   for (const auto &entry : shelf.entries)
     paths.push_back(entry.path);

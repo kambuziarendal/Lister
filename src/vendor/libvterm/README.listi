@@ -1,0 +1,8 @@
+libvterm 0.3.3
+https://www.leonerd.org.uk/code/libvterm/
+Upstream release: https://www.leonerd.org.uk/code/libvterm/libvterm-0.3.3.tar.gz
+SHA-256: 09156f43dd2128bd347cbeebe50d9a571d32c64e0cf18d211197946aff7226e0
+
+Listi builds the upstream src/ and include/ content into its interactive terminal.
+Three trailing whitespace runs are removed for clean import.
+See LICENSE for copyright and MIT license.

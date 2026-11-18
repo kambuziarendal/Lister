@@ -66,19 +66,22 @@ in this alpha.
 
 ### Tools and preferences
 
-- **Terminal here:** launch the configured terminal for a local working folder.
+- **Terminal here:** start an interactive shell in the active local folder.
+  Choose **Below file panels** or **Beside file panels** to keep the shell in
+  the Listi window, or **Separate window** to launch the configured terminal.
 - **Open with:** choose a native application once without rewriting associations.
 - **Properties:** inspect metadata and explicitly save supported local typed
   attributes or ordinary permissions; opening the window alone changes nothing.
-- **Workspace defaults:** Einn starts in Miller columns; the other workspaces
-  start in Details. Change each default in **Listi > Settings**. A remembered
+- **Workspace defaults:** All workspaces start in Details. Change each default in **Listi > Settings**. A remembered
   folder view takes priority. **View > File view > Use workspace default**
   clears the current folder and panel overrides.
 - **Settings:** show/hide file icons, Size/Modified columns, the action button
   bank and the command field where the workspace exposes them; choose list font,
   file/folder/link colours, editor and terminal applications.
-- **Command field:** explicitly runs a shell command in Terminal for the active
-  local folder. It is not an embedded terminal; do not paste untrusted commands.
+- **Command field:** type a command and press Enter to run it in a separate
+  terminal, starting in the active local folder. For example, `pwd` prints
+  that folder’s path. The shell stays open after the command finishes.
+  Showing the field does not start a shell or run anything.
 - **Operations:** reopen the progress window after hiding it; pause/resume,
   cancel and choose Replace/Skip/Abort when conflicts occur.
 
@@ -98,6 +101,13 @@ still work without changing any settings.
   standard grid. Resizing does not choose another folder or file view. Stacked
   panels with a preview and both toolbars need more vertical space; side-by-side
   panels are a better fit for shorter screens.
+- **Smiðja sidebars:** choose a folder tree, favourite destinations, or no
+  sidebar independently for each file panel under **Modules**. To change one
+  panel directly, use **Sidebar** in its display menu.
+- **Smiðja preview:** select a file to inspect an image, plain text, source
+  code, Markdown or HTML source, a PDF page, or audio/video supported by the
+  installed decoders. Use the page buttons for PDFs or **Play preview** for a
+  media sample of up to 15 seconds. Selecting media does not start playback.
 - **Profiles:** name the current draft and choose **Create**. Later, select a
   profile and choose **Load** to use it or **Update** to replace its saved
   layout. Profiles remember layout, not open directories or selected files.
@@ -169,18 +179,21 @@ content detection. `.jpg` and `.jpeg` remain distinct.
 **Shelf (development build):** Select local entries and press Command+Shift+Y
 (**Files > Add to Shelf**). Open **Listi > Show Shelf** to see their names,
 original folders and status. You can also drop local entries onto the list.
-Removing a row removes only the reference. Closing and reopening the Shelf
-keeps its contents; quitting Listi clears it.
+Select one or more rows and click **Remove from Shelf** to remove just those
+references. **Clear Shelf** removes every reference. Neither action deletes or
+moves the original files. Closing and reopening the Shelf keeps its contents;
+quitting Listi clears it.
 
-**Move all...** acts on the whole Shelf, not just highlighted rows. Choose a
-destination, review the confirmation and follow progress in Operations.
-Remove unavailable or replaced references before submitting another move.
+**Copy all...** and **Move all...** act on the whole Shelf, not just
+highlighted rows. Choose a destination folder and follow progress in
+Operations. Copy leaves the originals and the Shelf references in place.
+Remove unavailable or replaced references before submitting another job.
 
-**Create ZIP...** packs the whole Shelf into one archive. Choose a new name
-and location in the save panel, then follow progress in Operations. Each
-collected entry appears at the top level under its original name. If two
-entries have the same name, remove one reference before packing. Creating
-a ZIP leaves the originals and the Shelf unchanged.
+**Create archive...** opens the archive dialog for the whole Shelf. Choose
+the destination, archive name and format. Use **Change format...** if the
+format options are hidden. Each entry appears at the top level under its
+original name. If two entries have the same name, remove one reference
+before packing. Creating an archive leaves the originals and Shelf unchanged.
 
 Local drag-and-drop asks Copy here, Move here or Cancel for the receiving
 panel's current folder, not the row under the pointer. Duplicate and symbolic

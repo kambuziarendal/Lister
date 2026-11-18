@@ -28,6 +28,7 @@ public:
   size_t Add(const std::vector<std::string> &paths,
              const std::map<std::string, NodeIdentity> &expected = {});
   void Remove(const std::set<std::string> &paths);
+  void Clear();
   ShelfSnapshot Snapshot() const;
 
 private:
@@ -35,7 +36,8 @@ private:
   ShelfSnapshot current;
 };
 
-void CheckShelfSources(const ShelfSnapshot &);
-Job PrepareShelfMove(const ShelfSnapshot &, const std::string &folder);
-Job PrepareShelfZip(const ShelfSnapshot &);
+void CheckShelfSources(const ShelfSnapshot &, Action);
+Job PrepareShelfTransfer(const ShelfSnapshot &, Action,
+                         const std::string &folder);
+Job PrepareShelfArchive(const ShelfSnapshot &);
 } // namespace Listi

@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <initializer_list>
 #include <string>
 #include <utility>
 #include <vector>
@@ -71,10 +72,11 @@ void SelectRow(BListView *list, int32 index) {
   }
 }
 
-BMenuField *Choice(const char *label, const char *first, const char *second) {
+BMenuField *Choice(const char *label,
+                   std::initializer_list<const char *> choices) {
   auto menu = new BPopUpMenu(label, true, true);
-  menu->AddItem(new BMenuItem(first, nullptr));
-  menu->AddItem(new BMenuItem(second, nullptr));
+  for (auto choice : choices)
+    menu->AddItem(new BMenuItem(choice, nullptr));
   return new BMenuField(label, label, menu);
 }
 
@@ -95,7 +97,7 @@ class WorkspaceEditor : public BWindow {
   BButton *add, *remove, *earlier, *later;
   BButton *loadProfile, *updateProfile, *renameProfile, *removeProfile;
   BMenuField *panelArrangement, *bankZone, *commandZone, *previewZone;
-  BMenuField *treeZone, *filterZone;
+  BMenuField *treeZone, *filterZone, *leftSidebar, *rightSidebar;
   BCheckBox *showBank, *showCommand, *adaptive;
   BTextControl *profileName;
   BStringView *workspaceLabel, *status;
@@ -162,6 +164,8 @@ class WorkspaceEditor : public BWindow {
     SetChoice(previewZone, layout.inspectorLeft ? 1 : 0);
     SetChoice(treeZone, layout.treeRight ? 1 : 0);
     SetChoice(filterZone, layout.filterBottom ? 1 : 0);
+    SetChoice(leftSidebar, static_cast<int32>(layout.smidjaSidebar[0]));
+    SetChoice(rightSidebar, static_cast<int32>(layout.smidjaSidebar[1]));
     showBank->SetValue(layout.buttons ? B_CONTROL_ON : B_CONTROL_OFF);
     showCommand->SetValue(layout.command ? B_CONTROL_ON : B_CONTROL_OFF);
     adaptive->SetValue(layout.adaptive ? B_CONTROL_ON : B_CONTROL_OFF);
@@ -174,6 +178,10 @@ class WorkspaceEditor : public BWindow {
     layout.inspectorLeft = SelectedChoice(previewZone) == 1;
     layout.treeRight = SelectedChoice(treeZone) == 1;
     layout.filterBottom = SelectedChoice(filterZone) == 1;
+    layout.smidjaSidebar[0] =
+        static_cast<SidebarMode>(SelectedChoice(leftSidebar));
+    layout.smidjaSidebar[1] =
+        static_cast<SidebarMode>(SelectedChoice(rightSidebar));
     layout.buttons = showBank->Value() == B_CONTROL_ON;
     layout.command = showCommand->Value() == B_CONTROL_ON;
     layout.adaptive = adaptive->Value() == B_CONTROL_ON;
@@ -313,18 +321,23 @@ class WorkspaceEditor : public BWindow {
     showBank = new BCheckBox("Show action buttons", nullptr);
     showCommand = new BCheckBox("Show command line", nullptr);
     panelArrangement =
-        Choice("File panel arrangement:", "Side by side", "Stacked");
+        Choice("File panel arrangement:", {"Side by side", "Stacked"});
     bankZone =
-        Choice("Action buttons:", "Below file panels", "Above file panels");
+        Choice("Action buttons:", {"Below file panels", "Above file panels"});
     commandZone =
-        Choice("Command line:", "Below file panels", "Above file panels");
+        Choice("Command line:", {"Below file panels", "Above file panels"});
     previewZone =
-        Choice("Preview position:", "After file panels", "Before file panels");
+        Choice("Preview position:", {"After file panels", "Before file panels"});
     previewZone->SetToolTip(
         "After means right (side by side) or bottom (stacked).");
-    treeZone =
-        Choice("Folder tree side:", "Left within panel", "Right within panel");
-    filterZone = Choice("Name filter:", "Above file list", "Below file list");
+    treeZone = Choice("Navigation sidebar side:",
+                      {"Left within panel", "Right within panel"});
+    filterZone = Choice("Name filter:", {"Above file list", "Below file list"});
+    const auto sidebarChoices = {SidebarModeLabel(SidebarMode::Hidden),
+                                 SidebarModeLabel(SidebarMode::FolderTree),
+                                 SidebarModeLabel(SidebarMode::Favorites)};
+    leftSidebar = Choice("Smiðja first sidebar:", sidebarChoices);
+    rightSidebar = Choice("Smiðja second sidebar:", sidebarChoices);
     adaptive =
         new BCheckBox("adaptive workspace",
                       "Compact action buttons in narrow windows", nullptr);
@@ -342,7 +355,7 @@ class WorkspaceEditor : public BWindow {
                        .AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING);
     int32 row = 0;
     for (auto field : {panelArrangement, bankZone, commandZone, previewZone,
-                       treeZone, filterZone}) {
+                       treeZone, filterZone, leftSidebar, rightSidebar}) {
       choices.Add(field->CreateLabelLayoutItem(), 0, row)
           .Add(field->CreateMenuBarLayoutItem(), 1, row);
       ++row;

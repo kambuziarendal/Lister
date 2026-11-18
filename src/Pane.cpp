@@ -12,12 +12,12 @@
 #include "Trash.h"
 #include "VirtualFile.h"
 #include <Bitmap.h>
-#include <StringForSize.h>
 #include <CardLayout.h>
 #include <CardView.h>
 #include <Directory.h>
 #include <Entry.h>
 #include <LayoutBuilder.h>
+#include <ListView.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <MessageFilter.h>
@@ -27,6 +27,8 @@
 #include <PopUpMenu.h>
 #include <ScrollView.h>
 #include <SplitView.h>
+#include <StringForSize.h>
+#include <StringItem.h>
 #include <TextView.h>
 #include <Window.h>
 #include <algorithm>
@@ -62,12 +64,65 @@ public:
 };
 constexpr uint32 kRememberView = 'grem', kForgetView = 'gfor',
                  kExpireProgress = 'expr', kToggleTree = 'ttre',
+                 kSidebarMode = 'psbr', kFavoriteNavigate = 'fnav',
                  kActivityFrame = 'actf', kCheckScanDelivery = 'scdl',
                  kColumnNavigate = 'mnav';
 constexpr int32 kRememberViewItem = ViewModeCount + 1;
 constexpr int32 kForgetViewItem = ViewModeCount + 2;
-constexpr int32 kToggleTreeItem = ViewModeCount + 5;
+
+class FavoriteItem : public BStringItem {
+public:
+  explicit FavoriteItem(const Listi::SavedPlace &place)
+      : BStringItem(place.name.c_str()), path(place.path) {}
+
+  const std::string path;
+};
 } // namespace
+
+class FavoriteList : public BListView {
+public:
+  explicit FavoriteList(Pane *owner)
+      : BListView("favorite destinations"), pane(owner) {}
+  ~FavoriteList() override { Clear(); }
+
+  void Clear() {
+    while (auto item = RemoveItem(int32(0)))
+      delete item;
+  }
+
+  void MouseDown(BPoint point) override {
+    const auto event = Window()->CurrentMessage();
+    const bool primary =
+        event && event->GetInt32("buttons", 0) == B_PRIMARY_MOUSE_BUTTON &&
+        event->GetInt32("clicks", 1) == 1;
+    const int32 clicked = IndexOf(point);
+    BListView::MouseDown(point);
+    if (primary && clicked >= 0 && clicked == CurrentSelection())
+      OpenSelection();
+  }
+
+  void KeyDown(const char *bytes, int32 length) override {
+    if (length == 1 && bytes[0] == B_TAB)
+      Window()->PostMessage(kSwitch);
+    else if (length == 1 && bytes[0] == B_ENTER)
+      OpenSelection();
+    else
+      BListView::KeyDown(bytes, length);
+  }
+
+private:
+  Pane *pane;
+
+  void OpenSelection() {
+    auto item = dynamic_cast<FavoriteItem *>(ItemAt(CurrentSelection()));
+    if (!item)
+      return;
+    BMessage open(kFavoriteNavigate);
+    open.AddString("path", item->path.c_str());
+    Window()->PostMessage(&open, pane);
+  }
+};
+
 namespace {
 class GridScroll : public BScrollView {
   FileGrid *grid;
@@ -121,7 +176,6 @@ Pane::Pane(int32 number, const Preferences &p)
   menu->AddSeparatorItem();
   placesMenu = new BMenu("Places");
   menu->AddItem(placesMenu);
-  UpdatePlaces();
   auto field = new BMenuField("go", "", menu);
   menu->SetRadioMode(false);
   menu->SetLabelFromMarked(false);
@@ -173,11 +227,20 @@ Pane::Pane(int32 number, const Preferences &p)
   modes->SetLabelFromMarked(false);
   display = new BMenuField("display mode", "", modes);
   modes->AddSeparatorItem();
-  modes->AddItem(new BMenuItem("Folder tree", new BMessage(kToggleTree)));
-  tree = new FolderTree();
+  sidebar = new BCardView("navigation sidebar");
+  sidebar->SetExplicitMinSize(BSize(110, 96));
+  sidebar->SetExplicitPreferredSize(BSize(170, 300));
+  tree = new FolderTree(this);
+  favorites = new FavoriteList(this);
+  auto favoriteScroll =
+      new BScrollView("favorite destinations scroll", favorites, 0, false, true);
+  sidebar->AddChild(tree);
+  sidebar->AddChild(favoriteScroll);
+  sidebar->CardLayout()->SetVisibleItem(0);
+  UpdatePlaces();
   content = new BSplitView(B_HORIZONTAL, 4);
   contentSplitterSize = content->SplitterSize();
-  content->AddChild(tree);
+  content->AddChild(sidebar);
   content->AddChild(cards);
   content->SetItemWeight(0, 0.24f, false);
   content->SetItemWeight(1, 0.76f, true);
@@ -339,7 +402,7 @@ void Pane::SetDisplayMode(int32 value) {
     grid->SetMode(mode);
     grid->SyncSelection();
   }
-  UpdateTreeVisibility();
+  UpdateSidebar();
   if (focus)
     FocusList();
   auto menu = display->Menu();
@@ -370,12 +433,14 @@ void Pane::FocusList() {
 }
 void Pane::ToggleTreeFocus() {
   auto focused = Window()->CurrentFocus();
-  while (focused && focused != tree)
+  while (focused && focused != sidebar)
     focused = focused->Parent();
   if (focused)
     FocusList();
-  else if (treeVisible)
+  else if (visibleSidebar == SidebarMode::FolderTree)
     tree->FindView("folder tree")->MakeFocus();
+  else if (visibleSidebar == SidebarMode::Favorites)
+    favorites->MakeFocus();
 }
 void Pane::FocusFilter() {
   if (einn)
@@ -408,8 +473,8 @@ void Pane::SetWorkspace(const Preferences &settings) {
   einn = value;
   if (treeOnRight != prefs.treeRight) {
     treeOnRight = prefs.treeRight;
-    content->GetLayout()->RemoveView(tree);
-    content->AddChild(treeOnRight ? 1 : 0, tree, 0.24f);
+    content->GetLayout()->RemoveView(sidebar);
+    content->AddChild(treeOnRight ? 1 : 0, sidebar, 0.24f);
     content->SetCollapsible(0, false);
     content->SetCollapsible(1, false);
   }
@@ -448,28 +513,72 @@ void Pane::SetWorkspace(const Preferences &settings) {
   UpdateActivityAppearance();
   InvalidateActivityBorder();
 }
-void Pane::UpdateTreeVisibility() {
-  const bool visible =
-      mode != MillerMode &&
-      (prefs.workspace == Workspace::askr || (prefs.Tree(id) && !einn));
-  if (treeVisible != visible) {
-    treeVisible = visible;
-    if (visible) {
-      tree->Show();
-      tree->ShowPath(path.String());
-    } else {
-      tree->Hide();
+void Pane::UpdateSidebarMenu() {
+  auto menu = display->Menu();
+  if (!sidebarMenuItem || sidebarMenuSmidja != prefs.IsSmidja()) {
+    if (sidebarMenuItem) {
+      menu->RemoveItem(sidebarMenuItem);
+      delete sidebarMenuItem;
     }
+    sidebarMenuSmidja = prefs.IsSmidja();
+    if (sidebarMenuSmidja) {
+      auto choices = new BMenu("Sidebar");
+      for (auto mode : SidebarModes) {
+        auto message = new BMessage(kSidebarMode);
+        message->AddInt32("mode", static_cast<int32>(mode));
+        auto item = new BMenuItem(SidebarModeLabel(mode), message);
+        item->SetTarget(this);
+        choices->AddItem(item);
+      }
+      sidebarMenuItem = new BMenuItem(choices);
+    } else {
+      sidebarMenuItem = new BMenuItem("Folder tree", new BMessage(kToggleTree));
+      sidebarMenuItem->SetTarget(this);
+    }
+    menu->AddItem(sidebarMenuItem);
   }
-  display->Menu()->ItemAt(kToggleTreeItem)->SetMarked(treeVisible);
-  display->Menu()
-      ->ItemAt(kToggleTreeItem)
-      ->SetEnabled(!prefs.SinglePane() && mode != MillerMode);
+  if (sidebarMenuSmidja) {
+    auto choices = sidebarMenuItem->Submenu();
+    for (auto mode : SidebarModes)
+      choices->ItemAt(static_cast<int32>(mode))->SetMarked(mode == Sidebar());
+  } else {
+    sidebarMenuItem->SetMarked(visibleSidebar == SidebarMode::FolderTree);
+    sidebarMenuItem->SetEnabled(!prefs.SinglePane() && mode != MillerMode);
+  }
+}
+void Pane::UpdateSidebar() {
+  SidebarMode wanted = Sidebar();
+  if (!prefs.IsSmidja()) {
+    if (einn || mode == MillerMode)
+      wanted = SidebarMode::Hidden;
+    else if (prefs.workspace == Workspace::askr)
+      wanted = SidebarMode::FolderTree;
+  }
+  if (wanted != visibleSidebar) {
+    auto focused = Window() ? Window()->CurrentFocus() : nullptr;
+    while (focused && focused != sidebar)
+      focused = focused->Parent();
+    if (focused)
+      FocusList();
+    if (wanted == SidebarMode::Hidden) {
+      sidebar->Hide();
+    } else {
+      sidebar->CardLayout()->SetVisibleItem(
+          wanted == SidebarMode::Favorites ? 1 : 0);
+      if (visibleSidebar == SidebarMode::Hidden)
+        sidebar->Show();
+    }
+    visibleSidebar = wanted;
+    if (visibleSidebar == SidebarMode::FolderTree)
+      tree->ShowPath(path.String());
+  }
+  UpdateSidebarMenu();
 }
 void Pane::Apply(const Preferences &p) {
   prefs = p;
   SetWorkspace(p);
-  tree->ShowPath(path.String());
+  if (visibleSidebar == SidebarMode::FolderTree)
+    tree->ShowPath(path.String());
   list->Apply(p);
   grid->SetFont(&p.font);
   grid->Update();
@@ -514,6 +623,14 @@ void Pane::SetStatus(const char *text) {
 void Pane::SetPlaces(const Listi::SavedPlaces &value, bool writable) {
   places = value;
   placesWritable = writable;
+  favorites->Clear();
+  for (const auto &place : places.Items())
+    favorites->AddItem(new FavoriteItem(place));
+  if (places.Items().empty()) {
+    auto empty = new BStringItem("No saved places");
+    empty->SetEnabled(false);
+    favorites->AddItem(empty);
+  }
   UpdatePlaces();
 }
 void Pane::UpdatePlaces() {
@@ -533,14 +650,24 @@ void Pane::UpdatePlaces() {
     placesMenu->AddItem(item);
   }
   placesMenu->AddSeparatorItem();
-  for (auto &place : places.Items()) {
+  int32 current = -1;
+  int32 index = 0;
+  for (const auto &place : places.Items()) {
     auto message = new BMessage(kNavigate);
     message->AddString("path", place.path.c_str());
     message->AddBool("place", true);
     auto item = new BMenuItem(place.name.c_str(), message);
-    item->SetMarked(place.path == path.String());
+    if (place.path == path.String()) {
+      current = index;
+      item->SetMarked(true);
+    }
     placesMenu->AddItem(item);
+    ++index;
   }
+  if (current >= 0)
+    favorites->Select(current);
+  else
+    favorites->DeselectAll();
   if (Window())
     placesMenu->SetTargetForItems(this);
 }
@@ -794,14 +921,39 @@ void Pane::MessageReceived(BMessage *m) {
       }
     Reload();
     break;
-  case kToggleTree:
-    if (prefs.SinglePane() || mode == MillerMode)
+  case kToggleTree: {
+    if (prefs.IsSmidja() || prefs.SinglePane() || mode == MillerMode)
       break;
     tree->Reset();
-    prefs.SetTree(id, !prefs.Tree(id));
-    UpdateTreeVisibility();
+    const auto choice = Sidebar() == SidebarMode::FolderTree
+                            ? SidebarMode::Hidden
+                            : SidebarMode::FolderTree;
+    prefs.SetSidebar(id, choice);
+    UpdateSidebar();
     PublishDisplay();
     break;
+  }
+  case kSidebarMode: {
+    const auto choice = m->GetInt32("mode", -1);
+    if (!prefs.IsSmidja() || choice < static_cast<int32>(SidebarMode::Hidden) ||
+        choice > static_cast<int32>(SidebarMode::Favorites))
+      break;
+    prefs.SetSidebar(id, static_cast<SidebarMode>(choice));
+    UpdateSidebar();
+    PublishDisplay();
+    break;
+  }
+  case kFavoriteNavigate: {
+    if (visibleSidebar != SidebarMode::Favorites)
+      break;
+    const char *destination = m->GetString("path", "");
+    if (!places.Find(destination))
+      break;
+    Activate();
+    if (path != destination || !locationValid)
+      Navigate(destination);
+    break;
+  }
   case kGridMode: {
     auto requestedMode = m->GetInt32("mode", 0);
     prefs.SetPaneMode(id, requestedMode);
@@ -903,8 +1055,15 @@ void Pane::MessageReceived(BMessage *m) {
   case kColumnNavigate: {
     if (mode != MillerMode || m->GetInt64("serial", -1) != serial)
       break;
+    const char *destination = m->GetString("path", path.String());
+    if (path == destination && (locationValid || scanning) &&
+        !m->GetString("selection", "")[0] && !m->GetBool("context", false) &&
+        !m->GetBool("invoke", false)) {
+      FocusList();
+      break;
+    }
     auto before = serial;
-    Navigate(m->GetString("path", path.String()));
+    Navigate(destination);
     if (serial != before && scanning)
       columnAction = *m;
     FocusList();
@@ -1043,7 +1202,8 @@ void Pane::MessageReceived(BMessage *m) {
     UpdateNavigation();
     SetDisplayMode(LocationMode());
     edit->SetText(path);
-    tree->ShowPath(path.String());
+    if (visibleSidebar == SidebarMode::FolderTree)
+      tree->ShowPath(path.String());
     const char *error;
     if (m->FindString("error", &error) == B_OK) {
       ClearRows();

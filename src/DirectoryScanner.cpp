@@ -94,8 +94,10 @@ public:
       bool link = S_ISLNK(st.st_mode);
       bool dir = S_ISDIR(st.st_mode);
       struct stat resolved;
-      if (link && stat(full, &resolved) == 0)
+      const bool resolvedLink = link && stat(full, &resolved) == 0;
+      if (resolvedLink)
         dir = S_ISDIR(resolved.st_mode);
+      const mode_t targetMode = resolvedLink ? resolved.st_mode : st.st_mode;
       item.AddInt32("kind", link ? 2 : dir ? 1 : 0);
       item.AddBool("directory", dir);
       item.AddInt64("device", st.st_dev);
@@ -106,7 +108,9 @@ public:
       BEntry e(full, false);
       if (e.GetRef(&ref) == B_OK) {
         item.AddRef("ref", &ref);
-        if (icons) {
+        // Tracker icon lookup may open the node. Never open a device, FIFO,
+        // or a link to one just to display a directory listing.
+        if (icons && (S_ISREG(targetMode) || S_ISDIR(targetMode))) {
           BBitmap bitmap(BRect(0, 0, iconPixels - 1, iconPixels - 1), B_RGBA32);
           if (BNodeInfo::GetTrackerIcon(
                   &ref, &bitmap, static_cast<icon_size>(iconPixels)) == B_OK)

@@ -5,6 +5,7 @@
 #include "VirtualFile.h"
 #include <Application.h>
 #include <LayoutBuilder.h>
+#include <Messenger.h>
 #include <StringView.h>
 #include <TextControl.h>
 #include <Window.h>
@@ -85,6 +86,19 @@ int main() {
             current->Text() == Listi::LocationLeaf(root),
         "direct navigation builds native ancestor and current columns");
 
+  BMessenger ancestor(columns ? columns->ChildAt(0) : nullptr);
+  pane->NavigateFromColumn(root);
+  pane->NavigateFromColumn(child);
+  window->Unlock();
+  check(ready(child),
+        "clicking the open branch does not discard the next queued folder click");
+  window->Lock();
+  check(columns && ancestor == BMessenger(columns->ChildAt(0)),
+        "navigation keeps shared native ancestor views attached");
+  pane->NavigateFromColumn(root);
+  window->Unlock();
+  check(ready(root), "ancestor click returns to the fixture");
+  window->Lock();
   pane->FocusList();
   check(key(B_HOME) && key(B_DOWN_ARROW) &&
             pane->Selected() == std::vector<std::string>{child},

@@ -94,8 +94,9 @@ public:
     }
   }
 };
-FolderTree::FolderTree()
+FolderTree::FolderTree(BHandler *target)
     : BView("folder tree panel", B_WILL_DRAW | B_SUPPORTS_LAYOUT),
+      navigationTarget(target),
       generation(std::make_shared<std::atomic<int64>>(0)) {
   list = new TreeList(this);
   auto scroll = new BScrollView("folder tree scroll", list, 0, true, true);
@@ -128,7 +129,7 @@ void FolderTree::NavigateSelection(const std::string &path) {
   BMessage m(kNavigate);
   m.AddString("path", path.c_str());
   m.AddBool("tree", true);
-  BMessenger(Parent()->Parent()).SendMessage(&m);
+  BMessenger(navigationTarget).SendMessage(&m);
 }
 void FolderTree::ShowPath(const std::string &path) {
   if (!reader || IsHidden() || path == "@disks")

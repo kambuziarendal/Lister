@@ -51,6 +51,20 @@ inline const char *ViewModeLabel(int32 mode) {
   return mode >= 0 && mode < ViewModeCount ? labels[mode] : "Details";
 }
 
+enum class SidebarMode : int32 { Hidden = 0, FolderTree = 1, Favorites = 2 };
+constexpr SidebarMode SidebarModes[] = {
+    SidebarMode::Hidden, SidebarMode::FolderTree, SidebarMode::Favorites};
+inline const char *SidebarModeLabel(SidebarMode mode) {
+  switch (mode) {
+  case SidebarMode::FolderTree:
+    return "Folder tree";
+  case SidebarMode::Favorites:
+    return "Favorite destinations";
+  default:
+    return "Hidden";
+  }
+}
+
 // A snapshot of layout controls only. Folder-specific views, addresses, and
 // general preferences are deliberately not part of a named profile.
 struct WorkspaceLayout {
@@ -61,7 +75,7 @@ struct WorkspaceLayout {
   bool treeRight = false, filterBottom = false, adaptive = false;
   std::vector<int32> actionButtons = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   float splitWeights[3] = {0.39f, 0.39f, 0.22f};
-  int32 defaultModes[4] = {0, MillerMode, 0, 0};
+  int32 defaultModes[4] = {};
   int32 paneOverrides[4][2] = {{-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}};
   int32 DefaultMode(Workspace w) const { return defaultModes[int(w)]; }
   void SetDefaultMode(Workspace w, int32 mode) {
@@ -82,7 +96,8 @@ struct WorkspaceLayout {
         mode >= 0 && mode < ViewModeCount ? mode : -1;
   }
   bool paneTree[2] = {false, false};
-  bool smidjaTree[2] = {true, true};
+  SidebarMode smidjaSidebar[2] = {SidebarMode::FolderTree,
+                                 SidebarMode::FolderTree};
   bool preview = false;
   bool smidjaPreview = true;
   Workspace workspace = Workspace::tviskipt;
@@ -91,11 +106,16 @@ struct WorkspaceLayout {
   }
   bool IsEinn() const { return workspace == Workspace::einn; }
   bool IsSmidja() const { return workspace == Workspace::smidja; }
-  bool Tree(int pane) const {
-    return IsSmidja() ? smidjaTree[pane] : paneTree[pane];
+  SidebarMode Sidebar(int pane) const {
+    return IsSmidja() ? smidjaSidebar[pane]
+                      : paneTree[pane] ? SidebarMode::FolderTree
+                                       : SidebarMode::Hidden;
   }
-  void SetTree(int pane, bool value) {
-    (IsSmidja() ? smidjaTree[pane] : paneTree[pane]) = value;
+  void SetSidebar(int pane, SidebarMode mode) {
+    if (IsSmidja())
+      smidjaSidebar[pane] = mode;
+    else
+      paneTree[pane] = mode == SidebarMode::FolderTree;
   }
   bool Preview() const { return IsSmidja() ? smidjaPreview : preview; }
   void SetPreview(bool value) {

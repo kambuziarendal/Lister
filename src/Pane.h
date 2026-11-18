@@ -20,6 +20,8 @@ class BGroupView;
 class BSplitView;
 class BMenuField;
 class BMenu;
+class BMenuItem;
+class FavoriteList;
 class BMessageRunner;
 class Pane : public BView {
 public:
@@ -60,7 +62,7 @@ public:
   int32 PaneOverride() const {
     return prefs.HasPaneMode(id) ? prefs.PaneMode(id) : -1;
   }
-  bool TreeVisible() const { return prefs.Tree(id); }
+  SidebarMode Sidebar() const { return prefs.Sidebar(id); }
   void FolderModes(const std::map<std::string, int32> &modes) {
     prefs.folderModes = modes;
   }
@@ -75,7 +77,12 @@ private:
   FileGrid *grid;
   MillerColumns *columns;
   FolderTree *tree;
-  bool treeVisible = true, einn = false;
+  BCardView *sidebar;
+  FavoriteList *favorites;
+  BMenuItem *sidebarMenuItem = nullptr;
+  bool sidebarMenuSmidja = false;
+  SidebarMode visibleSidebar = SidebarMode::FolderTree;
+  bool einn = false;
   BCardView *cards;
   BGroupView *header, *filterRow;
   BSplitView *content;
@@ -86,7 +93,8 @@ private:
   int32 mode = 0;
   void SetDisplayMode(int32);
   int32 LocationMode() const;
-  void UpdateTreeVisibility();
+  void UpdateSidebar();
+  void UpdateSidebarMenu();
   void PublishDisplay(bool folder = false, bool forget = false);
   BMenu *placesMenu;
   Listi::SavedPlaces places;

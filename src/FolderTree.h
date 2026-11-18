@@ -11,7 +11,7 @@ class TreeList;
 class TreeItem;
 class FolderTree : public BView {
 public:
-  explicit FolderTree();
+  explicit FolderTree(BHandler *navigationTarget);
   ~FolderTree();
   void AttachedToWindow() override;
   void MessageReceived(BMessage *) override;
@@ -21,6 +21,7 @@ public:
   void Reset();
 
 private:
+  BHandler *navigationTarget;
   TreeList *list;
   BLooper *reader = nullptr;
   std::shared_ptr<std::atomic<int64>> generation;
