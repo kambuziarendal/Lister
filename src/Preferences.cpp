@@ -3,11 +3,17 @@
 #include <Alert.h>
 #include <Button.h>
 #include <CheckBox.h>
+#include <GroupView.h>
 #include <LayoutBuilder.h>
+#include <MenuField.h>
+#include <MenuItem.h>
+#include <PopUpMenu.h>
 #include <StringView.h>
+#include <TabView.h>
 #include <TextControl.h>
 #include <Window.h>
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cmath>
 #include <cstdlib>
@@ -37,8 +43,23 @@ void Preferences::Load(const BMessage &m) {
                                                     : Workspace::tviskipt;
   }
   singlePane = m.GetInt32("singlePane", 0) == 1 ? 1 : 0;
-  paneMode[0] = std::max(0, std::min(3, m.GetInt32("leftMode", 0)));
-  paneMode[1] = std::max(0, std::min(3, m.GetInt32("rightMode", 0)));
+  for (auto w : {Workspace::tviskipt, Workspace::einn, Workspace::askr,
+                 Workspace::smidja}) {
+    BMessage view;
+    bool hasProfile = m.FindMessage(WorkspaceId(w), &view) == B_OK;
+    int32 fallback = w == Workspace::einn ? MillerMode : 0;
+    int32 mode = view.GetInt32("default", fallback);
+    defaultModes[int(w)] = mode >= 0 && mode < ViewModeCount ? mode : fallback;
+    for (int pane = 0; pane < 2; ++pane) {
+      const char *key = pane ? "rightMode" : "leftMode";
+      int32 saved = hasProfile ? view.GetInt32(key, -1) : m.GetInt32(key, -1);
+      // Legacy Details was always saved, even when the user never chose a mode.
+      if (!hasProfile && saved == 0)
+        saved = -1;
+      paneOverrides[int(w)][pane] =
+          saved >= 0 && saved < ViewModeCount ? saved : -1;
+    }
+  }
   paneTree[0] = m.GetBool("leftTree", false);
   paneTree[1] = m.GetBool("rightTree", false);
   smidjaTree[0] =
@@ -54,7 +75,7 @@ void Preferences::Load(const BMessage &m) {
        ++i) {
     const char *path = folder.GetString("path", "");
     int32 mode = folder.GetInt32("mode", -1);
-    if (*path && mode >= 0 && mode <= 3)
+    if (*path && mode >= 0 && mode < ViewModeCount)
       folderModes[path] = mode;
   }
   icons = m.GetBool("icons", true);
@@ -80,9 +101,17 @@ void Preferences::ApplyDialog(const BMessage &message) {
   Preferences updated = *this;
   updated.Load(message);
   for (int i = 0; i < 2; ++i) {
-    updated.paneMode[i] = paneMode[i];
     updated.paneTree[i] = paneTree[i];
     updated.smidjaTree[i] = smidjaTree[i];
+  }
+  for (auto w : {Workspace::tviskipt, Workspace::einn, Workspace::askr,
+                 Workspace::smidja}) {
+    if (updated.DefaultMode(w) == DefaultMode(w)) {
+      for (int pane = 0; pane < 2; ++pane)
+        updated.paneOverrides[int(w)][pane] = paneOverrides[int(w)][pane];
+    } else {
+      updated.paneOverrides[int(w)][0] = updated.paneOverrides[int(w)][1] = -1;
+    }
   }
   updated.workspace = workspace;
   updated.singlePane = singlePane;
@@ -99,8 +128,17 @@ BMessage Preferences::Save() const {
   m.AddBool("simpleWorkspace", SinglePane());
   m.AddInt32("workspace", static_cast<int32>(workspace));
   m.AddInt32("singlePane", singlePane);
-  m.AddInt32("leftMode", paneMode[0]);
-  m.AddInt32("rightMode", paneMode[1]);
+  // Old versions have no column mode; use Details rather than a thumbnail alias.
+  m.AddInt32("leftMode", PaneMode(0) == MillerMode ? 0 : PaneMode(0));
+  m.AddInt32("rightMode", PaneMode(1) == MillerMode ? 0 : PaneMode(1));
+  for (auto w : {Workspace::tviskipt, Workspace::einn, Workspace::askr,
+                 Workspace::smidja}) {
+    BMessage view;
+    view.AddInt32("default", DefaultMode(w));
+    view.AddInt32("leftMode", paneOverrides[int(w)][0]);
+    view.AddInt32("rightMode", paneOverrides[int(w)][1]);
+    m.AddMessage(WorkspaceId(w), &view);
+  }
   m.AddBool("leftTree", paneTree[0]);
   m.AddBool("rightTree", paneTree[1]);
   m.AddBool("smidjaLeftTree", smidjaTree[0]);
@@ -134,17 +172,58 @@ BMessage Preferences::Save() const {
   return m;
 }
 namespace {
+constexpr Workspace kSettingsWorkspaces[] = {
+    Workspace::einn, Workspace::tviskipt, Workspace::askr, Workspace::smidja};
+constexpr int32 kAppearanceTab = 1;
+
 class PreferencesWindow : public BWindow {
   BMessenger target;
   Preferences prefs;
+  BTabView *tabs;
+  BPopUpMenu *defaultModes[sizeof(kSettingsWorkspaces) /
+                           sizeof(kSettingsWorkspaces[0])];
   BCheckBox *icons, *size, *date, *buttons, *command;
   BTextControl *family, *fontSize, *folders, *files, *links, *editor, *terminal;
 
+  void ShowInputError(BTextControl *control, const char *error) {
+    tabs->Select(kAppearanceTab);
+    control->MakeFocus();
+    (new BAlert("invalid setting", error, "OK"))->Go(nullptr);
+  }
+
 public:
   PreferencesWindow(BMessenger t, const Preferences &p)
-      : BWindow(BRect(0, 0, 550, 500), "Listi preferences", B_TITLED_WINDOW,
-                B_AUTO_UPDATE_SIZE_LIMITS),
+      : BWindow(BRect(0, 0, 560, 300), "Listi settings", B_TITLED_WINDOW,
+                B_AUTO_UPDATE_SIZE_LIMITS | B_NOT_ZOOMABLE),
         target(t), prefs(p) {
+    tabs = new BTabView("settings tabs", B_WIDTH_FROM_LABEL);
+
+    auto workspaces = new BGroupView("Workspaces", B_VERTICAL);
+    auto workspaceLayout = BLayoutBuilder::Group<>(workspaces);
+    auto views = workspaceLayout.SetInsets(B_USE_WINDOW_SPACING)
+                     .Add(new BStringView("default views",
+                                          "Default file view by workspace"))
+                     .AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING);
+    int32 index = 0;
+    for (Workspace workspace : kSettingsWorkspaces) {
+      auto menu = new BPopUpMenu("File views");
+      for (int32 mode = 0; mode < ViewModeCount; ++mode)
+        menu->AddItem(new BMenuItem(ViewModeLabel(mode), nullptr));
+      menu->ItemAt(p.DefaultMode(workspace))->SetMarked(true);
+      defaultModes[index] = menu;
+      auto field = new BMenuField(WorkspaceId(workspace),
+                                  WorkspaceMenuLabel(workspace), menu);
+      views.Add(field->CreateLabelLayoutItem(), 0, index)
+          .Add(field->CreateMenuBarLayoutItem(), 1, index);
+      ++index;
+    }
+    views.End()
+        .Add(new BStringView(
+            "view precedence",
+            "An explicit view saved for a folder takes priority."))
+        .AddGlue();
+    tabs->AddTab(workspaces);
+
     icons = new BCheckBox("Show file icons", nullptr);
     icons->SetValue(p.icons);
     size = new BCheckBox("Size column", nullptr);
@@ -159,25 +238,22 @@ public:
     font_style s;
     p.font.GetFamilyAndStyle(&f, &s);
     char number[32];
-    snprintf(number, sizeof(number), "%.0f", p.font.Size());
-    family = new BTextControl("Font family:", f, nullptr);
-    fontSize = new BTextControl("Size:", number, nullptr);
-    folders = new BTextControl("Folders:", p.folders, nullptr);
-    files = new BTextControl("Files:", p.files, nullptr);
-    links = new BTextControl("Symbolic links:", p.links, nullptr);
+    snprintf(number, sizeof(number), "%.6g", p.font.Size());
+    family = new BTextControl("File list font:", f, nullptr);
+    fontSize = new BTextControl("Font size:", number, nullptr);
+    folders = new BTextControl("Folder color:", p.folders, nullptr);
+    files = new BTextControl("File color:", p.files, nullptr);
+    links = new BTextControl("Symbolic link color:", p.links, nullptr);
     editor = new BTextControl("Editor application:", p.editor, nullptr);
     terminal = new BTextControl("Terminal application:", p.terminal, nullptr);
-    BLayoutBuilder::Group<>(this, B_VERTICAL, 10)
-        .SetInsets(12)
-        .Add(new BStringView("title", "Display and workflow"))
-        .AddGroup(B_HORIZONTAL)
+
+    auto appearance = new BGroupView("Appearance", B_VERTICAL);
+    BLayoutBuilder::Group<>(appearance)
+        .SetInsets(B_USE_WINDOW_SPACING)
         .Add(icons)
         .Add(size)
         .Add(date)
-        .End()
-        .Add(buttons)
-        .Add(command)
-        .AddGrid(8, 8)
+        .AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
         .Add(family->CreateLabelLayoutItem(), 0, 0)
         .Add(family->CreateTextViewLayoutItem(), 1, 0)
         .Add(fontSize->CreateLabelLayoutItem(), 0, 1)
@@ -188,18 +264,42 @@ public:
         .Add(files->CreateTextViewLayoutItem(), 1, 3)
         .Add(links->CreateLabelLayoutItem(), 0, 4)
         .Add(links->CreateTextViewLayoutItem(), 1, 4)
-        .Add(editor->CreateLabelLayoutItem(), 0, 5)
-        .Add(editor->CreateTextViewLayoutItem(), 1, 5)
-        .Add(terminal->CreateLabelLayoutItem(), 0, 6)
-        .Add(terminal->CreateTextViewLayoutItem(), 1, 6)
         .End()
-        .Add(new BStringView("colors",
-                             "Colors: system (follows the theme) or #RRGGBB"))
+        .Add(new BStringView("color format",
+                             "Use system or a color like #B8C4D0."))
+        .AddGlue();
+    tabs->AddTab(appearance);
+
+    auto workflow = new BGroupView("Workflow", B_VERTICAL);
+    BLayoutBuilder::Group<>(workflow)
+        .SetInsets(B_USE_WINDOW_SPACING)
+        .Add(buttons)
+        .Add(command)
+        .AddGlue();
+    tabs->AddTab(workflow);
+
+    auto applications = new BGroupView("Applications", B_VERTICAL);
+    BLayoutBuilder::Group<>(applications)
+        .SetInsets(B_USE_WINDOW_SPACING)
+        .AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
+        .Add(editor->CreateLabelLayoutItem(), 0, 0)
+        .Add(editor->CreateTextViewLayoutItem(), 1, 0)
+        .Add(terminal->CreateLabelLayoutItem(), 0, 1)
+        .Add(terminal->CreateTextViewLayoutItem(), 1, 1)
+        .End()
+        .AddGlue();
+    tabs->AddTab(applications);
+
+    auto save = new BButton("Save", new BMessage(kApplyPreferences));
+    BLayoutBuilder::Group<>(this, B_VERTICAL, B_USE_DEFAULT_SPACING)
+        .SetInsets(B_USE_WINDOW_SPACING)
+        .Add(tabs)
         .AddGroup(B_HORIZONTAL)
         .AddGlue()
         .Add(new BButton("Cancel", new BMessage(B_QUIT_REQUESTED)))
-        .Add(new BButton("Save", new BMessage(kApplyPreferences)))
+        .Add(save)
         .End();
+    SetDefaultButton(save);
     AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
     AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
     CenterOnScreen();
@@ -212,7 +312,7 @@ public:
     char *end = nullptr;
     float n = strtof(fontSize->Text(), &end);
     if (*end || !std::isfinite(n) || n < 8 || n > 40) {
-      (new BAlert("size", "Font size must be 8 to 40.", "OK"))->Go(nullptr);
+      ShowInputError(fontSize, "Font size must be 8 to 40.");
       return;
     }
     for (auto c : {folders, files, links}) {
@@ -221,13 +321,11 @@ public:
       if (s.Length() == 7 && s.ByteAt(0) == '#') {
         valid = true;
         for (int i = 1; i < 7; i++)
-          if (!isxdigit(s.ByteAt(i)))
+          if (!std::isxdigit(static_cast<unsigned char>(s.ByteAt(i))))
             valid = false;
       }
       if (!valid) {
-        (new BAlert("color", "Use system or a six-digit color such as #B8C4D0.",
-                    "OK"))
-            ->Go(nullptr);
+        ShowInputError(c, "Use system or a six-digit color such as #B8C4D0.");
         return;
       }
     }
@@ -243,6 +341,11 @@ public:
     prefs.links = links->Text();
     prefs.editor = editor->Text();
     prefs.terminal = terminal->Text();
+    int32 index = 0;
+    for (Workspace workspace : kSettingsWorkspaces) {
+      auto menu = defaultModes[index++];
+      prefs.SetDefaultMode(workspace, menu->IndexOf(menu->FindMarked()));
+    }
     BMessage result = prefs.Save();
     result.what = kApplyPreferences;
     target.SendMessage(&result);
@@ -251,5 +354,17 @@ public:
 };
 } // namespace
 void OpenPreferences(BMessenger target, const Preferences &prefs) {
-  (new PreferencesWindow(target, prefs))->Show();
+  // The main window is the only caller. A messenger remains safe if the
+  // settings window has already closed.
+  static BMessenger openWindow;
+  if (openWindow.LockTarget()) {
+    BLooper *looper = nullptr;
+    openWindow.Target(&looper);
+    static_cast<BWindow *>(looper)->Activate();
+    looper->Unlock();
+    return;
+  }
+  auto window = new PreferencesWindow(target, prefs);
+  openWindow = BMessenger(window);
+  window->Show();
 }

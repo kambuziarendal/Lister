@@ -133,10 +133,36 @@ inline const char *WorkspaceMenuLabel(Workspace workspace) {
     return "Tvískipt: side-by-side file panels";
   }
 }
+constexpr int32 MillerMode = 4;
+constexpr int32 ViewModeCount = 5;
+inline const char *ViewModeLabel(int32 mode) {
+  static const char *const labels[] = {"Details", "Icons", "Large icons",
+                                       "Thumbnails", "Miller columns"};
+  return mode >= 0 && mode < ViewModeCount ? labels[mode] : "Details";
+}
 struct Preferences {
   BFont font = *be_plain_font;
   bool icons = true, size = true, date = true, buttons = true, command = false;
-  int32 paneMode[2] = {0, 0};
+  int32 defaultModes[4] = {0, MillerMode, 0, 0};
+  int32 paneOverrides[4][2] = {{-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}};
+  int32 DefaultMode(Workspace w) const { return defaultModes[int(w)]; }
+  void SetDefaultMode(Workspace w, int32 mode) {
+    if (mode < 0 || mode >= ViewModeCount || DefaultMode(w) == mode)
+      return;
+    defaultModes[int(w)] = mode;
+    paneOverrides[int(w)][0] = paneOverrides[int(w)][1] = -1;
+  }
+  bool HasPaneMode(int pane) const {
+    return paneOverrides[int(workspace)][pane] >= 0;
+  }
+  int32 PaneMode(int pane) const {
+    return HasPaneMode(pane) ? paneOverrides[int(workspace)][pane]
+                             : DefaultMode(workspace);
+  }
+  void SetPaneMode(int pane, int32 mode) {
+    paneOverrides[int(workspace)][pane] =
+        mode >= 0 && mode < ViewModeCount ? mode : -1;
+  }
   bool paneTree[2] = {false, false};
   bool smidjaTree[2] = {true, true};
   bool preview = false;
