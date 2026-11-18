@@ -145,9 +145,9 @@ hidden background moves, recursion loops or overwriting files without review.
 A watched folder, a drop target and a general scripting hook have different
 trust and lifecycle requirements; none is implicitly enabled by this roadmap.
 
-**Clipboard-to-file** should distinguish data from existing file references.
-Offer a name, destination and supported output format, with normal conflict
-handling. Pasted text must not be executed as a command.
+The development build can save plain clipboard text as a new named file in a
+local folder. File references still use ordinary Paste. Saving other clipboard
+formats, such as images, remains a possible extension.
 
 ### Collect files from several folders on a Shelf
 

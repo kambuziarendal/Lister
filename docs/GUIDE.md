@@ -99,6 +99,11 @@ The highlighted panel is the source. Direct Copy or Move uses the other panel
 as the destination; clipboard Paste uses the active panel. Accepted jobs retain
 their selected paths and target even if you navigate or switch workspace.
 
+To save copied text, choose **Files > Clipboard > Save clipboard text as file**
+in a writable local folder. Keep the suggested name, `Clipboard.txt`, or enter
+your own. Listi saves the text as copied, without running it or replacing an
+existing file. To paste copied files instead, use the ordinary **Paste** action.
+
 In the development build, **Cancel job** stops only the running operation. Other queued jobs continue. Use **Details > Cancel all** to stop the running job and discard waiting jobs.
 Cancellation does not undo completed work. If a local move finishes copying
 but is cancelled before Listi removes any source entries, the queue history
