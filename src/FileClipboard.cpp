@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "FileClipboard.h"
+#include "ClipboardLock.h"
 #include "ArchiveJobs.h"
 #include "ArchiveVolumes.h"
 #include "JobSnapshot.h"
@@ -29,17 +30,6 @@ void Require(status_t status, const char *operation) {
   if (status != B_OK)
     throw std::runtime_error(std::string(operation) + ": " + strerror(status));
 }
-struct Lock {
-  BClipboard *clipboard;
-  explicit Lock(BClipboard *c) : clipboard(c) {
-    if (!c || !c->Lock())
-      throw std::runtime_error("Could not lock the clipboard.");
-  }
-  ~Lock() {
-    clipboard->Revert();
-    clipboard->Unlock();
-  }
-};
 std::string Key(char prefix, const NodeIdentity &node) {
   return std::string(1, prefix) + std::to_string(node.device) + "_" +
          std::to_string(node.inode);
@@ -115,7 +105,7 @@ void Commit(BClipboard *clipboard, const BMessage &message) {
 } // namespace
 
 std::string ReadClipboardText(BClipboard *clipboard) {
-  Lock lock(clipboard);
+  ClipboardLock lock(clipboard);
   const BMessage &message = *clipboard->Data();
   type_code type;
   if (message.CountNames(B_REF_TYPE) ||
@@ -226,14 +216,14 @@ void PutFileClipboard(const std::vector<std::string> &paths, bool cut,
     }
     BMessage message, encoded = EncodeJob(selection, 0);
     message.AddMessage("listi:archive-copy", &encoded);
-    Lock lock(clipboard);
+    ClipboardLock lock(clipboard);
     Commit(clipboard, message);
     return;
   }
   auto message = MakeFileSelection(paths, cut);
   auto items = ReadFileClipboard(message);
   {
-    Lock lock(clipboard);
+    ClipboardLock lock(clipboard);
     Commit(clipboard, message);
   }
   if (clipboard == be_clipboard)
@@ -243,7 +233,7 @@ void PutFileClipboard(const std::vector<std::string> &paths, bool cut,
 ClipboardPaste PrepareFilePaste(const std::string &destination,
                                 BClipboard *clipboard) {
   {
-    Lock lock(clipboard);
+    ClipboardLock lock(clipboard);
     BMessage encoded;
     if (clipboard->Data()->FindMessage("listi:archive-copy", &encoded) ==
         B_OK) {
@@ -296,7 +286,7 @@ ClipboardPaste PrepareFilePaste(const std::string &destination,
     }
   }
   if (ParseLocation(destination).Archive()) {
-    Lock lock(clipboard);
+    ClipboardLock lock(clipboard);
     if (clipboard->Data()->HasString(kLease))
       throw std::runtime_error(
           "A cut transfer is pending. Let it finish before pasting again.");
@@ -336,7 +326,7 @@ ClipboardPaste PrepareFilePaste(const std::string &destination,
   if (!realpath(destination.c_str(), canonical))
     throw std::runtime_error("The destination folder is unavailable.");
   auto destinationNode = Identity(canonical, true);
-  Lock lock(clipboard);
+  ClipboardLock lock(clipboard);
   ClipboardPaste paste;
   if (clipboard->Data()->HasString(kLease))
     throw std::runtime_error(
@@ -379,7 +369,7 @@ void FinishFilePaste(const ClipboardPaste &paste,
     return;
   std::vector<ClipboardItem> removed;
   {
-    Lock lock(clipboard);
+    ClipboardLock lock(clipboard);
     BMessage message(*clipboard->Data());
     if (paste.lease != message.GetString(kLease, ""))
       return;

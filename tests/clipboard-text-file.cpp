@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 #include "ClipboardTextFile.h"
 #include <Application.h>
+#include <Bitmap.h>
+#include <DataIO.h>
+#include <TranslationUtils.h>
+#include <memory>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -22,7 +26,8 @@ struct Fixture {
   }
   ~Fixture() {
     std::string root(folder);
-    for (const char *name : {"Clipboard.txt", "note.txt", "link", "partial.txt"})
+    for (const char *name :
+         {"Clipboard.txt", "note.txt", "link", "partial.txt", "image.png"})
       unlink((root + "/" + name).c_str());
     rmdir((root + "/destination").c_str());
     rmdir((root + "/old-destination").c_str());
@@ -57,7 +62,8 @@ void Set(BClipboard &clipboard, const BMessage &contents) {
 }
 BMessage Text(const std::string &bytes) {
   BMessage message;
-  if (message.AddData("text/plain", B_MIME_TYPE, bytes.data(), bytes.size()) != B_OK)
+  if (message.AddData("text/plain", B_MIME_TYPE, bytes.data(), bytes.size()) !=
+      B_OK)
     throw std::runtime_error("Cannot add test clipboard text.");
   return message;
 }
@@ -81,6 +87,19 @@ int main(int argc, char **argv) {
       Set(*be_clipboard, Text(argv[2]));
       return 0;
     }
+    BBitmap native(BRect(0, 0, 1, 1), B_RGBA32);
+    Check(native.InitCheck() == B_OK, "create native bitmap");
+    const unsigned char pixel[] = {12, 34, 56, 255};
+    for (int i = 0; i < native.BitsLength(); i += 4)
+      memcpy(static_cast<char *>(native.Bits()) + i, pixel, 4);
+    BMessage archiveBitmap, bitmap;
+    Check(native.Archive(&archiveBitmap) == B_OK &&
+              bitmap.AddMessage("image/bitmap", &archiveBitmap) == B_OK,
+          "build ShowImage-style bitmap clipboard");
+    if (argc == 2 && std::strcmp(argv[1], "--seed-image") == 0) {
+      Set(*be_clipboard, bitmap);
+      return 0;
+    }
     Fixture fixture;
     const std::string folder(fixture.folder);
     const char payload[] = "echo do not run\nUTF-8: æøå\n\0trailing bytes";
@@ -88,39 +107,43 @@ int main(int argc, char **argv) {
     auto text = Text(original);
     BClipboard clipboard("listi-clipboard-text-file-test");
     Set(clipboard, text);
-    Check(CanSaveClipboardTextIn(folder) && !CanSaveClipboardTextIn("@disks") &&
-              !CanSaveClipboardTextIn(folder + "/missing"),
+    Check(CanSaveClipboardIn(folder) && !CanSaveClipboardIn("@disks") &&
+              !CanSaveClipboardIn(folder + "/missing"),
           "only available local destinations are allowed");
-    auto first = PrepareClipboardTextFile(folder, &clipboard);
+    auto first =
+        PrepareClipboardFile(folder, ClipboardContent::Text, &clipboard);
     Check(first.suggestedName == "Clipboard.txt", "default text filename");
     std::ofstream(folder + "/Clipboard.txt") << "existing";
-    auto frozen = PrepareClipboardTextFile(folder, &clipboard);
-    Check(frozen.suggestedName == "Clipboard 2.txt", "suggest an unused filename");
+    auto frozen =
+        PrepareClipboardFile(folder, ClipboardContent::Text, &clipboard);
+    Check(frozen.suggestedName == "Clipboard 2.txt",
+          "suggest an unused filename");
     Set(clipboard, Text("newer clipboard data"));
     auto clipboardCount = clipboard.SystemCount();
-    SaveClipboardTextFile(frozen, "note.txt");
+    SaveClipboardFile(frozen, "note.txt");
     Check(Read(folder + "/note.txt") == original &&
               clipboard.SystemCount() == clipboardCount,
           "save literal frozen bytes without changing clipboard");
-    Check(Rejected([&] { SaveClipboardTextFile(first, "Clipboard.txt"); }) &&
+    Check(Rejected([&] { SaveClipboardFile(first, "Clipboard.txt"); }) &&
               Read(folder + "/Clipboard.txt") == "existing",
           "a later collision never overwrites a file");
     Check(symlink("missing-target", (folder + "/link").c_str()) == 0 &&
-              Rejected([&] { SaveClipboardTextFile(frozen, "link"); }),
+              Rejected([&] { SaveClipboardFile(frozen, "link"); }),
           "a dangling symlink is never followed or replaced");
-    Check(Rejected([&] { SaveClipboardTextFile(frozen, "../escape"); }) &&
-              Rejected([&] { SaveClipboardTextFile(frozen, "."); }),
+    Check(Rejected([&] { SaveClipboardFile(frozen, "../escape"); }) &&
+              Rejected([&] { SaveClipboardFile(frozen, "."); }),
           "the name must be a single leaf");
     const auto destination = folder + "/destination";
     const auto old = folder + "/old-destination";
     Check(mkdir(destination.c_str(), 0700) == 0, "create destination fixture");
-    auto stale = PrepareClipboardTextFile(destination, &clipboard);
+    auto stale =
+        PrepareClipboardFile(destination, ClipboardContent::Text, &clipboard);
     Check(rename(destination.c_str(), old.c_str()) == 0 &&
               mkdir(destination.c_str(), 0700) == 0 &&
-              Rejected([&] { SaveClipboardTextFile(stale, "unexpected.txt"); }),
+              Rejected([&] { SaveClipboardFile(stale, "unexpected.txt"); }),
           "a replaced destination is rejected");
     failWrite = 1;
-    bool rejected = Rejected([&] { SaveClipboardTextFile(frozen, "partial.txt"); });
+    bool rejected = Rejected([&] { SaveClipboardFile(frozen, "partial.txt"); });
     failWrite = 0;
     struct stat partial;
     Check(rejected && lstat((folder + "/partial.txt").c_str(), &partial) < 0 &&
@@ -128,20 +151,75 @@ int main(int argc, char **argv) {
           "failed partial write leaves no output");
     BMessage refs = MakeFileSelection({folder + "/Clipboard.txt"});
     Set(clipboard, refs);
-    Check(Rejected([&] { PrepareClipboardTextFile(folder, &clipboard); }),
+    Check(Rejected([&] {
+            PrepareClipboardFile(folder, ClipboardContent::Text, &clipboard);
+          }),
           "native file references are not text");
     refs.AddData("text/plain", B_MIME_TYPE, original.data(), original.size());
     Set(clipboard, refs);
-    Check(Rejected([&] { PrepareClipboardTextFile(folder, &clipboard); }),
+    Check(Rejected([&] {
+            PrepareClipboardFile(folder, ClipboardContent::Text, &clipboard);
+          }),
           "mixed file and text clipboard is not converted");
     BMessage archive;
     text.AddMessage("listi:archive-copy", &archive);
     Set(clipboard, text);
-    Check(Rejected([&] { PrepareClipboardTextFile(folder, &clipboard); }),
+    Check(Rejected([&] {
+            PrepareClipboardFile(folder, ClipboardContent::Text, &clipboard);
+          }),
           "archive selection is not converted");
     Set(clipboard, BMessage());
-    Check(Rejected([&] { PrepareClipboardTextFile(folder, &clipboard); }),
+    Check(Rejected([&] {
+            PrepareClipboardFile(folder, ClipboardContent::Text, &clipboard);
+          }),
           "empty clipboard is rejected");
+    Set(clipboard, bitmap);
+    const auto image =
+        PrepareClipboardFile(folder, ClipboardContent::Image, &clipboard);
+    Check(image.suggestedName == "Clipboard.png", "default PNG filename");
+    Set(clipboard, Text("later"));
+    SaveClipboardFile(image, "image.png");
+    auto saved = Read(folder + "/image.png");
+    BMemoryIO input(saved.data(), saved.size());
+    std::unique_ptr<BBitmap> decoded(BTranslationUtils::GetBitmap(&input));
+    Check(decoded && decoded->Bounds() == native.Bounds() &&
+              !memcmp(decoded->Bits(), pixel, sizeof(pixel)),
+          "native image saved as PNG with original dimensions and pixel");
+    BMessage png;
+    png.AddData("image/png", B_MIME_TYPE, saved.data(), saved.size());
+    Set(clipboard, png);
+    Check(PrepareClipboardFile(folder, ClipboardContent::Image, &clipboard)
+                  .bytes == saved,
+          "encoded PNG clipboard data preserved unchanged");
+    refs.AddData("image/png", B_MIME_TYPE, saved.data(), saved.size());
+    Set(clipboard, refs);
+    Check(Rejected([&] {
+            PrepareClipboardFile(folder, ClipboardContent::Image, &clipboard);
+          }),
+          "file references are not images");
+    BMessage invalid;
+    invalid.AddData("image/png", B_MIME_TYPE, "not PNG", 7);
+    Set(clipboard, invalid);
+    Check(Rejected([&] {
+            PrepareClipboardFile(folder, ClipboardContent::Image, &clipboard);
+          }),
+          "invalid PNG clipboard is rejected");
+    archiveBitmap.ReplaceInt32("_rowbytes", 1);
+    BMessage badBitmap;
+    badBitmap.AddMessage("image/bitmap", &archiveBitmap);
+    Set(clipboard, badBitmap);
+    Check(Rejected([&] {
+            PrepareClipboardFile(folder, ClipboardContent::Image, &clipboard);
+          }),
+          "inconsistent native bitmap size is rejected");
+    saved[16] = 127;
+    BMessage huge;
+    huge.AddData("image/png", B_MIME_TYPE, saved.data(), saved.size());
+    Set(clipboard, huge);
+    Check(Rejected([&] {
+            PrepareClipboardFile(folder, ClipboardContent::Image, &clipboard);
+          }),
+          "oversized declared PNG dimensions are rejected");
   } catch (const std::exception &e) {
     fprintf(stderr, "FAIL %s\n", e.what());
     return 1;

@@ -3,12 +3,14 @@
 #include "FileClipboard.h"
 
 namespace Listi {
-struct ClipboardTextFile {
+enum class ClipboardContent { Text, Image };
+struct ClipboardFile {
   std::string folder, bytes, suggestedName;
   NodeIdentity destination;
 };
-bool CanSaveClipboardTextIn(const std::string &folder);
-ClipboardTextFile PrepareClipboardTextFile(const std::string &folder,
-    BClipboard *clipboard = be_clipboard);
-void SaveClipboardTextFile(const ClipboardTextFile &, const std::string &name);
+bool CanSaveClipboardIn(const std::string &folder);
+ClipboardFile PrepareClipboardFile(const std::string &folder,
+                                   ClipboardContent content,
+                                   BClipboard *clipboard = be_clipboard);
+void SaveClipboardFile(const ClipboardFile &, const std::string &name);
 }

@@ -66,7 +66,8 @@
 constexpr uint32 kResumeArchiveEdits = 'ared';
 constexpr uint32 kImageDropProbe = 'dimg', kImageDropOutputs = 'dfmt',
                  kImageDropConvert = 'dcvi';
-constexpr uint32 kClipboardTextAccepted = 'ctac';
+constexpr uint32 kClipboardFileAccepted = 'ctac';
+constexpr uint32 kClipboardSaveImage = 'cpsg';
 constexpr uint32 kNamedEntryAccepted = 'nacc', kDropAccepted = 'dacc',
                  kConfirm = 'cfir', kViewLoaded = 'vloa',
                  kServiceError = 'serr', kSavePreferences = 'save',
@@ -408,7 +409,7 @@ class MainWindow : public BWindow {
   BMenuItem *previewMenu, *einnMenu, *askrMenu, *tviskiptMenu, *smidjaMenu;
   BMenuBar *menu;
   BMenu *fileView;
-  BMenuItem *saveClipboardTextItem;
+  BMenuItem *saveClipboardTextItem, *saveClipboardImageItem;
   BSplitView *split;
   BGroupView *footer;
   bool footerVisible = true;
@@ -432,7 +433,7 @@ class MainWindow : public BWindow {
   void CloseAction() {
     actionArea->Close();
     pendingNamedEntry = {};
-    pendingClipboardText.reset();
+    pendingClipboardFile.reset();
     pendingArchiveEdit = {};
     if (archiveClipboardPending) {
       try {
@@ -610,32 +611,35 @@ class MainWindow : public BWindow {
       Notice(e.what());
     }
   }
-  std::optional<Listi::ClipboardTextFile> pendingClipboardText;
-  void AskToSaveClipboardText() {
+  std::optional<Listi::ClipboardFile> pendingClipboardFile;
+  void AskToSaveClipboardFile(Listi::ClipboardContent content) {
     if (actionArea->Pending()) {
       queue->ErrorInfo("Finish or cancel the open question first.");
       return;
     }
     try {
-      auto file = Listi::PrepareClipboardTextFile(panes[source]->Path());
-      const auto prompt = "Save clipboard text in: " + file.folder;
-      BMessage accepted(kClipboardTextAccepted);
+      auto file = Listi::PrepareClipboardFile(panes[source]->Path(), content);
+      const auto prompt = (content == Listi::ClipboardContent::Image
+                               ? "Save clipboard PNG in: "
+                               : "Save clipboard text in: ") +
+                          file.folder;
+      BMessage accepted(kClipboardFileAccepted);
       accepted.AddString("newEntryIn", file.folder.c_str());
       ShowBank(false);
       if (actionArea->Ask(prompt.c_str(), "Save", accepted,
                           file.suggestedName.c_str()))
-        pendingClipboardText = std::move(file);
+        pendingClipboardFile = std::move(file);
     } catch (const std::exception &e) {
       Notice(e.what());
     }
   }
-  void SaveClipboardText(const std::string &name) {
-    if (!pendingClipboardText)
+  void SaveClipboardFile(const std::string &name) {
+    if (!pendingClipboardFile)
       return;
-    auto file = std::move(*pendingClipboardText);
-    pendingClipboardText.reset();
+    auto file = std::move(*pendingClipboardFile);
+    pendingClipboardFile.reset();
     try {
-      Listi::SaveClipboardTextFile(file, name);
+      Listi::SaveClipboardFile(file, name);
       const auto status = "Saved " + name;
       for (auto pane : panes) {
         if (pane->Path() == file.folder) {
@@ -964,6 +968,9 @@ public:
     saveClipboardTextItem = new BMenuItem("Save clipboard text as file...",
                                           new BMessage(kClipboardSaveText));
     clipboard->AddItem(saveClipboardTextItem);
+    saveClipboardImageItem = new BMenuItem("Save clipboard image as PNG...",
+                                           new BMessage(kClipboardSaveImage));
+    clipboard->AddItem(saveClipboardImageItem);
     files->AddItem(clipboard);
     files->AddSeparatorItem();
     Item commands[] = {{"View", kView, 0},
@@ -1196,9 +1203,10 @@ public:
     BWindow::MenusBeginning();
     for (int32 i = 0; i < ViewModeCount; ++i)
       fileView->ItemAt(i)->SetMarked(i == panes[source]->CurrentView());
-    saveClipboardTextItem->SetEnabled(
-        !actionArea->Pending() &&
-        Listi::CanSaveClipboardTextIn(panes[source]->Path()));
+    const bool canSave = !actionArea->Pending() &&
+                         Listi::CanSaveClipboardIn(panes[source]->Path());
+    saveClipboardTextItem->SetEnabled(canSave);
+    saveClipboardImageItem->SetEnabled(canSave);
   }
 
   bool QuitRequested() override {
@@ -1421,7 +1429,7 @@ public:
       break;
     case kInlineClosed:
       if (!actionArea->Pending())
-        pendingClipboardText.reset();
+        pendingClipboardFile.reset();
       if (!actionArea->Pending() && archiveClipboardPending)
         CloseAction();
       ShowBank(prefs.buttons && !actionArea->Pending());
@@ -1751,10 +1759,13 @@ public:
       break;
     }
     case kClipboardSaveText:
-      AskToSaveClipboardText();
+      AskToSaveClipboardFile(Listi::ClipboardContent::Text);
       break;
-    case kClipboardTextAccepted:
-      SaveClipboardText(m->GetString("name", ""));
+    case kClipboardSaveImage:
+      AskToSaveClipboardFile(Listi::ClipboardContent::Image);
+      break;
+    case kClipboardFileAccepted:
+      SaveClipboardFile(m->GetString("name", ""));
       break;
     case kClipboardCopy:
     case kClipboardCut:
