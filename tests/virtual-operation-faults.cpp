@@ -11,6 +11,7 @@
 namespace {
 struct Remote { std::string data; int64_t modified = 1; };
 std::map<std::string, Remote> files;
+bool truncateUpload = false;
 bool failCommit = false, failRollback = false, failPartCleanup = false,
      failBackupCleanup = false, cancelAfterBackup = false, cancelled = false,
      mutateDestination = false, loseBackupReply = false, loseCommitReply = false;
@@ -55,7 +56,7 @@ void ReadNetwork(const Location &l, const DataSink &sink, const TransferControl 
 void UploadNetwork(const std::string &local, const Location &l, const TransferControl &c) {
   std::ifstream stream(local);
   std::string data(std::istreambuf_iterator<char>(stream), {});
-  files[l.URL()] = {data, 1};
+  files[l.URL()] = {truncateUpload ? data.substr(0, data.size() / 2) : data, 1};
   if (mutateDestination) files[destination] = {"concurrent edit", 2};
   c.Tick(data.size());
 }
@@ -97,6 +98,7 @@ int main() {
     std::cout << (ok ? "PASS " : "FAIL ") << label << '\n';
   };
   auto reset = [&] {
+    truncateUpload = false;
     files = {{destination, {"old contents", 1}}}; done = 0;
     failCommit = failRollback = failPartCleanup = failBackupCleanup = false;
     cancelAfterBackup = cancelled = mutateDestination = loseBackupReply = loseCommitReply = false;
@@ -117,6 +119,10 @@ int main() {
   check(r.completed == 1 && r.errors.empty() && done == 1 &&
         files.size() == 1 && files.at(destination).data == "new contents",
         "successful replacement commits once and removes its backup");
+  reset(); truncateUpload = true; r = RunVirtual(job, hooks);
+  check(!r.completed && !done && !r.errors.empty() && files.size() == 1 &&
+        files.at(destination).data == "old contents",
+        "acknowledged short upload cannot replace the original");
   reset(); loseBackupReply = true; r = RunVirtual(job, hooks);
   check(!r.completed && !done && !r.errors.empty() && files.size()==1 &&
         files.at(destination).data=="old contents",

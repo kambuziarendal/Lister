@@ -138,7 +138,7 @@ struct Runner {
                 hooks.progress(p, bytes ? n : 0);
             }};
   }
-  void Stage(const std::string &src, const FileEntry &expected, TempFile &temp,
+  uint64_t Stage(const std::string &src, const FileEntry &expected, TempFile &temp,
              const TransferControl &control) {
     uint64_t bytes = 0;
     ReadFile(
@@ -157,6 +157,7 @@ struct Runner {
       throw std::runtime_error(
           "Source changed during transfer; destination was not committed");
     temp.Finish(expected);
+    return bytes;
   }
   bool Replace(const std::string &p) {
     if (skipAll) {
@@ -280,7 +281,7 @@ struct Runner {
     if (exists && !Replace(dst))
       return;
     TempFile temp(LocationLeaf(dst));
-    Stage(src, source, temp, Control(src, false));
+    const auto stagedBytes = Stage(src, source, temp, Control(src, false));
     auto staged = ChildLocation(ParentLocation(dst), Token() + ".part"),
          backup = ChildLocation(ParentLocation(dst), Token() + ".previous");
     bool stagedExists = false, backupExists = false, committed = false,
@@ -292,6 +293,10 @@ struct Runner {
       stagedExists = true;
       UploadFile(temp.path, staged, control);
       control.Check();
+      if (!StatFile(staged, check, control) || check.directory || check.link ||
+          (check.sizeKnown && (check.size < 0 || uint64_t(check.size) != stagedBytes)))
+        throw std::runtime_error(
+            "Uploaded file is missing or incomplete; destination was not replaced");
       bool now = StatFile(dst, check, control);
       if (now != exists || (now && !Same(target, check)))
         throw std::runtime_error(
