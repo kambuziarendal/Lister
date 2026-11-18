@@ -99,7 +99,7 @@ The highlighted panel is the source. Direct Copy or Move uses the other panel
 as the destination; clipboard Paste uses the active panel. Accepted jobs retain
 their selected paths and target even if you navigate or switch workspace.
 
-The operation queue offers progress, pause, cancellation and conflict choices.
+In the development build, **Cancel job** stops only the running operation. Other queued jobs continue. Use **Details > Cancel all** to stop the running job and discard waiting jobs.
 Cancellation does not undo completed work. If a local move finishes copying
 but is cancelled before Listi removes any source entries, the queue history
 shows the complete copy's location and the original source path. If copying
@@ -117,6 +117,16 @@ folder trees. Switching workspace retains the panel objects rather than
 restarting file work. **Select same file type** replaces the active panel's
 selection with visible ordinary files sharing an extension; it is not MIME or
 content detection. `.jpg` and `.jpeg` remain distinct.
+
+**Shelf (development build):** Select local entries and press Command+Shift+Y
+(**Files > Add to Shelf**). Open **Listi > Show Shelf** to see their names,
+original folders and status. You can also drop local entries onto the list.
+Removing a row removes only the reference. Closing and reopening the Shelf
+keeps its contents; quitting Listi clears it.
+
+**Move all...** acts on the whole Shelf, not just highlighted rows. Choose a
+destination, review the confirmation and follow progress in Operations.
+Remove unavailable or replaced references before submitting another move.
 
 Local drag-and-drop asks Copy here, Move here or Cancel for the receiving
 panel's current folder, not the row under the pointer. Duplicate and symbolic

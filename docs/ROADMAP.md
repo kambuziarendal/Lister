@@ -152,15 +152,11 @@ handling. Pasted text must not be executed as a command.
 
 ### Collect files from several folders on a Shelf
 
-Plan a small **Shelf** window that can float on its own or join a Listi window
-using Haiku's Stack & Tile. Drop files on it, or use a dedicated **Add to Shelf**
-keyboard shortcut on the current selection without leaving the folder. Choose
-the key binding after checking existing Listi and Haiku shortcuts.
-
-The Shelf collects references, not copies: adding or removing an item must not
-move or delete the original. Show the source folder so identically named files
-can be told apart. Review the collection, flag missing or changed entries,
-then move, zip or share the selection as one operation with an explicit target.
+The unreleased development build has a separate Shelf window for local
+references, with original-folder and availability columns, drop support,
+Command+Shift+Y and a confirmed Move all action using the normal queue.
+The collection is session-only. ZIP creation and sharing from the Shelf are
+still planned. Verify Stack & Tile ergonomics during hands-on testing.
 
 ### Send a selection to a phone
 
