@@ -10,7 +10,8 @@
 namespace Listi {
 namespace {
 bool SameNode(const struct stat &st, const NodeIdentity &identity) {
-  return st.st_dev == identity.device && st.st_ino == identity.inode;
+  return st.st_dev == static_cast<dev_t>(identity.device) &&
+         st.st_ino == static_cast<ino_t>(identity.inode);
 }
 
 bool InspectSource(const Job &job, const std::string &source) {
@@ -22,7 +23,8 @@ bool InspectSource(const Job &job, const std::string &source) {
       original == job.expectedSources.end() || lstat(source.c_str(), &st) ||
       !SameNode(st, original->second))
     throw std::runtime_error("The selected entry changed or is unavailable.");
-  if (S_ISDIR(st.st_mode) && st.st_dev != job.expectedDestination.device)
+  if (S_ISDIR(st.st_mode) &&
+      st.st_dev != static_cast<dev_t>(job.expectedDestination.device))
     throw std::runtime_error("Mounted volumes cannot be renamed.");
   return S_ISDIR(st.st_mode);
 }

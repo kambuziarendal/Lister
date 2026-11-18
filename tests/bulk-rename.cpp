@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
 #include <stdexcept>
 #include <sys/stat.h>
 #include <unistd.h>
