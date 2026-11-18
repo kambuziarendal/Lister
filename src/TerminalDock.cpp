@@ -117,6 +117,9 @@ bool TerminalDock::Float(int64 requested) {
     window->Quit();
     return false;
   }
+  // app_server tracks view tokens across the application, not per window.
+  // Finish removing the old server views before creating their counterparts.
+  split->Window()->Sync();
   if (!window->GetLayout()->AddView(panel)) {
     slot->GroupLayout()->AddView(panel);
     window->Quit();
@@ -142,6 +145,7 @@ bool TerminalDock::ReturnPanel() {
     window->Unlock();
     return false;
   }
+  window->Sync();
   if (!slot->GroupLayout()->AddView(returning)) {
     window->GetLayout()->AddView(returning);
     window->Unlock();
