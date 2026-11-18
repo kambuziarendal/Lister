@@ -80,7 +80,7 @@ in this alpha.
   CLI** ends the shell. **Detached Listi CLI** (Command+Shift+T) opens or
   brings forward the Listi-owned detached CLI. **External terminal window**
   launches the separate terminal application configured in Settings.
-  For a single click from a closed CLI, add **Open Listi CLI in its own window**
+  For a single click from a closed CLI, add **CLI in its own window**
   under **View > Workspace > Customize workspace…**. This optional button also
   brings an existing detached CLI forward without starting another shell.
 - **Open with:** choose a native application once without rewriting associations.

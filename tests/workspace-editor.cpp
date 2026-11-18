@@ -74,7 +74,7 @@ int main() {
           "the standard action bank is unchanged");
     auto *available = Control<BListView>(window, "available actions");
     auto *floating = dynamic_cast<BStringItem *>(available->ItemAt(0));
-    Check(floating && !strcmp(floating->Text(), "Open Listi CLI in its own window"),
+    Check(floating && !strcmp(floating->Text(), "CLI in its own window"),
           "floating CLI can be added without expanding existing banks");
     available->Select(0);
     BMessage appendCLI(*Control<BButton>(window, "add action")->Message());
