@@ -72,8 +72,7 @@ in this alpha.
 - **Open with:** choose a native application once without rewriting associations.
 - **Properties:** inspect metadata and explicitly save supported local typed
   attributes or ordinary permissions; opening the window alone changes nothing.
-- **Workspace defaults:** Einn starts in Miller columns; the other workspaces
-  start in Details. Change each default in **Listi > Settings**. A remembered
+- **Workspace defaults:** All workspaces start in Details. Change each default in **Listi > Settings**. A remembered
   folder view takes priority. **View > File view > Use workspace default**
   clears the current folder and panel overrides.
 - **Settings:** show/hide file icons, Size/Modified columns, the action button

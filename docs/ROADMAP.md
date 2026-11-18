@@ -77,7 +77,7 @@ not the same as a finished feature.
 |---|---|---|
 | Duplicate finder | SHA-256 folder comparison; Duplicate creates another copy | Search one or more chosen folders for duplicate contents and review groups |
 | Bulk rename | Local multi-file preview, text replacement, numbering and collision checks | Broader rename transformations |
-| Miller columns and adaptive views | Four presets, Miller columns (default in Einn) and opt-in compact buttons | Automatic file-view changes remain exploratory |
+| Miller columns and adaptive views | Four presets, optional Miller columns and opt-in compact buttons | Automatic file-view changes remain exploratory |
 | Directory synchronisation | Read-only recursive size/SHA-256 comparison | Previewed, conflict-aware one-way or two-way synchronisation |
 | Clipboard contents to a new file | Copy/Cut/Paste of file references; save clipboard text or PNG images as a new file | Explore additional clipboard formats when useful |
 | Rich built-in inspectors | Smiðja file inspector, image thumbnails, archive browsing, local properties | Detailed image navigation and camera EXIF/GPS metadata |
@@ -105,8 +105,8 @@ shell code.
 
 ### Follow deep folder trees without losing context
 
-Miller columns are a file view, independent of the workspace. Einn uses them
-by default, and each workspace has a configurable default view. Explore adaptive views only
+Miller columns are a file view, independent of the workspace. Each workspace starts
+in Details and has a configurable default view. Explore adaptive views only
 with explicit user control and sensible minimum sizes.
 
 Readable, BeOS-inspired folder cards and saved paired work sets remain goals.

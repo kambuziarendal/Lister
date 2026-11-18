@@ -92,8 +92,8 @@ int main() {
         !strcmp(WorkspaceName(Workspace::tviskipt), "Tvískipt"), "display names preserve Unicode");
   Preferences views;
   views.workspace=Workspace::einn;
-  check(views.PaneMode(0)==MillerMode && views.PaneMode(1)==MillerMode,
-        "Einn starts both panels in Miller columns");
+  check(views.PaneMode(0)==0 && views.PaneMode(1)==0,
+        "Einn starts both panels in Details");
   views.workspace=Workspace::smidja;
   check(views.PaneMode(0)==0, "other workspaces still start in Details");
   views.SetPaneMode(0, MillerMode);
@@ -118,7 +118,7 @@ int main() {
   oldView.AddInt32("leftMode", 2);
   restored.Load(oldView);
   restored.workspace=Workspace::einn;
-  check(restored.PaneMode(0)==2 && restored.PaneMode(1)==MillerMode,
+  check(restored.PaneMode(0)==2 && restored.PaneMode(1)==0,
         "upgrade preserves a legacy explicit icon choice");
   for(float size:{std::numeric_limits<float>::quiet_NaN(),std::numeric_limits<float>::infinity(),-1.f,7.f,41.f}) {
     BMessage m;m.AddFloat("fontSize",size);live.Load(m);

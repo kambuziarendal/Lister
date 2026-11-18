@@ -40,7 +40,7 @@ the names below. [Screenshot versions and credits](docs/screenshots/CREDITS.md).
 
 | Workspace | Layout | Useful for |
 |---|---|---|
-| **Einn** (`einn`) | One file panel with Miller columns by default | Simple, Tracker-like browsing |
+| **Einn** (`einn`) | One file panel in Details by default | Simple, Tracker-like browsing |
 | **Askr** (`askr`) | Folder tree on the left, file list on the right | Navigating a folder hierarchy |
 | **Tvískipt** (`tviskipt`) | Two file panels side by side | Copying, moving and comparing locations |
 | **Smiðja** (`smidja`) | Panels, configurable sidebars, file preview and action controls | Keeping several tools close at hand |

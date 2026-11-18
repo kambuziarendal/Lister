@@ -75,7 +75,7 @@ struct WorkspaceLayout {
   bool treeRight = false, filterBottom = false, adaptive = false;
   std::vector<int32> actionButtons = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   float splitWeights[3] = {0.39f, 0.39f, 0.22f};
-  int32 defaultModes[4] = {0, MillerMode, 0, 0};
+  int32 defaultModes[4] = {};
   int32 paneOverrides[4][2] = {{-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}};
   int32 DefaultMode(Workspace w) const { return defaultModes[int(w)]; }
   void SetDefaultMode(Workspace w, int32 mode) {

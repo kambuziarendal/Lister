@@ -29,7 +29,7 @@ void WorkspaceLayout::Load(const BMessage &m) {
                  Workspace::smidja}) {
     BMessage view;
     bool hasView = m.FindMessage(WorkspaceId(w), &view) == B_OK;
-    int32 fallback = w == Workspace::einn ? MillerMode : 0;
+    const int32 fallback = DefaultMode(w);
     int32 mode = view.GetInt32("default", fallback);
     defaultModes[int(w)] = mode >= 0 && mode < ViewModeCount ? mode : fallback;
     for (int pane = 0; pane < 2; ++pane) {
