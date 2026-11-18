@@ -57,6 +57,8 @@ enum : uint32 {
   kTrashFolder = 'trsh',
   kMkdir = 'mkdr',
   kRename = 'rnam',
+  kBulkRename = 'brnm',
+  kBulkRenameAccepted = 'brac',
   kView = 'view',
   kEdit = 'edit',
   kAll = 'sall',

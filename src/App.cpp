@@ -2,6 +2,8 @@
 #include "ArchivePasswordWindow.h"
 #include "ArchivePasswords.h"
 #include "Common.h"
+#include "BulkRename.h"
+#include "BulkRenameWindow.h"
 #include "FileClipboard.h"
 #include "FileDrop.h"
 #include "FileContextMenu.h"
@@ -325,6 +327,7 @@ public:
 class MainWindow : public BWindow {
   Preferences prefs;
   BMessenger searchWindow;
+  BMessenger bulkRenameWindow;
   std::shared_ptr<Listi::Shelf> shelf = std::make_shared<Listi::Shelf>();
   BMessenger shelfWindow;
   void RefreshShelf() {
@@ -709,6 +712,23 @@ class MainWindow : public BWindow {
     j.destination = panes[1 - source]->Path();
     return j;
   }
+  void BulkRename() {
+    if (actionArea->Pending()) {
+      queue->ErrorInfo("Finish or cancel the open question first.");
+      return;
+    }
+    if (bulkRenameWindow.IsValid() &&
+        bulkRenameWindow.SendMessage(kBulkRename) == B_OK)
+      return;
+    try {
+      auto job = Listi::FreezeBulkRename(panes[source]->Path(),
+                                       panes[source]->Selected());
+      bulkRenameWindow =
+          Listi::OpenBulkRenameWindow(std::move(job), BMessenger(this));
+    } catch (const std::exception &e) {
+      Notice(e.what());
+    }
+  }
   void Operation(Listi::Action a) {
     if (actionArea->Pending()) {
       queue->ErrorInfo("Finish or cancel the open question first.");
@@ -737,8 +757,8 @@ class MainWindow : public BWindow {
       return;
     }
     if (a == Listi::Action::Rename || a == Listi::Action::MakeDirectory) {
-      if (a == Listi::Action::Rename && job.sources.size() != 1) {
-        Notice("Select one entry to rename.");
+      if (a == Listi::Action::Rename && job.sources.size() > 1) {
+        BulkRename();
         return;
       }
       job.destination = panes[source]->Path();
@@ -873,6 +893,7 @@ public:
                        {"Copy to other panel", kCopy, 0},
                        {"Move to other panel", kMove, 'M'},
                        {"Rename", kRename, 'R'},
+                       {"Bulk rename...", kBulkRename, 0},
                        {"New folder", kMkdir, 'N'},
                        {"Move to Trash", kDelete, 'D'},
                        {"Restore from Trash", kRestore, 0},
@@ -1675,6 +1696,15 @@ public:
     case kRename:
       Operation(Listi::Action::Rename);
       break;
+    case kBulkRename:
+      BulkRename();
+      break;
+    case kBulkRenameAccepted: {
+      const auto job = Listi::DecodeJob(*m);
+      if (job.action == Listi::Action::BulkRename)
+        queue->Enqueue(job);
+      break;
+    }
     case kMkdir:
       Operation(Listi::Action::MakeDirectory);
       break;

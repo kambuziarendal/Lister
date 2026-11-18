@@ -89,6 +89,8 @@ const char *Verb(Listi::Action a) {
     return "Delete";
   case Listi::Action::Rename:
     return "Rename";
+  case Listi::Action::BulkRename:
+    return "Bulk rename";
   default:
     return "Create directory";
   }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "FileOperation.h"
+#include "BulkRename.h"
 #include "ArchiveVolumes.h"
 #include "ArchiveJobs.h"
 #include "NamedEntry.h"
@@ -561,6 +562,8 @@ struct Runner {
 };
 } // namespace
 Result Run(const Job &j, const Hooks &h) {
+  if (j.action == Action::BulkRename)
+    return RunBulkRename(j, h);
   if (j.action == Action::CreateArchive || j.action == Action::ExtractArchive ||
       j.action == Action::EditArchive || j.action == Action::MoveArchive)
     return RunArchiveJob(j, h);

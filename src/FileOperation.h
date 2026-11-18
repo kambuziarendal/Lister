@@ -22,7 +22,8 @@ enum class Action {
   CreateArchive,
   ExtractArchive,
   EditArchive,
-  MoveArchive
+  MoveArchive,
+  BulkRename
 };
 enum class Decision { Replace, ReplaceAll, Skip, SkipAll, Abort };
 struct NodeIdentity {
@@ -57,6 +58,8 @@ struct Job {
   std::vector<std::string> archiveRemove;
   std::vector<std::string> archiveFolders;
   std::map<std::string, std::string> archiveRenames;
+  // BulkRename maps each frozen source to its previewed leaf (also unchanged).
+  std::map<std::string, std::string> bulkNames;
   std::string
       destinationFolder; // Captured parent for rename/new-folder questions.
 };

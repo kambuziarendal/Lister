@@ -87,7 +87,10 @@ void FileActions(BMenu &menu, const ContextMenuOptions &options) {
   add("Copy to other panel", kCopy, dual);
   add("Move to other panel", kMove, (local || options.archiveRemove) && dual);
   menu.AddSeparatorItem();
-  add("Rename...", kRename, single && (local || options.archiveRemove));
+  if (single)
+    add("Rename...", kRename, local || options.archiveRemove);
+  else
+    add("Bulk rename...", kBulkRename, local && options.folderLocal);
   add("Duplicate...", kDuplicate, single && local);
   add("Create symbolic link...", kCreateLink, single && local);
   add(options.archiveRemove ? "Delete from archive..." : "Move to Trash...",

@@ -47,6 +47,12 @@ BMessage EncodeJob(const Job &job, uint32 what) {
   m.AddInt64("destinationNode", job.expectedDestination.inode);
   for (const auto &path : job.sources)
     m.AddString("source", path.c_str());
+  for (const auto &rename : job.bulkNames) {
+    BMessage item;
+    item.AddString("source", rename.first.c_str());
+    item.AddString("name", rename.second.c_str());
+    m.AddMessage("bulkName", &item);
+  }
   for (const auto &entry : job.expectedSources) {
     BMessage item;
     item.AddString("path", entry.first.c_str());
@@ -86,6 +92,8 @@ Job DecodeJob(const BMessage &m) {
   BMessage item;
   for (int32 i = 0; m.FindMessage("archiveRename", i, &item) == B_OK; ++i)
     job.archiveRenames[item.GetString("from", "")] = item.GetString("to", "");
+  for (int32 i = 0; m.FindMessage("bulkName", i, &item) == B_OK; ++i)
+    job.bulkNames[item.GetString("source", "")] = item.GetString("name", "");
   for (int32 i = 0; m.FindMessage("identity", i, &item) == B_OK; ++i)
     job.expectedSources[item.GetString("path", "")] = {
         item.GetInt32("device", -1), item.GetInt64("node", -1)};
