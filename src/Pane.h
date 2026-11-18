@@ -37,7 +37,7 @@ public:
   void SetPlaces(const Listi::SavedPlaces &, bool writable);
   void SetSource(bool);
   void Apply(const Preferences &);
-  void SetWorkspace(Workspace);
+  void SetWorkspace(const Preferences &);
   void Select(int mode);
   bool SelectSameFileType();
   std::string SelectedFileType() const { return entries.FocusedFileType(); }
@@ -80,6 +80,7 @@ private:
   BGroupView *header, *filterRow;
   BSplitView *content;
   bool chromeVisible = true;
+  bool treeOnRight = false, filterAtBottom = false;
   float contentSplitterSize = 0;
   BMenuField *display;
   int32 mode = 0;

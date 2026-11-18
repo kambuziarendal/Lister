@@ -29,6 +29,9 @@
 #include "OperationQueue.h"
 #include "Pane.h"
 #include "VirtualFile.h"
+#include "WorkspaceEditor.h"
+#include "WorkspaceActions.h"
+#include <array>
 #include <Alert.h>
 #include <Application.h>
 #include <algorithm>
@@ -59,12 +62,38 @@
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <set>
 #include <sys/stat.h>
 #include <unistd.h>
 constexpr uint32 kResumeArchiveEdits = 'ared';
+constexpr uint32 kEditWorkspace = 'ewsp', kSplitChanged = 'swgt';
+
+class WorkspaceSplit : public BSplitView {
+public:
+  WorkspaceSplit() : BSplitView(B_HORIZONTAL, 6) {}
+
+  void MouseDown(BPoint where) override {
+    for (int32 i = 0; i < CountItems(); ++i)
+      before[i] = ItemWeight(i);
+    BSplitView::MouseDown(where);
+  }
+
+  void MouseUp(BPoint where) override {
+    BSplitView::MouseUp(where);
+    for (int32 i = 0; i < CountItems(); ++i) {
+      if (before[i] != ItemWeight(i)) {
+        Window()->PostMessage(kSplitChanged);
+        break;
+      }
+    }
+  }
+
+private:
+  std::array<float, 3> before{};
+};
 constexpr uint32 kImageDropProbe = 'dimg', kImageDropOutputs = 'dfmt',
                  kImageDropConvert = 'dcvi';
 constexpr uint32 kClipboardFileAccepted = 'ctac';
@@ -412,8 +441,9 @@ class MainWindow : public BWindow {
   BMenu *fileView;
   BMenuItem *saveClipboardTextItem, *saveClipboardImageItem;
   BSplitView *split;
-  BGroupView *footer;
-  bool footerVisible = true;
+  BGroupView *topTools, *bottomTools;
+  bool inspectorOnLeft = false;
+  bool bankOnTop = false, commandOnTop = false;
   float splitterSize = 0;
   bool paneVisible[2] = {true, true};
   bool previewVisible = true;
@@ -423,7 +453,7 @@ class MainWindow : public BWindow {
     service.SendMessage(&saved);
   }
   void UpdatePreview() {
-    if (!prefs.Preview() || prefs.SinglePane()) {
+    if (!previewVisible) {
       preview->ShowFile("");
       return;
     }
@@ -703,12 +733,29 @@ class MainWindow : public BWindow {
     }
   }
   OperationQueue *queue;
-  BGroupView *bank;
+  BGroupView *bank = nullptr;
+  BGridView *bankGrid = nullptr;
+  std::vector<int32> renderedButtons;
+  int bankColumns = 0;
   BTextControl *command;
   BMessenger service;
   bool bankVisible = true, commandVisible = true;
+  void UpdateToolZones() {
+    const bool topVisible = (bankVisible && bankOnTop) ||
+                            (commandVisible && commandOnTop);
+    const bool bottomVisible = (bankVisible && !bankOnTop) ||
+                               (commandVisible && !commandOnTop);
+    for (const auto &[zone, visible] :
+         {std::make_pair(topTools, topVisible),
+          std::make_pair(bottomTools, bottomVisible)}) {
+      if (visible && zone->IsHidden(zone))
+        zone->Show();
+      else if (!visible && !zone->IsHidden(zone))
+        zone->Hide();
+    }
+  }
   void ShowBank(bool visible) {
-    visible = visible && !prefs.SinglePane();
+    visible = visible && !prefs.SinglePane() && !prefs.actionButtons.empty();
     if (bankVisible == visible)
       return;
     bankVisible = visible;
@@ -716,8 +763,103 @@ class MainWindow : public BWindow {
       bank->Show();
     else
       bank->Hide();
+    UpdateToolZones();
+  }
+  void UpdateBank(float width) {
+    const int columns = prefs.adaptive && width < 850 ? 3 : 6;
+    if (columns == bankColumns && renderedButtons == prefs.actionButtons)
+      return;
+    bankColumns = columns;
+    renderedButtons = prefs.actionButtons;
+    if (bankGrid) {
+      bank->GroupLayout()->RemoveView(bankGrid);
+      delete bankGrid;
+    }
+    bankGrid = new BGridView(columns == 3 ? 3 : 5, 5);
+    int index = 0;
+    for (auto id : renderedButtons) {
+      if (id < 0 || id >= WorkspaceLayout::ActionButtonCount)
+        continue;
+      const auto &action = kWorkspaceActions[id];
+      BString label(action.label);
+      if (columns == 6 && action.message != kNone)
+        label << " [" << action.shortcut << "]";
+      auto button = new BButton(label, new BMessage(action.message));
+      BString hint("Command+");
+      hint << action.shortcut
+           << " (normally Alt). File shortcuts apply outside text fields.";
+      button->SetToolTip(hint);
+      button->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+      bankGrid->GridLayout()->AddView(button, index % columns, index / columns);
+      ++index;
+    }
+    bank->GroupLayout()->AddView(int32(0), bankGrid);
+  }
+  void PlaceTools() {
+    if (bankOnTop != prefs.bankTop) {
+      auto oldGroup = bankOnTop ? topTools : bottomTools;
+      oldGroup->GroupLayout()->RemoveView(bank);
+      bankOnTop = prefs.bankTop;
+      auto newGroup = bankOnTop ? topTools : bottomTools;
+      newGroup->GroupLayout()->AddView(int32(0), bank);
+    }
+    if (commandOnTop != prefs.commandTop) {
+      auto oldGroup = commandOnTop ? topTools : bottomTools;
+      oldGroup->GroupLayout()->RemoveView(command);
+      commandOnTop = prefs.commandTop;
+      (commandOnTop ? topTools : bottomTools)->AddChild(command);
+    }
+  }
+  int SplitIndex(int logicalIndex) const {
+    if (inspectorOnLeft)
+      return logicalIndex == 2 ? 0 : logicalIndex + 1;
+    return logicalIndex;
+  }
+  void SetSplitWeights() {
+    for (int i = 0; i < 3; ++i)
+      split->SetItemWeight(SplitIndex(i), prefs.splitWeights[i], true);
+  }
+  void RememberSplitWeights() {
+    if (prefs.SinglePane())
+      return;
+    // Keep the inspector's previous share when it is not participating.
+    const bool inspectorExpanded =
+        previewVisible && !preview->IsHidden(preview);
+    const int count = inspectorExpanded ? 3 : 2;
+    const float totalShare = inspectorExpanded ? 1 : 1 - prefs.splitWeights[2];
+    float raw[3]{}, total = 0;
+    for (int i = 0; i < count; ++i) {
+      raw[i] = split->ItemWeight(SplitIndex(i));
+      total += raw[i];
+    }
+    if (total <= 0)
+      return;
+    for (int i = 0; i < count; ++i)
+      prefs.splitWeights[i] = raw[i] * totalShare / total;
+  }
+  void ApplyPreviewVisibility() {
+    const bool showPreview = prefs.Preview() && !prefs.SinglePane();
+    if (showPreview != previewVisible) {
+      previewVisible = showPreview;
+      if (showPreview && preview->IsHidden(preview))
+        preview->Show();
+      else if (!showPreview && !preview->IsHidden(preview))
+        preview->Hide();
+    }
+    previewMenu->SetMarked(showPreview);
+    previewMenu->SetEnabled(!prefs.SinglePane());
+    UpdatePreview();
   }
   void ApplyWorkspace() {
+    if (inspectorOnLeft != prefs.inspectorLeft) {
+      split->GetLayout()->RemoveView(preview);
+      inspectorOnLeft = prefs.inspectorLeft;
+      split->AddChild(SplitIndex(2), preview, prefs.splitWeights[2]);
+      for (int i = 0; i < 3; ++i)
+        split->SetCollapsible(SplitIndex(i), i == 2);
+    }
+    PlaceTools();
+    UpdateBank(Bounds().Width());
     for (int i = 0; i < 2; ++i) {
       const bool visible = !prefs.SinglePane() || i == source;
       if (visible != paneVisible[i]) {
@@ -727,28 +869,14 @@ class MainWindow : public BWindow {
         else
           panes[i]->Hide();
       }
-      panes[i]->SetWorkspace(prefs.workspace);
+      panes[i]->SetWorkspace(prefs);
       panes[i]->SetSource(i == source);
     }
-    const bool showPreview = prefs.Preview() && !prefs.SinglePane();
-    if (showPreview != previewVisible) {
-      previewVisible = showPreview;
-      if (showPreview)
-        preview->Show();
-      else
-        preview->Hide();
-    }
-    previewMenu->SetMarked(showPreview);
-    previewMenu->SetEnabled(!prefs.SinglePane());
+    ApplyPreviewVisibility();
+    split->SetOrientation(prefs.panelsStacked ? B_VERTICAL : B_HORIZONTAL);
     split->SetSpacing(prefs.SinglePane() ? 0 : 6);
     split->SetSplitterSize(prefs.SinglePane() ? 0 : splitterSize);
-    if (footerVisible == prefs.SinglePane()) {
-      footerVisible = !prefs.SinglePane();
-      if (footerVisible)
-        footer->Show();
-      else
-        footer->Hide();
-    }
+    SetSplitWeights();
     for (auto action : {kCopy, kMove, kSame, kSwitch})
       if (auto item = menu->FindItem(action))
         item->SetEnabled(!prefs.SinglePane());
@@ -768,7 +896,7 @@ class MainWindow : public BWindow {
       else
         command->Hide();
     }
-    UpdatePreview();
+    UpdateToolZones();
   }
   void SetWorkspace(Workspace value) {
     if (prefs.workspace == value)
@@ -1027,6 +1155,9 @@ public:
     workspace->AddItem(askrMenu);
     workspace->AddItem(tviskiptMenu);
     workspace->AddItem(smidjaMenu);
+    workspace->AddSeparatorItem();
+    workspace->AddItem(new BMenuItem("Customize workspace…",
+                                      new BMessage(kEditWorkspace)));
     viewMenu->AddItem(workspace);
     fileView = new BMenu("File view");
     for (int32 i = 0; i < ViewModeCount; ++i) {
@@ -1063,7 +1194,7 @@ public:
     menu->AddItem(view);
     panes[0] = new Pane(0, prefs);
     panes[1] = new Pane(1, prefs);
-    split = new BSplitView(B_HORIZONTAL, 6);
+    split = new WorkspaceSplit();
     splitterSize = split->SplitterSize();
     split->AddChild(panes[0]);
     split->AddChild(panes[1]);
@@ -1075,34 +1206,14 @@ public:
     split->SetCollapsible(0, false);
     split->SetCollapsible(1, false);
     bank = new BGroupView(B_VERTICAL, 5);
-    auto grid = new BGridView(5, 5);
-    Item buttons[] = {
-        {"View [Shift+V]", kView, 'V'},   {"Edit [E]", kEdit, 'E'},
-        {"Copy [Shift+C]", kCopy, 'C'},   {"Move [M]", kMove, 'M'},
-        {"Rename [R]", kRename, 'R'},     {"Trash [D]", kDelete, 'D'},
-        {"All [A]", kAll, 'A'},           {"None", kNone, 0},
-        {"Invert [I]", kInvert, 'I'},     {"New folder [N]", kMkdir, 'N'},
-        {"Terminal [T]", kTerminal, 'T'}, {"Operations [O]", kShowJobs, 'O'}};
-    for (int i = 0; i < 12; i++) {
-      auto button =
-          new BButton(buttons[i].label, new BMessage(buttons[i].action));
-      BString hint("Command+");
-      if (buttons[i].action == kCopy || buttons[i].action == kView)
-        hint << "Shift+" << buttons[i].key;
-      else if (buttons[i].key)
-        hint << buttons[i].key;
-      else
-        hint << "Shift+A";
-      hint << " (normally Alt). File shortcuts apply outside text fields.";
-      button->SetToolTip(hint);
-      button->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
-      grid->GridLayout()->AddView(button, i % 6, i / 6);
-    }
-    bank->AddChild(grid);
-    bank->AddChild(new BStringView(
+    auto shortcuts = new BStringView(
         "shortcuts",
         "Command + letter (normally Alt). Tab: other panel. Command+F: filter. "
-        "C/X/V: clipboard. Shift+C: panel copy. Escape: close dialog."));
+        "C/X/V: clipboard. Shift+C: panel copy. Escape: close dialog.");
+    shortcuts->SetTruncation(B_TRUNCATE_END);
+    shortcuts->SetExplicitMinSize(BSize(0, B_SIZE_UNSET));
+    shortcuts->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+    bank->AddChild(shortcuts);
     bank->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     command = new BTextControl("Command:", "", nullptr);
     command->TextView()->AddFilter(
@@ -1114,17 +1225,21 @@ public:
     actionArea->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     actionArea->GroupLayout()->SetInsets(8, 6, 8, 6);
     actionArea->Hide();
-    footer = new BGroupView(B_VERTICAL, 5);
-    footer->SetName("command footer");
-    footer->GroupLayout()->SetInsets(8, 4, 8, 8);
-    footer->AddChild(bank);
-    footer->AddChild(command);
+    topTools = new BGroupView(B_VERTICAL, 5);
+    topTools->SetName("top workspace tools");
+    topTools->GroupLayout()->SetInsets(8, 4, 8, 4);
+    bottomTools = new BGroupView(B_VERTICAL, 5);
+    bottomTools->SetName("bottom workspace tools");
+    bottomTools->GroupLayout()->SetInsets(8, 4, 8, 8);
+    bottomTools->AddChild(bank);
+    bottomTools->AddChild(command);
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
         .Add(menu)
+        .Add(topTools, 0)
         .Add(split)
         .Add(actionArea, 0)
         .Add(queue->View(), 0)
-        .Add(footer, 0);
+        .Add(bottomTools, 0);
     // Child visibility must not impose a transient maximum on the window.
     // Apply after attachment: Haiku replaces layout explicit-data proxies.
     GetLayout()->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
@@ -1136,6 +1251,12 @@ public:
     panes[source]->FocusList();
     ResizeTo(1140, 650);
   }
+  void FrameResized(float width, float height) override {
+    BWindow::FrameResized(width, height);
+    if (bank)
+      UpdateBank(width);
+  }
+
   status_t GetSupportedSuites(BMessage *m) override {
     static property_info properties[] = {{"Workspace",
                                           {B_GET_PROPERTY, 0},
@@ -1424,15 +1545,7 @@ public:
       if (prefs.SinglePane())
         break;
       prefs.SetPreview(!prefs.Preview());
-      if (prefs.Preview() != previewVisible) {
-        previewVisible = prefs.Preview();
-        if (previewVisible)
-          preview->Show();
-        else
-          preview->Hide();
-      }
-      previewMenu->SetMarked(prefs.Preview());
-      UpdatePreview();
+      ApplyPreviewVisibility();
       Save();
       break;
     case kPreviewSelection:
@@ -2019,6 +2132,38 @@ public:
       open.AddString("path", selected[0].c_str());
       open.AddString("mode", "system");
       service.SendMessage(&open);
+      break;
+    }
+    case kSplitChanged:
+      RememberSplitWeights();
+      Save();
+      break;
+    case kEditWorkspace:
+      if (actionArea->Pending())
+        queue->ErrorInfo("Finish or cancel the open question first.");
+      else
+        OpenWorkspaceEditor(BMessenger(this), prefs);
+      break;
+    case kApplyWorkspaceEditor: {
+      if (actionArea->Pending()) {
+        queue->ErrorInfo("Finish or cancel the open question first.");
+        break;
+      }
+      BMessage layoutMessage, profilesMessage;
+      if (m->FindMessage("layout", &layoutMessage) != B_OK ||
+          m->FindMessage("profiles", &profilesMessage) != B_OK)
+        break;
+      WorkspaceLayout layout;
+      layout.Load(layoutMessage);
+      prefs.profiles.Load(profilesMessage);
+      prefs.ApplyLayout(layout);
+      if (prefs.SinglePane())
+        source = prefs.singlePane;
+      else
+        prefs.singlePane = source;
+      ApplyWorkspace();
+      panes[source]->FocusList();
+      Save();
       break;
     }
     case kPreferences:

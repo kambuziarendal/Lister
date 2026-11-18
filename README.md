@@ -242,9 +242,10 @@ enough to grow with the task. The DOpus-inspired workflow is the starting point,
 not a goal to reproduce another application's interface.
 
 **Optional by design:** advanced tools should be there when useful, not imposed
-on everyone. The long-term goal is to move, add and remove buttons and modules,
-arrange the interface around a task, and save personal layouts. The current
-alpha offers preset layouts and visibility options, not a free-form layout editor.
+on everyone. The development build keeps the four presets and adds a workspace editor.
+Choose and order command buttons, position tools in fixed zones, and save
+named layouts without changing file associations or folder-specific views.
+The published 0.31.1 alpha has presets and visibility options only.
 
 The [roadmap](docs/ROADMAP.md) puts file safety and job clarity first, then
 explores duplicate search, bulk rename, adaptive views, synchronisation,

@@ -82,6 +82,31 @@ in this alpha.
 - **Operations:** reopen the progress window after hiding it; pause/resume,
   cancel and choose Replace/Skip/Abort when conflicts occur.
 
+### Custom workspaces (development build)
+
+Open **View > Workspace > Customize workspace…**. The four built-in presets
+still work without changing any settings.
+
+- **Action buttons:** remove buttons you rarely use and move the others into
+  your preferred order. Removing a button does not remove its menu command
+  or keyboard shortcut.
+- **Modules:** place the button bank and command line above or below the panels,
+  position the folder trees and name filters, or move the preview before or
+  after the file panels. Arrange the panels side by side or vertically. The
+  preset still determines which tools are available. Enable compact buttons
+  to reflow the bank in a narrow window; turn the option off to keep the
+  standard grid. Resizing does not choose another folder or file view. Stacked
+  panels with a preview and both toolbars need more vertical space; side-by-side
+  panels are a better fit for shorter screens.
+- **Profiles:** name the current draft and choose **Create**. Later, select a
+  profile and choose **Load** to use it or **Update** to replace its saved
+  layout. Profiles remember layout, not open directories or selected files.
+
+**Save** applies the draft and its profile changes together. **Cancel** or Escape
+discards both. **Reset layout**, followed by **Save**, restores the standard layout
+without deleting named profiles, folder-specific views, colours or application
+choices.
+
 ### Archive conveniences
 
 - Favourite formats appear directly; others are grouped under **More formats**.

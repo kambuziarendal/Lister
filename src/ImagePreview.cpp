@@ -228,6 +228,8 @@ ImagePreview::~ImagePreview() {
   delete bitmap;
 }
 void ImagePreview::AttachedToWindow() {
+  if (loader)
+    return;
   loader = new Loader(BMessenger(this), generation, replies);
   loader->Run();
 }

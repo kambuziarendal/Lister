@@ -119,6 +119,8 @@ void FolderTree::Clear() {
   items.clear();
 }
 void FolderTree::AttachedToWindow() {
+  if (reader)
+    return;
   reader = new TreeReader(BMessenger(this), generation);
   reader->Run();
 }

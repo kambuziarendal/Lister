@@ -400,11 +400,25 @@ void Pane::ApplyFilter() {
   if (!scanning)
     SendSelection();
 }
-void Pane::SetWorkspace(Workspace workspace) {
-  const bool value = workspace == Workspace::einn;
+void Pane::SetWorkspace(const Preferences &settings) {
+  static_cast<WorkspaceLayout &>(prefs) = settings;
+  const bool value = prefs.IsEinn();
   const bool changed = einn != value;
   einn = value;
-  prefs.workspace = workspace;
+  if (treeOnRight != prefs.treeRight) {
+    treeOnRight = prefs.treeRight;
+    content->GetLayout()->RemoveView(tree);
+    content->AddChild(treeOnRight ? 1 : 0, tree, 0.24f);
+    content->SetCollapsible(0, false);
+    content->SetCollapsible(1, false);
+  }
+  if (filterAtBottom != prefs.filterBottom) {
+    filterAtBottom = prefs.filterBottom;
+    auto layout = static_cast<BGroupLayout *>(GetLayout());
+    layout->RemoveView(filterRow);
+    // Keep the filter directly adjacent to the file list on either side.
+    layout->AddView(filterAtBottom ? 3 : 2, filterRow, 0.0f);
+  }
   list->SetSinglePane(prefs.SinglePane());
   if (chromeVisible == einn) {
     chromeVisible = !einn;
@@ -455,7 +469,7 @@ void Pane::UpdateTreeVisibility() {
 }
 void Pane::Apply(const Preferences &p) {
   prefs = p;
-  SetWorkspace(p.workspace);
+  SetWorkspace(p);
   tree->ShowPath(path.String());
   list->Apply(p);
   grid->SetFont(&p.font);

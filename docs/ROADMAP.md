@@ -35,9 +35,11 @@ The customisation goal goes beyond toggling a few controls:
 - Make adaptive behaviour an explicit choice, with manual control and a
   predictable way back. Do not silently rearrange someone's workspace.
 
-These are design goals. The current alpha has four preset workspace layouts,
-several visibility preferences and folder-specific display modes; it does **not**
-yet have a free-form layout or button editor. Safety checks, confirmations and
+The published 0.31.1 alpha has four presets. The development branch adds a
+workspace editor: choose and order command buttons, place modules in supported
+zones and save named layouts. Optional adaptive sizing reflows the button bank;
+it does not choose the active panel or view mode. This is not arbitrary docking
+or a system for creating new commands. Safety checks, confirmations and
 clear operation targets are not optional just because a tool is configurable.
 
 ## First: make existing file work easier to trust

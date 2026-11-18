@@ -12,12 +12,10 @@
 #include <TabView.h>
 #include <TextControl.h>
 #include <Window.h>
-#include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
-#include <cstring>
 rgb_color Preferences::Color(const BString &text) const {
   unsigned int r, g, b;
   if (text.Length() == 7 &&
@@ -26,49 +24,8 @@ rgb_color Preferences::Color(const BString &text) const {
   return ui_color(B_PANEL_TEXT_COLOR);
 }
 void Preferences::Load(const BMessage &m) {
-  // Legacy numeric values remain authoritative when present: an older app may
-  // have changed them since our last save. New-only settings use ASCII IDs.
-  int32 stored;
-  if (m.FindInt32("workspace", &stored) == B_OK) {
-    workspace = stored >= 0 && stored <= 3 ? static_cast<Workspace>(stored)
-                                           : Workspace::tviskipt;
-  } else if (m.HasString("workspaceId")) {
-    workspace = Workspace::tviskipt;
-    for (auto value : {Workspace::tviskipt, Workspace::einn, Workspace::askr,
-                       Workspace::smidja})
-      if (!strcmp(m.GetString("workspaceId", ""), WorkspaceId(value)))
-        workspace = value;
-  } else {
-    workspace = m.GetBool("simpleWorkspace", false) ? Workspace::einn
-                                                    : Workspace::tviskipt;
-  }
-  singlePane = m.GetInt32("singlePane", 0) == 1 ? 1 : 0;
-  for (auto w : {Workspace::tviskipt, Workspace::einn, Workspace::askr,
-                 Workspace::smidja}) {
-    BMessage view;
-    bool hasProfile = m.FindMessage(WorkspaceId(w), &view) == B_OK;
-    int32 fallback = w == Workspace::einn ? MillerMode : 0;
-    int32 mode = view.GetInt32("default", fallback);
-    defaultModes[int(w)] = mode >= 0 && mode < ViewModeCount ? mode : fallback;
-    for (int pane = 0; pane < 2; ++pane) {
-      const char *key = pane ? "rightMode" : "leftMode";
-      int32 saved = hasProfile ? view.GetInt32(key, -1) : m.GetInt32(key, -1);
-      // Legacy Details was always saved, even when the user never chose a mode.
-      if (!hasProfile && saved == 0)
-        saved = -1;
-      paneOverrides[int(w)][pane] =
-          saved >= 0 && saved < ViewModeCount ? saved : -1;
-    }
-  }
-  paneTree[0] = m.GetBool("leftTree", false);
-  paneTree[1] = m.GetBool("rightTree", false);
-  smidjaTree[0] =
-      m.GetBool("workbenchLeftTree", m.GetBool("smidjaLeftTree", true));
-  smidjaTree[1] =
-      m.GetBool("workbenchRightTree", m.GetBool("smidjaRightTree", true));
-  preview = m.GetBool("preview", false);
-  smidjaPreview =
-      m.GetBool("workbenchPreview", m.GetBool("smidjaPreview", true));
+  WorkspaceLayout::Load(m);
+  profiles.Load(m);
   folderModes.clear();
   BMessage folder;
   for (int32 i = 0; i < 4096 && m.FindMessage("folderView", i, &folder) == B_OK;
@@ -81,8 +38,6 @@ void Preferences::Load(const BMessage &m) {
   icons = m.GetBool("icons", true);
   size = m.GetBool("size", true);
   date = m.GetBool("date", true);
-  buttons = m.GetBool("buttons", true);
-  command = m.GetBool("command", false);
   float fontSize = m.GetFloat("fontSize", be_plain_font->Size());
   font.SetSize(std::isfinite(fontSize) && fontSize >= 8 && fontSize <= 40
                    ? fontSize
@@ -97,57 +52,31 @@ void Preferences::Load(const BMessage &m) {
   links = m.GetString("links", "system");
 }
 void Preferences::ApplyDialog(const BMessage &message) {
-  // The dialog edits appearance and launchers, not the live panel workspace.
+  // The dialog edits appearance, launchers and workspace defaults. Keep
+  // layout changes made from the main window while the dialog was open.
   Preferences updated = *this;
   updated.Load(message);
-  for (int i = 0; i < 2; ++i) {
-    updated.paneTree[i] = paneTree[i];
-    updated.smidjaTree[i] = smidjaTree[i];
-  }
+  auto layout = CaptureLayout();
+  BMessage changes;
+  const bool hasChanges = message.FindMessage("layoutChanges", &changes) == B_OK;
   for (auto w : {Workspace::tviskipt, Workspace::einn, Workspace::askr,
                  Workspace::smidja}) {
-    if (updated.DefaultMode(w) == DefaultMode(w)) {
-      for (int pane = 0; pane < 2; ++pane)
-        updated.paneOverrides[int(w)][pane] = paneOverrides[int(w)][pane];
-    } else {
-      updated.paneOverrides[int(w)][0] = updated.paneOverrides[int(w)][1] = -1;
-    }
+    if (!hasChanges || changes.GetBool(WorkspaceId(w), false))
+      layout.SetDefaultMode(w, updated.DefaultMode(w));
   }
-  updated.workspace = workspace;
-  updated.singlePane = singlePane;
-  updated.preview = preview;
-  updated.smidjaPreview = smidjaPreview;
+  if (!hasChanges || changes.GetBool("buttons", false))
+    layout.buttons = updated.buttons;
+  if (!hasChanges || changes.GetBool("command", false))
+    layout.command = updated.command;
+  updated.ApplyLayout(layout);
+  updated.profiles = profiles;
   updated.folderModes = folderModes;
   *this = updated;
 }
 BMessage Preferences::Save() const {
   BMessage m;
-  // Compatibility aliases support upgrades and rollback without a migration.
-  // The pre-enum single-pane fallback must never reveal a hidden target.
-  m.AddString("workspaceId", WorkspaceId(workspace));
-  m.AddBool("simpleWorkspace", SinglePane());
-  m.AddInt32("workspace", static_cast<int32>(workspace));
-  m.AddInt32("singlePane", singlePane);
-  // Old versions have no column mode; use Details rather than a thumbnail alias.
-  m.AddInt32("leftMode", PaneMode(0) == MillerMode ? 0 : PaneMode(0));
-  m.AddInt32("rightMode", PaneMode(1) == MillerMode ? 0 : PaneMode(1));
-  for (auto w : {Workspace::tviskipt, Workspace::einn, Workspace::askr,
-                 Workspace::smidja}) {
-    BMessage view;
-    view.AddInt32("default", DefaultMode(w));
-    view.AddInt32("leftMode", paneOverrides[int(w)][0]);
-    view.AddInt32("rightMode", paneOverrides[int(w)][1]);
-    m.AddMessage(WorkspaceId(w), &view);
-  }
-  m.AddBool("leftTree", paneTree[0]);
-  m.AddBool("rightTree", paneTree[1]);
-  m.AddBool("smidjaLeftTree", smidjaTree[0]);
-  m.AddBool("smidjaRightTree", smidjaTree[1]);
-  m.AddBool("smidjaPreview", smidjaPreview);
-  m.AddBool("workbenchLeftTree", smidjaTree[0]);
-  m.AddBool("workbenchRightTree", smidjaTree[1]);
-  m.AddBool("preview", preview);
-  m.AddBool("workbenchPreview", smidjaPreview);
+  WorkspaceLayout::Archive(m);
+  profiles.Archive(m);
   for (auto &entry : folderModes) {
     BMessage folder;
     folder.AddString("path", entry.first.c_str());
@@ -157,8 +86,6 @@ BMessage Preferences::Save() const {
   m.AddBool("icons", icons);
   m.AddBool("size", size);
   m.AddBool("date", date);
-  m.AddBool("buttons", buttons);
-  m.AddBool("command", command);
   font_family family;
   font_style style;
   font.GetFamilyAndStyle(&family, &style);
@@ -334,6 +261,9 @@ public:
     prefs.icons = icons->Value();
     prefs.size = size->Value();
     prefs.date = date->Value();
+    BMessage changes;
+    changes.AddBool("buttons", prefs.buttons != (buttons->Value() != 0));
+    changes.AddBool("command", prefs.command != (command->Value() != 0));
     prefs.buttons = buttons->Value();
     prefs.command = command->Value();
     prefs.folders = folders->Text();
@@ -344,9 +274,13 @@ public:
     int32 index = 0;
     for (Workspace workspace : kSettingsWorkspaces) {
       auto menu = defaultModes[index++];
-      prefs.SetDefaultMode(workspace, menu->IndexOf(menu->FindMarked()));
+      const int32 mode = menu->IndexOf(menu->FindMarked());
+      changes.AddBool(WorkspaceId(workspace),
+                      prefs.DefaultMode(workspace) != mode);
+      prefs.SetDefaultMode(workspace, mode);
     }
     BMessage result = prefs.Save();
+    result.AddMessage("layoutChanges", &changes);
     result.what = kApplyPreferences;
     target.SendMessage(&result);
     Quit();
