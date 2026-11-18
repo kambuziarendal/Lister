@@ -84,6 +84,10 @@ public:
     return panel;
   }
 
+  bool StartFloating(const fs::path &path) {
+    return Start(path) && dock->Float();
+  }
+
   void MessageReceived(BMessage *message) override {
     const int64 serial = message->GetInt64("terminal placement", -1);
     switch (message->what) {
@@ -259,12 +263,11 @@ int main() {
               Until([&] { return !detached.IsValid(); }),
           "Close CLI dismisses the floating terminal");
     Check(WithWindow(main, [&](BWindow &) {
-            return owner->Start(fixture.path) == panel;
-          }) &&
-              Click(main, "Detach CLI") && Until([&] {
+            return owner->StartFloating(fixture.path);
+          }) && Until([&] {
                 return PanelMatches(Floating(app), panel, 2, true);
               }),
-          "can start and detach a new CLI after closing the previous one");
+          "direct button starts a closed CLI already detached in a single dispatch");
     detached = Floating(app);
     Check(main.SendMessage(B_QUIT_REQUESTED) == B_OK &&
               Until([&] { return !main.IsValid() && !detached.IsValid(); }),

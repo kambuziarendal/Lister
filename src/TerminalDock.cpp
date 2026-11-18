@@ -107,7 +107,10 @@ bool TerminalDock::FocusFloating() {
 }
 
 bool TerminalDock::Float(int64 requested) {
-  if (!panel || requested != placement || split->IsItemCollapsed(1))
+  // IsItemCollapsed reflects the last layout pass. A direct open starts the
+  // PTY and moves its view in the same window message, before that pass.
+  if (!panel || requested != placement ||
+      (!panel->Active() && split->IsItemCollapsed(1)))
     return false;
   auto *window = new FloatingTerminal(FloatingFrame(split->Window(), *panel),
                                       owner, placement + 1);
