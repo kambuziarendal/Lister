@@ -97,7 +97,7 @@ int main() {
   replace.conflict = [](const std::string &) { return Decision::Replace; };
   Job move{Action::Move, {source.string()}, out.string()};
 
-  deniedStage = target.string() + ".listi-XXXXXX";
+  deniedStage = (out / ".listi-copy-XXXXXX").string();
   auto result = Run(move, replace);
   Check(result.errors.size() == 1 && result.completed == 0 &&
             Has(result, source, target, "failed", strerror(EACCES)) &&
@@ -105,7 +105,7 @@ int main() {
         "destination permission failure names both paths and preserves both files");
   deniedStage.clear();
 
-  watchedStage = target.string() + ".listi-XXXXXX";
+  watchedStage = (out / ".listi-copy-XXXXXX").string();
   failWrite = true;
   result = Run(move, replace);
   Check(writes == 3 && result.errors.size() == 1 &&
@@ -124,6 +124,29 @@ int main() {
         "retry EINTR and short write; report copied file and denied source cleanup");
   deniedRemoval.clear();
   watchedStage.clear();
+
+  // A conflict forces a copy-and-cleanup move even on a single volume.
+  std::ofstream(target) << "old";
+  bool edited = false;
+  Hooks changeAfterCopy = replace;
+  changeAfterCopy.proceed = [&] {
+    if (!edited && Read(target) == payload) {
+      edited = true;
+      std::ofstream(target) << "changed after commit";
+    }
+    return true;
+  };
+  result = Run(move, changeAfterCopy);
+  Check(edited && !result.errors.empty() && !result.completed &&
+            Read(source) == payload && Read(target) == "changed after commit",
+        "changed destination stops move cleanup and preserves the source");
+
+  const auto longName = std::string(250, 'a');
+  std::ofstream(root / longName) << "long name";
+  result = Run({Action::Copy, {(root / longName).string()}, out.string()}, {});
+  Check(result.errors.empty() && result.completed == 1 &&
+            Read(out / longName) == "long name",
+        "copying a valid long filename does not require room for a staging suffix");
 
   const auto other = root / "second", untouched = root / "third";
   std::ofstream(other) << "second";

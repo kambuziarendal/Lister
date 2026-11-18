@@ -131,13 +131,20 @@ struct Runner {
   }
 
   bool deferCompletion = false;
-  std::vector<std::pair<std::string, std::string>> copied;
+  struct CopiedEntry {
+    std::string destination;
+    struct stat committed;
+  };
+  std::map<std::string, CopiedEntry> copied;
   void Done(const std::string &src, const std::string &dst) {
     ++mutations;
     Outcome(src, dst).status = deferCompletion ? "source-retained" : "copied";
-    if (deferCompletion)
-      copied.emplace_back(src, dst);
-    else if (h.fileDone)
+    if (deferCompletion) {
+      struct stat committed;
+      if (lstat(dst.c_str(), &committed))
+        Fail(dst);
+      copied.emplace(src, CopiedEntry{dst, committed});
+    } else if (h.fileDone)
       h.fileDone(src, dst);
   }
   void Check() {
@@ -258,6 +265,20 @@ struct Runner {
            a.st_ctim.tv_sec == b.st_ctim.tv_sec &&
            a.st_ctim.tv_nsec == b.st_ctim.tv_nsec;
   }
+  void VerifyCopy(const std::string &source) {
+    if (!deferCompletion)
+      return;
+    const auto &copy = copied.at(source);
+    struct stat now;
+    if (lstat(copy.destination.c_str(), &now) || !SameEntry(copy.committed, now)) {
+      auto &row = Outcome(source);
+      row.status = "failed";
+      row.detail = copy.destination + ": destination changed; source retained";
+      if (source != guardedSource)
+        Outcome(guardedSource).status = "partial";
+      throw std::runtime_error(row.detail);
+    }
+  }
   void RemoveCopied(const std::string &root, const Snapshot &before,
                     bool *removedAny = nullptr) {
     Snapshot after;
@@ -267,6 +288,7 @@ struct Runner {
           root + ": source changed; copied data kept and source retained");
     for (auto &entry : before) {
       auto found = after.find(entry.first);
+      VerifyCopy(entry.first);
       if (found == after.end() || !SameEntry(entry.second, found->second))
         throw std::runtime_error(
             root + ": source changed; copied data kept and source retained");
@@ -279,6 +301,7 @@ struct Runner {
       struct stat now;
       if (lstat(it->first.c_str(), &now))
         Fail(it->first);
+      VerifyCopy(it->first);
       bool directory = S_ISDIR(it->second.st_mode);
       if (now.st_ino != it->second.st_ino || now.st_dev != it->second.st_dev ||
           (!directory && !SameEntry(it->second, now)))
@@ -395,7 +418,9 @@ struct Runner {
     if (!Allow(dst))
       return false;
     Guard();
-    std::string pattern = dst + ".listi-XXXXXX";
+    // Keep staging on the target volume without extending a possibly
+    // maximum-length destination leaf.
+    std::string pattern = dst.substr(0, dst.rfind('/') + 1) + ".listi-copy-XXXXXX";
     std::vector<char> name(pattern.begin(), pattern.end());
     name.push_back(0);
     FD out(mkstemp(name.data()));
@@ -577,9 +602,9 @@ struct Runner {
                                       : Join(Canonical(job.destination),
                                              named ? job.entryName : leaf);
         if (S_ISDIR(sourceStat.st_mode)) {
-          std::string from = Canonical(source),
-                      parent = Canonical(
-                          destination.substr(0, destination.find_last_of('/')));
+          const auto slash = destination.find_last_of('/');
+          const auto parent = Canonical(slash == 0 ? "/" : destination.substr(0, slash));
+          const auto from = Canonical(source);
           if (parent == from ||
               parent.compare(0, from.size() + 1, from + "/") == 0)
             throw std::runtime_error(
@@ -637,7 +662,7 @@ struct Runner {
           result.completed++;
           if (h.fileDone)
             for (auto &entry : copied)
-              h.fileDone(entry.first, entry.second);
+              h.fileDone(entry.first, entry.second.destination);
         }
       } catch (const std::runtime_error &e) {
         Problem(source, e.what());
