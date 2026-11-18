@@ -141,6 +141,13 @@ BulkRenamePreview PreviewBulkRename(const Job &job,
 
 Result RunBulkRename(const Job &job, const Hooks &hooks) {
   Result result;
+  for (const auto &source : job.sources) {
+    const auto target = job.bulkNames.find(source);
+    std::string destination;
+    if (target != job.bulkNames.end())
+      destination = Join(job.destinationFolder, target->second);
+    result.outcomes.push_back({source, destination, "unprocessed", ""});
+  }
   if (hooks.proceed && !hooks.proceed()) {
     result.cancelled = true;
     return result;
@@ -162,19 +169,28 @@ Result RunBulkRename(const Job &job, const Hooks &hooks) {
     }
     CheckTargets(confirmed);
     if (!confirmed.CanApply()) {
-      for (const auto &row : confirmed.rows)
-        if (!row.error.empty())
+      for (size_t i = 0; i < confirmed.rows.size(); ++i) {
+        const auto &row = confirmed.rows[i];
+        if (!row.error.empty()) {
+          result.outcomes[i].status = "failed";
+          result.outcomes[i].detail = row.error;
           result.errors.push_back(row.before + ": " + row.error);
+        }
+      }
       result.skipped = confirmed.changed - result.errors.size();
       if (result.errors.empty())
         result.errors.push_back("There are no changed names to apply.");
       return result;
     }
     size_t remaining = confirmed.changed;
-    for (const auto &source : job.sources) {
+    for (auto &outcome : result.outcomes) {
+      const auto &source = outcome.source;
       const auto &name = job.bulkNames.at(source);
-      if (Leaf(source) == name)
+      if (Leaf(source) == name) {
+        outcome.status = "skipped";
+        outcome.detail = "Name unchanged.";
         continue;
+      }
       Job rename;
       rename.action = Action::Rename;
       rename.sources.push_back(source);
@@ -183,7 +199,12 @@ Result RunBulkRename(const Job &job, const Hooks &hooks) {
       rename.expectedSources.emplace(source, job.expectedSources.at(source));
       rename.expectedDestination = job.expectedDestination;
       auto row = Run(rename, hooks);
+      if (!row.errors.empty()) {
+        outcome.status = "failed";
+        outcome.detail = row.errors.front();
+      }
       if (row.completed) {
+        outcome.status = "moved";
         ++result.completed;
         --remaining;
         result.completedRoots.emplace_back(source, rename.destination);

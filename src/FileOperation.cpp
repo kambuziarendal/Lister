@@ -76,6 +76,36 @@ struct Runner {
   Result result;
   const Job *guardedJob = nullptr;
   std::string guardedSource;
+  std::map<std::string, size_t> outcomeIndex;
+  size_t mutations = 0;
+  EntryOutcome &Outcome(const std::string &src, const std::string &dst = {}) {
+    auto index = outcomeIndex.emplace(src, result.outcomes.size());
+    if (index.second)
+      result.outcomes.push_back({src, dst, "unprocessed", {}});
+    auto &row = result.outcomes[index.first->second];
+    if (!dst.empty())
+      row.destination = dst;
+    return row;
+  }
+  void Problem(const std::string &src, const std::string &error) {
+    auto &row = Outcome(src);
+    if (row.status == "unprocessed")
+      row.status = "failed";
+    row.detail = error;
+  }
+  void Removed(const std::string &src) {
+    Outcome(src).status = deferCompletion ? "moved" : "completed";
+    // A selected folder may still exist after some of its children have
+    // been removed. Don't report that its original tree is intact.
+    std::string parent = src;
+    while (parent != guardedSource) {
+      const auto slash = parent.rfind('/');
+      if (slash == std::string::npos)
+        break;
+      parent.resize(slash);
+      Outcome(parent).status = "partial";
+    }
+  }
   void Guard() {
     if (!guardedJob)
       return;
@@ -103,6 +133,8 @@ struct Runner {
   bool deferCompletion = false;
   std::vector<std::pair<std::string, std::string>> copied;
   void Done(const std::string &src, const std::string &dst) {
+    ++mutations;
+    Outcome(src, dst).status = deferCompletion ? "source-retained" : "copied";
     if (deferCompletion)
       copied.emplace_back(src, dst);
     else if (h.fileDone)
@@ -252,8 +284,12 @@ struct Runner {
           (!directory && !SameEntry(it->second, now)))
         throw std::runtime_error(
             it->first + ": source changed during cleanup; left untouched");
-      if (directory ? rmdir(it->first.c_str()) : unlink(it->first.c_str()))
-        Fail(it->first);
+      if (directory ? rmdir(it->first.c_str()) : unlink(it->first.c_str())) {
+        const std::string error = it->first + ": " + strerror(errno);
+        Problem(it->first, error);
+        throw std::runtime_error(error);
+      }
+      Removed(it->first);
       if (removedAny)
         *removedAny = true;
       // The removal has committed. Poll before the next entry, not after
@@ -281,6 +317,28 @@ struct Runner {
   }
   bool Copy(const std::string &src, const std::string &dst,
             unsigned depth = 0) {
+    Outcome(src, dst);
+    const size_t before = mutations;
+    try {
+      const bool complete = CopyEntry(src, dst, depth);
+      if (!complete)
+        Outcome(src).status = before == mutations ? "skipped" : "partial";
+      return complete;
+    } catch (const Cancelled &) {
+      auto &row = Outcome(src);
+      if (before != mutations)
+        row.status = "partial";
+      if (row.status == "unprocessed")
+        row.detail = "Cancelled before commit.";
+      throw;
+    } catch (const std::runtime_error &error) {
+      if (before != mutations)
+        Outcome(src).status = "partial";
+      Problem(src, error.what());
+      throw;
+    }
+  }
+  bool CopyEntry(const std::string &src, const std::string &dst, unsigned depth) {
     Check();
     if (depth > 64)
       throw std::runtime_error("Folder tree exceeds the safe copy depth");
@@ -301,8 +359,11 @@ struct Runner {
         throw std::runtime_error(
             dst + ": destination is not a directory; not replaced");
       // Merge directories, but never traverse destination symbolic links.
-      if (!existed && mkdir(dst.c_str(), 0700) != 0)
-        Fail(dst);
+      if (!existed) {
+        if (mkdir(dst.c_str(), 0700) != 0)
+          Fail(dst);
+        ++mutations;
+      }
       bool complete = true;
       Dir dir(opendir(src.c_str()), closedir);
       if (!dir)
@@ -406,6 +467,14 @@ struct Runner {
     guardedJob = &job;
     const bool named =
         job.action == Action::Duplicate || job.action == Action::Link;
+    for (const auto &source : job.sources) {
+      std::string target;
+      if (job.action == Action::Rename)
+        target = job.destination;
+      else if (named || job.action == Action::Copy || job.action == Action::Move)
+        target = Join(job.destination, named ? job.entryName : Leaf(source));
+      Outcome(source, target);
+    }
     if (named) {
       if (job.sources.size() != 1 || job.expectedSources.size() != 1 ||
           job.expectedDestination.device < 0)
@@ -414,11 +483,13 @@ struct Runner {
       ValidateNewEntryName(job.destination, job.entryName);
     }
     if (job.action == Action::MakeDirectory) {
+      Outcome("", job.destination);
       Check();
       Guard();
       if (mkdir(job.destination.c_str(), 0755))
         Fail(job.destination);
       result.completed++;
+      Outcome("").status = "completed";
       return;
     }
     for (auto &source : job.sources) {
@@ -456,6 +527,7 @@ struct Runner {
             throw std::runtime_error("Could not create link: " +
                                      std::string(strerror(status)));
           const auto destination = Join(job.destination, job.entryName);
+          Outcome(source, destination).status = "completed";
           result.completedRoots.emplace_back(source, destination);
           ++result.completed;
           if (h.fileDone)
@@ -479,6 +551,7 @@ struct Runner {
           const std::string destination = job.action == Action::Trash
                                               ? MoveToTrash(source)
                                               : RestoreFromTrash(source);
+          Outcome(source, destination).status = "moved";
           result.completed++;
           if (h.fileDone)
             h.fileDone(source, destination);
@@ -487,6 +560,8 @@ struct Runner {
         if (job.action == Action::Delete) {
           Snapshot deletion;
           SnapshotTree(source, deletion, sourceStat.st_dev);
+          for (const auto &entry : deletion)
+            Outcome(entry.first);
           RemoveCopied(source, deletion);
           result.completed++;
           continue;
@@ -510,6 +585,7 @@ struct Runner {
                 destination + ": already exists; rename does not overwrite");
           struct stat empty {};
           Commit(source, destination, false, empty);
+          Outcome(source, destination).status = "moved";
           if (h.fileDone)
             h.fileDone(source, destination);
           result.completed++;
@@ -521,6 +597,7 @@ struct Runner {
           BDirectory dir(job.destination.c_str());
           status_t s = e.MoveTo(&dir, leaf.c_str(), false);
           if (s == B_OK) {
+            Outcome(source, destination).status = "moved";
             result.completedRoots.emplace_back(source, destination);
             ++result.completed;
             if (h.fileDone)
@@ -533,8 +610,11 @@ struct Runner {
             throw std::runtime_error(source + ": " + strerror(s));
         }
         Snapshot beforeMove;
-        if (job.action == Action::Move)
+        if (job.action == Action::Move) {
           SnapshotTree(source, beforeMove, sourceStat.st_dev);
+          for (const auto &entry : beforeMove)
+            Outcome(entry.first, destination + entry.first.substr(source.size()));
+        }
         if (Copy(source, destination)) {
           if (job.action == Action::Move) {
             Guard();
@@ -554,6 +634,7 @@ struct Runner {
               h.fileDone(entry.first, entry.second);
         }
       } catch (const std::runtime_error &e) {
+        Problem(source, e.what());
         result.errors.push_back(e.what());
         if (h.fileFailed)
           h.fileFailed(source, e.what());
@@ -605,6 +686,8 @@ Result Run(const Job &j, const Hooks &h) {
     r.result.cancelled = true;
   } catch (const std::exception &e) {
     r.result.errors.push_back(e.what());
+    if (r.result.outcomes.size() == 1)
+      r.Problem(r.result.outcomes.front().source, e.what());
   }
   return r.result;
 }

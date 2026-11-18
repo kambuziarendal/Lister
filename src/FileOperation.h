@@ -74,6 +74,9 @@ struct Hooks {
   std::function<void(const std::string &, const std::string &)> fileDone;
   std::function<void(const std::string &, const std::string &)> fileFailed;
 };
+struct EntryOutcome {
+  std::string source, destination, status, detail;
+};
 struct Result {
   int completed = 0, skipped = 0;
   bool cancelled = false;
@@ -81,6 +84,8 @@ struct Result {
   std::vector<std::pair<std::string, std::string>> completedRoots;
   // A cancelled local move left a complete copy and removed no source entries.
   std::optional<std::pair<std::string, std::string>> retainedMoveCopy;
+  // Selected roots and individual entries visited during a non-atomic transfer.
+  std::vector<EntryOutcome> outcomes;
 };
 Result Run(const Job &, const Hooks &);
 std::string Join(const std::string &, const std::string &);

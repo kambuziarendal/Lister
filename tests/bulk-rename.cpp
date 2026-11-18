@@ -148,6 +148,9 @@ int main() {
     const auto renamedFolder = Join(folder, preview.rows[0].after);
     Check(result.completed == 1 && result.skipped == 1 &&
               result.errors.size() == 1 && result.completedRoots.size() == 1 &&
+              result.outcomes.size() == 3 && result.outcomes[0].status == "moved" &&
+              result.outcomes[1].status == "failed" &&
+              result.outcomes[2].status == "unprocessed" &&
               !prompted && !Exists(b) && Exists(renamedFolder) &&
               Read(occupied) == "other" && Read(a) == "asset" && Exists(c),
           "late collision keeps completed moves and accurately reports partial success");

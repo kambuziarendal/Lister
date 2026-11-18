@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Opt-in native audit. The destination is an explicitly selected test volume.
 #include "FileOperation.h"
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -36,6 +37,15 @@ struct Fixture {
 std::string Read(const fs::path &file) {
   std::ifstream stream(file, std::ios::binary);
   return {std::istreambuf_iterator<char>(stream), {}};
+}
+
+bool Has(const Result &result, const fs::path &source, const fs::path &target,
+         const char *status) {
+  return std::any_of(result.outcomes.begin(), result.outcomes.end(),
+                     [&](const EntryOutcome &row) {
+    return row.source == source.string() && row.destination == target.string() &&
+           row.status == status;
+  });
 }
 
 void Write(const fs::path &file, const std::string &contents) {
@@ -84,6 +94,8 @@ int main() try {
         {first.string(), moved.string()}};
     check(result.errors.empty() && result.cancelled == batch &&
               result.completed == 1 && notifications == 1 &&
+              Has(result, first, moved, "moved") &&
+              (!batch || Has(result, next, dest.path / "next", "unprocessed")) &&
               result.completedRoots == expected && !result.retainedMoveCopy &&
               !fs::exists(first) &&
               Read(moved) == "first" &&
@@ -123,6 +135,7 @@ int main() try {
   auto result = Run({Action::Move, {large.string()}, dest.path.string()}, hooks);
   check(result.cancelled && !result.completed && result.errors.empty() &&
             result.completedRoots.empty() && !done && !failed &&
+            Has(result, large, largeCopy, "source-retained") &&
             result.retainedMoveCopy ==
                 std::make_pair(large.string(), largeCopy.string()) &&
             Read(large) == payload && Read(largeCopy) == payload,
@@ -158,6 +171,9 @@ int main() try {
   result = Run({Action::Move, {folder.string()}, dest.path.string()}, hooks);
   check(result.cancelled && result.errors.empty() && !result.completed &&
             result.completedRoots.empty() && !result.retainedMoveCopy &&
+            Has(result, folder, treeCopy, "partial") &&
+            Has(result, folder / "a", treeCopy / "a", "source-retained") &&
+            Has(result, folder / "z", treeCopy / "z", "moved") &&
             !fs::exists(folder / "z") && Read(folder / "a") == "first child" &&
             Read(treeCopy / "a") == "first child" &&
             Read(treeCopy / "z") == "last child",
@@ -195,6 +211,7 @@ int main() try {
                 std::string::npos &&
             !result.cancelled && !result.completed &&
             result.completedRoots.empty() && !result.retainedMoveCopy &&
+            Has(result, oversized, original, "failed") &&
             Read(oversized) == contents &&
             Read(original) == "existing destination" &&
             std::distance(fs::directory_iterator(full.path),
