@@ -325,6 +325,8 @@ Kind Identify(const std::string &leaf, Input &input) {
   }
 }
 
+void ValidateText(std::string_view text) { Utf8Length(text, false); }
+
 std::string ReadText(Input &input, bool &truncated, size_t limit) {
   auto content = ReadPrefix(input, limit + 1);
   truncated = content.size() > limit;

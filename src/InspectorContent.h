@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 
 class BBitmap;
 namespace Listi {
@@ -33,7 +34,9 @@ private:
 };
 
 Kind Identify(const std::string &, Input &);
-std::string ReadText(Input &, bool &truncated, size_t limit = 256 * 1024);
+constexpr size_t TextLimit = 256 * 1024;
+void ValidateText(std::string_view);
+std::string ReadText(Input &, bool &truncated, size_t limit = TextLimit);
 std::unique_ptr<BBitmap> RenderPdf(Input &, int page, const Listi::TransferControl &);
 using PresentFrame = std::function<void(std::unique_ptr<BBitmap>)>;
 std::string InspectMedia(Input &, Kind, bool play, const Listi::TransferControl &,
