@@ -14,9 +14,8 @@ interfaces. Coverage, responsiveness and resource use must be demonstrated task
 by task. This is a direction, not a claim that the alpha already matches or
 outperforms Directory Opus, Tracker or Dolphin.
 
-For the released alpha, see the [README](../README.md). For implemented but
-unreleased features, see the [development workflow guide](https://github.com/kambuziarendal/listi/blob/work/format-review-20261118/docs/GUIDE.md). The ideas below are not a release schedule or a
-commitment to implement them all at once.
+For the 0.32.0 GitHub test release, see the [README](../README.md) and the
+[workflow guide](GUIDE.md). The ideas below are not a release schedule.
 
 ## Optional by design
 
@@ -35,8 +34,7 @@ The customisation goal goes beyond toggling a few controls:
 - Make adaptive behaviour an explicit choice, with manual control and a
   predictable way back. Do not silently rearrange someone's workspace.
 
-The published 0.31.1 alpha has four presets. The development branch adds a
-workspace editor: choose and order command buttons, place modules in supported
+Version 0.32.0 has four presets and a workspace editor: choose and order command buttons, place modules in supported
 zones and save named layouts. Optional adaptive sizing reflows the button bank;
 it does not choose the active panel or view mode. This is not arbitrary docking
 or a system for creating new commands. Safety checks, confirmations and
@@ -44,7 +42,7 @@ clear operation targets are not optional just because a tool is configurable.
 
 ## First: make existing file work easier to trust
 
-Implemented on the development branch, not in the published 0.31.1 alpha:
+Included in the 0.32.0 alpha:
 
 1. **File safety and partial moves.** Local operations report what happened to
    selected entries. In a move that copies a tree before removing the source,
@@ -61,22 +59,27 @@ Implemented on the development branch, not in the published 0.31.1 alpha:
    Clipboard ownership, archive verification and drop choices retain their
    specific checks.
 
-See the [workflow guide](https://github.com/kambuziarendal/listi/blob/work/format-review-20261118/docs/GUIDE.md) for interpreting partial results and the
-[verification guide](https://github.com/kambuziarendal/listi/blob/work/format-review-20261118/docs/VERIFICATION.md) for reproducing fault tests. Job reports
+4. **Selection and retries.** Refreshing a local folder no longer selects a
+   replacement file merely because its name matches. Colliding paste/drop names
+   are rejected before work starts. If the original parent now points into
+   Trash, restore keeps the entry and its metadata so you can retry.
+
+See the [workflow guide](GUIDE.md) for interpreting partial results and the
+[verification guide](VERIFICATION.md) for reproducing fault tests. Job reports
 are session information, not a persistent audit log or an undo mechanism.
 
 ## Feature directions and current foundations
 
-Status here includes the unreleased development build. A related foundation is
+“Available now” means included in 0.32.0. A related foundation is
 not the same as a finished feature.
 
 | Direction | Available now | Planned or exploratory work |
 |---|---|---|
 | Duplicate finder | SHA-256 folder comparison; Duplicate creates another copy | Search one or more chosen folders for duplicate contents and review groups |
 | Bulk rename | Local multi-file preview, text replacement, numbering and collision checks | Broader rename transformations |
-| Miller columns and adaptive views | Four preset layouts and optional Miller columns, default in Einn | Opt-in compact buttons are implemented; automatic file-view changes remain exploratory |
+| Miller columns and adaptive views | Four presets, Miller columns (default in Einn) and opt-in compact buttons | Automatic file-view changes remain exploratory |
 | Directory synchronisation | Read-only recursive size/SHA-256 comparison | Previewed, conflict-aware one-way or two-way synchronisation |
-| Clipboard contents to a new file | Copy/Cut/Paste of file references; development build saves text and PNG images | Explore additional clipboard formats when useful |
+| Clipboard contents to a new file | Copy/Cut/Paste of file references; save clipboard text or PNG images as a new file | Explore additional clipboard formats when useful |
 | Rich built-in inspectors | Image preview/thumbnails, a basic text viewer, archive browsing, local properties | Broader code/document inspection, detailed images and camera EXIF/GPS metadata |
 | Copy queues and pause | Per-job results, pause/resume and targeted cancellation | Persistent history is not implemented |
 | Automatic rules and drop folders | Manual file actions, search filters and live BFS queries | Opt-in sorting rules and configured drop targets for extract/rename/move workflows |
@@ -95,7 +98,7 @@ duplicate. Show groups, origins and the reason for a match. Handle unreadable or
 changing files, links and cancellation honestly. Keep review separate from any
 cleanup action; finding a duplicate must never delete it automatically.
 
-The development build previews local bulk renames with search/replace,
+Listi previews local bulk renames with search/replace,
 numbering, prefix/suffix, collision checks and guarded execution. Configurable
 actions should operate on frozen selections and pass filenames as data, not
 shell code.
@@ -151,13 +154,13 @@ hidden background moves, recursion loops or overwriting files without review.
 A watched folder, a drop target and a general scripting hook have different
 trust and lifecycle requirements; none is implicitly enabled by this roadmap.
 
-The development build can save plain clipboard text or an image as a new named
+Listi can save plain clipboard text or an image as a new named
 file in a local folder. Images are saved as PNG. File references still use
 ordinary Paste.
 
 ### Collect files from several folders on a Shelf
 
-The unreleased development build has a separate Shelf window for local
+Listi has a separate Shelf window for local
 references, with original-folder and availability columns, drop support,
 Command+Shift+Y and a confirmed Move all action using the normal queue.
 Create ZIP packs references from different folders through the same queue
@@ -176,7 +179,7 @@ parent folders. Show when sharing is active, when it expires and how to stop it.
 
 - Let tool windows such as the Shelf participate in native **Stack & Tile** or
   remain independent, rather than implementing Listi's own docking system.
-- The development build offers **Convert here** for a single local image drop,
+- Listi offers **Convert here** for a single local image drop,
   using installed Translation Kit output formats without overwriting files.
   Ordinary Copy and Move choices remain available for cross-folder drops.
 - Explore an optional desktop **Replicant** as a drop zone. A first use could be

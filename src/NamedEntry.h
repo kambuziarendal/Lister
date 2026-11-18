@@ -6,6 +6,7 @@ namespace Listi {
 // Link uses the specified destination folder. No source/clipboard mutation.
 Job PrepareNamedEntry(Action, const std::vector<std::string> &selection,
                       const std::string &linkDestination = "");
+void ValidateEntryLeaf(const std::string &name);
 // Both the dialog and worker validate. The worker also commits exclusively.
 void ValidateNewEntryName(const std::string &folder, const std::string &name);
 std::string LinkText(const Job &);

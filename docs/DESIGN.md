@@ -16,9 +16,9 @@ Its interface uses Haiku controls, system colours, MIME icons and Layout Kit.
   See the [shortcut reference](../README.md#basic-workflow).
 - **Optional by design.** Useful defaults come first. Advanced views, inspectors,
   rules and integrations should be opt-in rather than required for ordinary
-  browsing. The long-term goal is to add, remove, move and reorder buttons and
-  workspace modules, save layouts and restore defaults. Current visibility
-  preferences are not yet a free-form layout editor. Configurability must not
+  browsing. The development build uses fixed module positions and an
+  ordered bank of existing actions. Profiles contain layout state, not paths,
+  credentials, selections, running jobs or pending confirmations. Configurability must not
   disable safety checks or hide operation targets.
 - **Honest outcomes.** Report cancellation, errors and partial completion.
   Cancellation is not rollback, and a job log is not a backup.

@@ -69,7 +69,8 @@ int SelfTest() {
   model.Pick(4, true, false);
   check(model.Selected().size() == 4, "grid Shift selects the complete range");
   model.Pick(2, true, false);
-  check(model.Selected().size() == 2, "grid Shift range shrinks from its anchor");
+  check(model.Selected().size() == 2,
+        "grid Shift range shrinks from its anchor");
   model.Pick(2, false, true);
   check(model.Selected() == std::vector<std::string>{"a.txt"},
         "grid toggle removes one selected entry");
@@ -152,6 +153,31 @@ int SelfTest() {
   check(r.errors.empty() && !exists(Join(root, "src/large")) &&
             exists(Join(root, "dst/large")),
         "same-volume move completes");
+  // A cancellation after an atomic move cannot undo that move. Only
+  // unstarted entries should remain in the source folder.
+  for (bool hasNext : {false, true}) {
+    std::string name = hasNext ? "batch-first" : "only-entry";
+    std::string first = Join(root, "src/" + name);
+    std::string moved = Join(root, "dst/" + name);
+    write(first, "first");
+    Job move{Action::Move, {first}, Join(root, "dst")};
+    std::string next = Join(root, "src/batch-next");
+    if (hasNext) {
+      write(next, "next");
+      move.sources.push_back(next);
+    }
+    Hooks afterMove;
+    afterMove.proceed = [&] { return !exists(moved); };
+    r = Run(move, afterMove);
+    check(r.errors.empty() && r.cancelled == hasNext && r.completed == 1 &&
+              r.completedRoots.size() == 1 &&
+              r.completedRoots.front() == std::make_pair(first, moved) &&
+              !exists(first) && text(moved) == "first" &&
+              (!hasNext ||
+               (text(next) == "next" && !exists(Join(root, "dst/batch-next")))),
+          hasNext ? "cancel between moves counts first and leaves next in place"
+                  : "cancel after last atomic move does not undo completion");
+  }
   r = Run(
       {Action::Rename, {Join(root, "dst/large")}, Join(root, "dst/renamed")},
       hooks);
@@ -165,6 +191,13 @@ int SelfTest() {
   r = Run({Action::Delete, {Join(root, "dst/linked-directory")}, ""}, hooks);
   check(r.errors.empty() && exists(Join(root, "src/tree/nested/file")),
         "delete symbolic link leaves target untouched");
+  const auto removed = Join(root, "dst/delete-last");
+  write(removed, "last");
+  Hooks afterDelete;
+  afterDelete.proceed = [&] { return exists(removed); };
+  r = Run({Action::Delete, {removed}, ""}, afterDelete);
+  check(!r.cancelled && r.completed == 1 && r.errors.empty() && !exists(removed),
+        "cancel after the last removal does not undo deletion");
   mkdir(Join(root, "merge").c_str(), 0755);
   mkdir(Join(root, "merge/tree").c_str(), 0755);
   r = Run({Action::Move, {Join(root, "src/tree")}, Join(root, "merge")}, hooks);
@@ -195,14 +228,18 @@ int SelfTest() {
     ++completedEvents;
     reportedBeforeCleanup |= exists(source);
   };
-  r = Run({Action::Move, {Join(root, "src/move-progress")}, Join(root, "dst")}, hooks);
+  r = Run({Action::Move, {Join(root, "src/move-progress")}, Join(root, "dst")},
+          hooks);
   check(r.completed == 1 && completedEvents == 1 && !reportedBeforeCleanup,
         "move completion is emitted only after source cleanup");
   write(Join(root, "src/move-cancel"), "new data");
   write(Join(root, "dst/move-cancel"), "old data");
   completedEvents = 0;
-  hooks.proceed = [&] { return text(Join(root, "dst/move-cancel")) != "new data"; };
-  r = Run({Action::Move, {Join(root, "src/move-cancel")}, Join(root, "dst")}, hooks);
+  hooks.proceed = [&] {
+    return text(Join(root, "dst/move-cancel")) != "new data";
+  };
+  r = Run({Action::Move, {Join(root, "src/move-cancel")}, Join(root, "dst")},
+          hooks);
   check(r.cancelled && r.completed == 0 && completedEvents == 0 &&
             exists(Join(root, "src/move-cancel")) &&
             text(Join(root, "dst/move-cancel")) == "new data",
@@ -233,7 +270,8 @@ int SelfTest() {
     if (n)
       unlink(Join(root, "dst/disappearing").c_str());
   };
-  r = Run({Action::Copy, {Join(root, "src/disappearing")}, Join(root, "dst")}, hooks);
+  r = Run({Action::Copy, {Join(root, "src/disappearing")}, Join(root, "dst")},
+          hooks);
   check(!r.errors.empty() && !exists(Join(root, "dst/disappearing")),
         "deleted conflict target is detected before commit");
   hooks.progress = {};

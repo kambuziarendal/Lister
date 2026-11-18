@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "ArchiveBackend.h"
+#include "ArWriter.h"
 #include "ArchiveVolumes.h"
 #include <algorithm>
 #include <cctype>
@@ -93,14 +94,22 @@ std::string OpenArchive(const std::string &path,
     return "";
   RejectSplitArchive(path);
   const auto parts = FindArchiveVolumes(path);
+  if (parts.kind == ArchiveVolumes::Single) {
+    auto root = ArOpen(path, control);
+    if (!root.empty())
+      return root;
+  }
   if (parts.kind != ArchiveVolumes::Single && !SevenZipAvailable())
     throw std::runtime_error("Install the optional p7zip package from "
                              "HaikuDepot to read split archives inside Listi.");
   auto format = SevenZipFormat(parts.files.front().path);
   if (parts.kind != ArchiveVolumes::Single &&
-      (format.empty() || (parts.kind == ArchiveVolumes::Joined7z && format != "7z") ||
-       (parts.kind == ArchiveVolumes::Rar && format != "rar" && format != "rar5")))
-    throw std::runtime_error("The first archive part is damaged or does not match this set.");
+      (format.empty() ||
+       (parts.kind == ArchiveVolumes::Joined7z && format != "7z") ||
+       (parts.kind == ArchiveVolumes::Rar && format != "rar" &&
+        format != "rar5")))
+    throw std::runtime_error(
+        "The first archive part is damaged or does not match this set.");
   if (!format.empty() && SevenZipAvailable())
     return SevenZipOpen(path, control);
   if (!LibarchiveAvailable() && !ArchiveExtension(path))
@@ -127,15 +136,20 @@ std::vector<FileEntry> ReadListing(const Location &location,
                              "HaikuDepot to read split archives inside Listi.");
   auto format = SevenZipFormat(parts.files.front().path);
   if (parts.kind != ArchiveVolumes::Single &&
-      (format.empty() || (parts.kind == ArchiveVolumes::Joined7z && format != "7z") ||
-       (parts.kind == ArchiveVolumes::Rar && format != "rar" && format != "rar5")))
-    throw std::runtime_error("The first archive part is damaged or does not match this set.");
+      (format.empty() ||
+       (parts.kind == ArchiveVolumes::Joined7z && format != "7z") ||
+       (parts.kind == ArchiveVolumes::Rar && format != "rar" &&
+        format != "rar5")))
+    throw std::runtime_error(
+        "The first archive part is damaged or does not match this set.");
   if (!format.empty() && SevenZipAvailable())
     return SevenZipList(location, control);
+  if (parts.kind == ArchiveVolumes::Single && ArRecognized(location.archive))
+    return ArList(location, control);
   return Backend().list(location, control);
 }
-std::shared_ptr<const std::vector<FileEntry>> Listing(
-    const Location &location, const TransferControl &control) {
+std::shared_ptr<const std::vector<FileEntry>>
+Listing(const Location &location, const TransferControl &control) {
   control.Check();
   const auto fingerprint = FindArchiveVolumes(location.archive).Fingerprint();
   const auto passwordGeneration = ArchivePasswordGeneration();
@@ -150,7 +164,8 @@ std::shared_ptr<const std::vector<FileEntry>> Listing(
       listings.erase(found);
     }
   }
-  auto entries = std::make_shared<const std::vector<FileEntry>>(ReadListing(location, control));
+  auto entries = std::make_shared<const std::vector<FileEntry>>(
+      ReadListing(location, control));
   control.Check();
   CheckArchivePasswordGeneration(passwordGeneration);
   if (FindArchiveVolumes(location.archive).Fingerprint() != fingerprint)
@@ -161,9 +176,11 @@ std::shared_ptr<const std::vector<FileEntry>> Listing(
       bytes += sizeof(FileEntry) + entry.name.size() + entry.path.size();
     if (bytes <= ListingBudget) {
       if (listings.size() >= 4 || bytes > ListingBudget - listingBytes) {
-        listings.clear(); listingBytes = 0;
+        listings.clear();
+        listingBytes = 0;
       }
-      listings.emplace(key, CachedListing{fingerprint, passwordGeneration, entries, bytes});
+      listings.emplace(
+          key, CachedListing{fingerprint, passwordGeneration, entries, bytes});
       listingBytes += bytes;
     }
   }
@@ -173,10 +190,15 @@ std::shared_ptr<const std::vector<FileEntry>> Listing(
 ArchiveListingScope::ArchiveListingScope() { ++listingScopes; }
 bool ArchiveListingScopeActive() { return listingScopes != 0; }
 ArchiveListingScope::~ArchiveListingScope() {
-  if (!--listingScopes) { listings.clear(); listingBytes = 0; ClearLibarchiveReadCache(); }
+  if (!--listingScopes) {
+    listings.clear();
+    listingBytes = 0;
+    ClearLibarchiveReadCache();
+    ClearArReadCache();
+  }
 }
 std::vector<FileEntry> ListArchive(const Location &location,
-                                 const TransferControl &control) {
+                                   const TransferControl &control) {
   return *Listing(location, control);
 }
 bool StatArchive(const Location &location, FileEntry &entry,
@@ -184,9 +206,13 @@ bool StatArchive(const Location &location, FileEntry &entry,
   auto parent = ParseLocation(ParentLocation(location.URL()));
   const auto entries = Listing(parent, control);
   const auto name = LocationLeaf(location.URL());
-  const auto found = std::lower_bound(entries->begin(), entries->end(), name,
-    [](const FileEntry &entry, const std::string &name) { return entry.name < name; });
-  if (found == entries->end() || found->name != name) return false;
+  const auto found =
+      std::lower_bound(entries->begin(), entries->end(), name,
+                       [](const FileEntry &entry, const std::string &name) {
+                         return entry.name < name;
+                       });
+  if (found == entries->end() || found->name != name)
+    return false;
   entry = *found;
   return true;
 }
@@ -199,11 +225,16 @@ void ReadArchive(const Location &location, const DataSink &sink,
                              "HaikuDepot to read split archives inside Listi.");
   auto format = SevenZipFormat(parts.files.front().path);
   if (parts.kind != ArchiveVolumes::Single &&
-      (format.empty() || (parts.kind == ArchiveVolumes::Joined7z && format != "7z") ||
-       (parts.kind == ArchiveVolumes::Rar && format != "rar" && format != "rar5")))
-    throw std::runtime_error("The first archive part is damaged or does not match this set.");
+      (format.empty() ||
+       (parts.kind == ArchiveVolumes::Joined7z && format != "7z") ||
+       (parts.kind == ArchiveVolumes::Rar && format != "rar" &&
+        format != "rar5")))
+    throw std::runtime_error(
+        "The first archive part is damaged or does not match this set.");
   if (!format.empty() && SevenZipAvailable())
     SevenZipRead(location, sink, control);
+  else if (parts.kind == ArchiveVolumes::Single && ArRecognized(location.archive))
+    ArRead(location, sink, control);
   else
     Backend().read(location, sink, control);
 }

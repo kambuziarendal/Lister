@@ -4,7 +4,9 @@
 #include <string>
 #include <vector>
 namespace Listi {
-struct SavedPlace { std::string name, path; };
+struct SavedPlace {
+  std::string name, path;
+};
 class SavedPlaces {
 public:
   static constexpr size_t Limit = 64;
@@ -17,6 +19,7 @@ public:
   static SavedPlaces FromMessage(const BMessage &);
   static SavedPlaces Load(const std::string &file);
   void Save(const std::string &file) const;
+
 private:
   std::vector<SavedPlace> items;
   std::string Name(const std::string &, const std::string &except = "") const;

@@ -15,7 +15,7 @@ struct FileAttribute {
 };
 struct PropertySnapshot {
   std::string path, summary;
-  struct stat stat{};
+  struct stat stat {};
   std::vector<FileAttribute> attributes;
   bool limited = false, writableKind = false;
 };
@@ -31,6 +31,7 @@ public:
             type_code type, const std::string &text);
   void Remove(const FileAttribute &expected);
   void Permissions(mode_t expected, const std::string &octal);
+
 private:
   std::string path;
   BNode node;

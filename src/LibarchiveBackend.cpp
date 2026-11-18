@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "DynamicLibrary.h"
 #include "ArchiveBackend.h"
+#include "ArchiveTextLocale.h"
 #include "ArchivePasswords.h"
 #include <memory>
 #include <algorithm>
@@ -47,7 +48,8 @@ struct Reader {
       throw std::runtime_error(path + ": " + strerror(errno));
     struct stat opened;
     if (fstat(fd, &opened) || !S_ISREG(opened.st_mode)) {
-      close(fd); fd = -1;
+      close(fd);
+      fd = -1;
       throw std::runtime_error("Archive input must be a regular file");
     }
     identity = ArchivePasswordIdentity(opened);
@@ -58,7 +60,8 @@ struct Reader {
       throw std::runtime_error("Could not allocate archive reader");
     }
     try {
-      LIBCALL(lib, archive_read_set_passphrase_callback)(handle, this, &Passphrase);
+      LIBCALL(lib, archive_read_set_passphrase_callback)
+      (handle, this, &Passphrase);
       LIBCALL(lib, archive_read_support_filter_all)(handle);
       // Compressed single files must not be guessed as mtree (ordinary text
       // can look like an mtree manifest). Explicit tar containers still use
@@ -102,17 +105,21 @@ struct Reader {
     try {
       self.control.Check();
       if (self.passwordAttempts >= 4)
-        throw std::runtime_error("Password not accepted. Reopen the archive to try again.");
+        throw std::runtime_error(
+            "Password not accepted. Reopen the archive to try again.");
       self.password = GetArchivePassword(self.path, self.identity,
-          self.passwordAttempts++ != 0, self.passwordGeneration, self.control);
+                                         self.passwordAttempts++ != 0,
+                                         self.passwordGeneration, self.control);
       struct stat current, named;
       if (fstat(self.fd, &current) || lstat(self.path.c_str(), &named) ||
           self.identity != ArchivePasswordIdentity(current) ||
           self.identity != ArchivePasswordIdentity(named))
-        throw std::runtime_error("Archive changed while entering its password. Open it again.");
+        throw std::runtime_error(
+            "Archive changed while entering its password. Open it again.");
       return self.password->Text();
     } catch (...) {
-      self.failure = std::current_exception();return nullptr;
+      self.failure = std::current_exception();
+      return nullptr;
     }
   }
   static la_ssize_t Read(struct archive *, void *data, const void **out) {
@@ -133,12 +140,15 @@ struct Reader {
       return -1;
     }
   }
-  static la_int64_t Seek(struct archive *, void *data, la_int64_t offset, int whence) {
+  static la_int64_t Seek(struct archive *, void *data, la_int64_t offset,
+                         int whence) {
     auto &self = *static_cast<Reader *>(data);
     try {
       self.control.Check();
       off_t result = lseek(self.fd, offset, whence);
-      if (result < 0) throw std::runtime_error(std::string("Archive seek failed: ") + strerror(errno));
+      if (result < 0)
+        throw std::runtime_error(std::string("Archive seek failed: ") +
+                                 strerror(errno));
       return result;
     } catch (...) {
       self.failure = std::current_exception();
@@ -154,15 +164,19 @@ struct Reader {
     const char *s = LIBCALL(lib, archive_error_string)(handle);
     std::string error = s ? s : "Unsupported or damaged archive";
     if (error.find("unable to run program") != std::string::npos) {
-      const char *package = error.find("zstd") != std::string::npos ? "zstd_bin" :
-                            error.find("lz4") != std::string::npos ? "lz4" : nullptr;
-      if (package) error = std::string("This compression needs the optional ") + package +
-          " package. Install it from HaikuDepot, then open the archive again in Listi.";
+      const char *package = error.find("zstd") != std::string::npos ? "zstd_bin"
+                            : error.find("lz4") != std::string::npos ? "lz4"
+                                                                     : nullptr;
+      if (package)
+        error =
+            std::string("This compression needs the optional ") + package +
+            " package. Install it from HaikuDepot, then open the archive again in Listi.";
     }
     if (error.find("encrypt") != std::string::npos ||
         error.find("Encrypt") != std::string::npos)
-      error += " This encryption is not supported by the installed archive engine. "
-               "Install the optional p7zip package for encrypted 7z/RAR. ZIP header encryption needs another adapter.";
+      error +=
+          " This encryption is not supported by the installed archive engine. "
+          "Install the optional p7zip package for encrypted 7z/RAR. ZIP header encryption needs another adapter.";
     throw std::runtime_error(error);
   }
   struct archive_entry *Next() {
@@ -175,9 +189,11 @@ struct Reader {
     if (r != ARCHIVE_OK)
       Error();
     if (LIBCALL(lib, archive_entry_is_encrypted)(entry) &&
-        (LIBCALL(lib, archive_format)(handle) & ARCHIVE_FORMAT_BASE_MASK) != ARCHIVE_FORMAT_ZIP)
-      throw std::runtime_error("Encrypted 7z/RAR is not supported by this archive engine. "
-                               "Install the optional p7zip package from HaikuDepot, then reopen it in Listi.");
+        (LIBCALL(lib, archive_format)(handle) & ARCHIVE_FORMAT_BASE_MASK) !=
+            ARCHIVE_FORMAT_ZIP)
+      throw std::runtime_error(
+          "Encrypted 7z/RAR is not supported by this archive engine. "
+          "Install the optional p7zip package from HaikuDepot, then reopen it in Listi.");
     return entry;
   }
   bool CompressedOrArchive() const {
@@ -188,7 +204,8 @@ struct Reader {
 };
 std::string EntryName(Reader &reader, struct archive_entry *entry,
                       const Location &location) {
-  auto name = SafeArchivePath(LIBCALL(reader.lib, archive_entry_pathname)(entry));
+  auto name =
+      SafeArchivePath(LIBCALL(reader.lib, archive_entry_pathname)(entry));
   if (LIBCALL(reader.lib, archive_format)(reader.handle) ==
       ARCHIVE_FORMAT_RAW) {
     name = LocationLeaf(location.archive);
@@ -203,6 +220,7 @@ std::string EntryName(Reader &reader, struct archive_entry *entry,
 } // namespace
 bool LibarchiveAvailable() { return Library().Available(); }
 std::string LibarchiveOpen(const std::string &path, const TransferControl &c) {
+  ArchiveTextLocale locale;
   if (IsVirtual(path))
     return "";
   bool expected = ArchiveExtension(path);
@@ -218,8 +236,9 @@ std::string LibarchiveOpen(const std::string &path, const TransferControl &c) {
     reader.Next();
     if (!reader.CompressedOrArchive()) {
       if (expected)
-        throw std::runtime_error("The installed archive engine cannot read this format. "
-                                "It needs an additional Listi archive adapter; no external app was opened.");
+        throw std::runtime_error(
+            "The installed archive engine cannot read this format. "
+            "It needs an additional Listi archive adapter; no external app was opened.");
       return "";
     }
     Location location;
@@ -236,7 +255,8 @@ std::string LibarchiveOpen(const std::string &path, const TransferControl &c) {
   }
 }
 std::vector<FileEntry> LibarchiveList(const Location &location,
-                                   const TransferControl &c) {
+                                      const TransferControl &c) {
+  ArchiveTextLocale locale;
   Reader reader(location.archive, c);
   std::map<std::string, FileEntry> children;
   std::string prefix =
@@ -247,24 +267,30 @@ std::vector<FileEntry> LibarchiveList(const Location &location,
     if (++count > 200000)
       throw std::runtime_error("Archive has too many entries for this view");
     auto name = EntryName(reader, entry, location);
-    if (name.empty()) continue;
+    if (name.empty())
+      continue;
     const auto type = LIBCALL(reader.lib, archive_entry_filetype)(entry);
     if (!explicitPaths.insert(name).second)
-      throw std::runtime_error("Archive contains duplicate entry paths; nothing was extracted");
+      throw std::runtime_error(
+          "Archive contains duplicate entry paths; nothing was extracted");
     if (type != AE_IFDIR) {
       if (parents.count(name))
-        throw std::runtime_error("Archive has conflicting file and folder paths");
+        throw std::runtime_error(
+            "Archive has conflicting file and folder paths");
       files.insert(name);
     }
     size_t separator = 0, depth = 0;
     while ((separator = name.find('/', separator)) != std::string::npos) {
-      if (++depth > 64) throw std::runtime_error("Archive exceeds the safe folder depth");
+      if (++depth > 64)
+        throw std::runtime_error("Archive exceeds the safe folder depth");
       auto parent = name.substr(0, separator++);
       if (files.count(parent))
-        throw std::runtime_error("Archive has conflicting file and folder paths");
+        throw std::runtime_error(
+            "Archive has conflicting file and folder paths");
       parents.insert(parent);
     }
-    if (name.compare(0, prefix.size(), prefix) != 0) continue;
+    if (name.compare(0, prefix.size(), prefix) != 0)
+      continue;
     auto rest = name.substr(prefix.size());
     if (rest.empty())
       continue;
@@ -281,16 +307,18 @@ std::vector<FileEntry> LibarchiveList(const Location &location,
     } else if (type == AE_IFDIR) {
       item.directory = true;
       item.permissions = LIBCALL(reader.lib, archive_entry_perm)(entry) & 0777;
-      item.modified = LIBCALL(reader.lib, archive_entry_mtime)(entry);
     } else {
       item.link = type == AE_IFLNK ||
                   LIBCALL(reader.lib, archive_entry_hardlink)(entry) != nullptr;
       item.size = LIBCALL(reader.lib, archive_entry_size)(entry);
       item.sizeKnown = LIBCALL(reader.lib, archive_entry_size_is_set)(entry);
-      item.modified = LIBCALL(reader.lib, archive_entry_mtime)(entry);
       item.permissions = LIBCALL(reader.lib, archive_entry_perm)(entry) & 0777;
       if (type != AE_IFREG && !item.link)
         throw std::runtime_error("Archive contains a special device entry");
+    }
+    if (!implied) {
+      item.modified = LIBCALL(reader.lib, archive_entry_mtime)(entry);
+      item.modifiedKnown = LIBCALL(reader.lib, archive_entry_mtime_is_set)(entry);
     }
   }
   std::vector<FileEntry> out;
@@ -310,12 +338,14 @@ void VerifyReader(Reader &reader) {
   if (fstat(reader.fd, &opened) || lstat(reader.path.c_str(), &named) ||
       ArchivePasswordIdentity(opened) != reader.identity ||
       ArchivePasswordIdentity(named) != reader.identity)
-    throw std::runtime_error("Archive changed during reading. Source entries were retained.");
+    throw std::runtime_error(
+        "Archive changed during reading. Source entries were retained.");
 }
 }
 void ClearLibarchiveReadCache() { sequentialReader.reset(); }
 void LibarchiveRead(const Location &location, const DataSink &sink,
                     const TransferControl &c) {
+  ArchiveTextLocale locale;
   const bool scoped = ArchiveListingScopeActive();
   std::unique_ptr<Reader> local;
   auto &slot = scoped ? sequentialReader : local;
@@ -327,33 +357,42 @@ void LibarchiveRead(const Location &location, const DataSink &sink,
       throw std::runtime_error("Archive input is unavailable.");
     // Reuse only formats whose streaming state has been qualified. In
     // particular XAR's data/TOC cursor cannot safely serve this access pattern.
-    int format = slot ? LIBCALL(slot->lib, archive_format)(slot->handle) & ARCHIVE_FORMAT_BASE_MASK : 0;
-    bool sequential = format == ARCHIVE_FORMAT_ZIP || format == ARCHIVE_FORMAT_TAR || format == ARCHIVE_FORMAT_CPIO;
+    int format = slot ? LIBCALL(slot->lib, archive_format)(slot->handle) &
+                            ARCHIVE_FORMAT_BASE_MASK
+                      : 0;
+    bool sequential = format == ARCHIVE_FORMAT_ZIP ||
+                      format == ARCHIVE_FORMAT_TAR ||
+                      format == ARCHIVE_FORMAT_CPIO;
     if (slot && sequential && slot->path == location.archive &&
         slot->identity == ArchivePasswordIdentity(named) &&
         slot->passwordGeneration == ArchivePasswordGeneration()) {
       slot->control = c;
       reused = true;
-    } else slot.reset(new Reader(location.archive, c));
+    } else
+      slot.reset(new Reader(location.archive, c));
     for (;;) {
       auto &reader = *slot;
       VerifyReader(reader);
       const std::string wanted = location.path.substr(1);
       while (auto entry = reader.Next()) {
-        if (EntryName(reader, entry, location) != wanted) continue;
+        if (EntryName(reader, entry, location) != wanted)
+          continue;
         if (LIBCALL(reader.lib, archive_entry_filetype)(entry) != AE_IFREG ||
             LIBCALL(reader.lib, archive_entry_hardlink)(entry))
-          throw std::runtime_error("Archive links and special entries are not extracted");
+          throw std::runtime_error(
+              "Archive links and special entries are not extracted");
         std::vector<char> data(131072);
         for (;;) {
           c.Check();
-          la_ssize_t n = LIBCALL(reader.lib, archive_read_data)(reader.handle,
-                                                    data.data(), data.size());
+          la_ssize_t n = LIBCALL(reader.lib, archive_read_data)(
+              reader.handle, data.data(), data.size());
           reader.Rethrow();
-          if (n < 0) reader.Error();
+          if (n < 0)
+            reader.Error();
           if (!n) {
             VerifyReader(reader);
-            RememberArchivePassword(reader.identity, reader.password, reader.passwordGeneration);
+            RememberArchivePassword(reader.identity, reader.password,
+                                    reader.passwordGeneration);
             // Callback closures often capture a stack frame belonging to the
             // current transfer. Clear them before retaining the reader.
             reader.control = {};
@@ -364,7 +403,8 @@ void LibarchiveRead(const Location &location, const DataSink &sink,
         }
       }
       VerifyReader(reader);
-      if (!reused) break;
+      if (!reused)
+        break;
       slot.reset(new Reader(location.archive, c));
       reused = false;
     }

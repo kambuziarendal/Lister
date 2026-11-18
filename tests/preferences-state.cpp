@@ -15,7 +15,7 @@ int main() {
   Preferences live;
   auto stale=live.Save();
   stale.ReplaceBool("icons",false);stale.ReplaceFloat("fontSize",17);
-  live.paneMode[0]=3;live.paneMode[1]=2;
+  live.SetPaneMode(0,3);live.SetPaneMode(1,2);
   live.paneTree[0]=true;live.paneTree[1]=true;
   live.workspace=Workspace::einn;live.singlePane=1;
   live.preview=true;live.folderModes["/synthetic"]=1;
@@ -37,7 +37,8 @@ int main() {
   BMessage invalid;invalid.AddInt32("workspace",99);restored.Load(invalid);
   check(!restored.SinglePane(),"unknown workspace safely defaults to Tviskipt");
   check(!live.icons && live.font.Size()==17,"dialog appearance fields apply");
-  check(live.paneMode[0]==3 && live.paneMode[1]==2,"stale dialog preserves current pane modes");
+  restored.Load(live.Save()); restored.workspace=Workspace::tviskipt;
+  check(restored.PaneMode(0)==3 && restored.PaneMode(1)==2,"stale dialog preserves current pane modes");
   check(live.paneTree[0] && live.paneTree[1],"stale dialog preserves both trees");
   check(live.preview && live.folderModes["/synthetic"]==1,"stale dialog preserves preview and folder overrides");
   live.workspace=Workspace::smidja;live.smidjaTree[0]=false;
@@ -86,6 +87,36 @@ int main() {
   check(restored.workspace == Workspace::tviskipt, "unknown ID defaults to Tviskipt");
   check(!strcmp(WorkspaceName(Workspace::smidja), "Smiðja") &&
         !strcmp(WorkspaceName(Workspace::tviskipt), "Tvískipt"), "display names preserve Unicode");
+  Preferences views;
+  views.workspace=Workspace::einn;
+  check(views.PaneMode(0)==MillerMode && views.PaneMode(1)==MillerMode,
+        "Einn starts both panels in Miller columns");
+  views.workspace=Workspace::smidja;
+  check(views.PaneMode(0)==0, "other workspaces still start in Details");
+  views.SetPaneMode(0, MillerMode);
+  views.folderModes["/remembered"]=MillerMode;
+  auto dialog=views;
+  dialog.SetDefaultMode(Workspace::einn,1);
+  views.ApplyDialog(dialog.Save());
+  restored.Load(views.Save());
+  check(restored.PaneMode(0)==MillerMode && restored.PaneMode(1)==0 &&
+        restored.folderModes["/remembered"]==MillerMode,
+        "column pane and folder overrides persist independently of defaults");
+  restored.workspace=Workspace::einn;
+  check(restored.PaneMode(0)==1, "custom Einn default survives restart");
+  restored.SetPaneMode(0,2);
+  dialog=restored;
+  dialog.SetDefaultMode(Workspace::einn,3);
+  restored.ApplyDialog(dialog.Save());
+  check(!restored.HasPaneMode(0) && restored.PaneMode(0)==3 &&
+        restored.folderModes["/remembered"]==MillerMode,
+        "changing a default updates its panes without removing folder choices");
+  BMessage oldView;
+  oldView.AddInt32("leftMode", 2);
+  restored.Load(oldView);
+  restored.workspace=Workspace::einn;
+  check(restored.PaneMode(0)==2 && restored.PaneMode(1)==MillerMode,
+        "upgrade preserves a legacy explicit icon choice");
   for(float size:{std::numeric_limits<float>::quiet_NaN(),std::numeric_limits<float>::infinity(),-1.f,7.f,41.f}) {
     BMessage m;m.AddFloat("fontSize",size);live.Load(m);
     check(live.font.Size()==12,"invalid persisted font safely defaults to 12");

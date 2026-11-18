@@ -1,11 +1,11 @@
 # Workflow guide
 
-This guide describes the 0.31.1 alpha. Test with disposable copies and keep
+This guide describes the 0.32.0 alpha. Test with disposable copies and keep
 independent backups: file operations can fail or complete only partially.
 
 ## Small features at a glance
 
-These are implemented conveniences in the 0.31.1 alpha. Availability depends on
+These are implemented conveniences in the 0.32.0 alpha. Availability depends on
 whether the location is local, an archive or a network provider; disabled menu
 items are not promises of support.
 
@@ -37,7 +37,7 @@ in this alpha.
 - **Places:** save the current location under a name, rename it, forget it or
   reopen it. Saving a place is not saving credentials.
 - **Same folder in other panel:** open the active location on the other side.
-- **View:** Details, Icons, Large icons and Thumbnails; optional folder tree per
+- **View:** Details, Icons, Large icons, Thumbnails and Miller columns; optional folder tree per
   panel. Details columns can also be used to choose sort order.
 - **Remember view for this folder / Use default for this folder:** save or clear
   a folder-specific display-mode override. This is not a saved workspace or a
@@ -70,13 +70,42 @@ in this alpha.
 - **Open with:** choose a native application once without rewriting associations.
 - **Properties:** inspect metadata and explicitly save supported local typed
   attributes or ordinary permissions; opening the window alone changes nothing.
-- **Preferences:** show/hide file icons, Size/Modified columns, the action button
+- **Workspace defaults:** Einn starts in Miller columns; the other workspaces
+  start in Details. Change each default in **Listi > Settings**. A remembered
+  folder view takes priority. **View > File view > Use workspace default**
+  clears the current folder and panel overrides.
+- **Settings:** show/hide file icons, Size/Modified columns, the action button
   bank and the command field where the workspace exposes them; choose list font,
   file/folder/link colours, editor and terminal applications.
 - **Command field:** explicitly runs a shell command in Terminal for the active
   local folder. It is not an embedded terminal; do not paste untrusted commands.
 - **Operations:** reopen the progress window after hiding it; pause/resume,
   cancel and choose Replace/Skip/Abort when conflicts occur.
+
+### Custom workspaces (development build)
+
+Open **View > Workspace > Customize workspace…**. The four built-in presets
+still work without changing any settings.
+
+- **Action buttons:** remove buttons you rarely use and move the others into
+  your preferred order. Removing a button does not remove its menu command
+  or keyboard shortcut.
+- **Modules:** place the button bank and command line above or below the panels,
+  position the folder trees and name filters, or move the preview before or
+  after the file panels. Arrange the panels side by side or vertically. The
+  preset still determines which tools are available. Enable compact buttons
+  to reflow the bank in a narrow window; turn the option off to keep the
+  standard grid. Resizing does not choose another folder or file view. Stacked
+  panels with a preview and both toolbars need more vertical space; side-by-side
+  panels are a better fit for shorter screens.
+- **Profiles:** name the current draft and choose **Create**. Later, select a
+  profile and choose **Load** to use it or **Update** to replace its saved
+  layout. Profiles remember layout, not open directories or selected files.
+
+**Save** applies the draft and its profile changes together. **Cancel** or Escape
+discards both. **Reset layout**, followed by **Save**, restores the standard layout
+without deleting named profiles, folder-specific views, colours or application
+choices.
 
 ### Archive conveniences
 
@@ -99,10 +128,31 @@ The highlighted panel is the source. Direct Copy or Move uses the other panel
 as the destination; clipboard Paste uses the active panel. Accepted jobs retain
 their selected paths and target even if you navigate or switch workspace.
 
-The operation queue offers progress, pause, cancellation and conflict choices.
-Cancellation does not undo completed work. A partially copied directory may
-remain. After a failed or partial move, inspect both source and destination.
-Concurrent external edits are not prevented by a filesystem snapshot lock.
+To save copied text, choose **Files > Clipboard > Save clipboard text as file**
+in a writable local folder. Keep the suggested name, `Clipboard.txt`, or enter
+your own. Listi saves the text as copied, without running it or replacing an
+existing file. For a copied image, use **Files > Clipboard > Save clipboard
+image as PNG**. It accepts PNG data and native Haiku bitmaps and suggests
+`Clipboard.png`. Both commands save the clipboard contents selected when
+the naming prompt opened. To paste copied files instead, use **Paste**.
+
+In the development build, open **Operations > Details** and choose a job by
+number to review its result, even after another job has started. **Recent
+activity** is the combined log; a specific job shows its source and destination
+paths where available. Large reports have multiple pages. Job results are for
+this session, not saved to disk. **Clear finished** frees completed reports without cancelling any jobs.
+
+For a local move, **Moved** means Listi committed the move. **Copied; source
+retained** means the destination copy was made but Listi did not remove that
+source entry. **Partially completed** means some changes were made inside the
+folder: check its individual entries. **Skipped** identifies an entry passed
+over, **Failed** includes the problem, and **Not processed** is not a success.
+Other providers can give a job-level error or a recovery path rather than
+confirm the state of every file. Concurrent external edits are not prevented.
+
+**Cancel job** stops the running job only. In Details you can cancel a selected
+waiting job, or choose **Cancel all** to stop the running job and discard waiting
+jobs. None of these actions undoes work already committed.
 
 Trash and permanent deletion are separate actions. Trash restore does not
 overwrite an existing file and requires the original parent folder to exist.
@@ -116,10 +166,39 @@ restarting file work. **Select same file type** replaces the active panel's
 selection with visible ordinary files sharing an extension; it is not MIME or
 content detection. `.jpg` and `.jpeg` remain distinct.
 
+**Shelf (development build):** Select local entries and press Command+Shift+Y
+(**Files > Add to Shelf**). Open **Listi > Show Shelf** to see their names,
+original folders and status. You can also drop local entries onto the list.
+Removing a row removes only the reference. Closing and reopening the Shelf
+keeps its contents; quitting Listi clears it.
+
+**Move all...** acts on the whole Shelf, not just highlighted rows. Choose a
+destination, review the confirmation and follow progress in Operations.
+Remove unavailable or replaced references before submitting another move.
+
+**Create ZIP...** packs the whole Shelf into one archive. Choose a new name
+and location in the save panel, then follow progress in Operations. Each
+collected entry appears at the top level under its original name. If two
+entries have the same name, remove one reference before packing. Creating
+a ZIP leaves the originals and the Shelf unchanged.
+
 Local drag-and-drop asks Copy here, Move here or Cancel for the receiving
 panel's current folder, not the row under the pointer. Duplicate and symbolic
 link creation are local, single-entry actions; links can be relative or absolute.
 Archive and network drops remain copy-only.
+
+**Convert here (development build):** Drop one local image onto a local panel,
+choose **Convert here**, select a format and confirm **Convert**. The choices
+depend on the image and the installed Haiku translators. Listi creates a new
+file in the receiving folder and won't replace the original or an existing
+output file.
+
+**Bulk rename (development build):** Select two or more entries in one local
+folder and choose **Files > Bulk rename...**. Enter a prefix, suffix, case-sensitive replacement or sequence number, then
+choose **Update preview** to compare current and proposed names.
+File extensions are kept. Occupied or duplicate names block the batch. Choose
+**Apply rename** to queue the displayed changes. If interrupted, completed
+renames stay in place; check operation history before retrying.
 
 **Files > Properties** pins one local entry and exposes timestamps, numeric
 ownership, ordinary octal permissions and supported typed BFS attributes. Saves
@@ -181,9 +260,28 @@ browse many formats, but reading, creation and editing are different
 capabilities. A successful listing does not establish member-data integrity.
 
 - Supported local single-volume writers include ZIP, 7z, TAR, TAR with gzip,
-  xz, bzip2, LZMA or lzip, CPIO and XAR. Zstandard/LZ4 wrappers are gated by the
+  xz, bzip2, LZMA, lzip or Unix compress (.tar.Z), CPIO and XAR. Zstandard/LZ4 wrappers are gated by the
   installed engine rather than universally promised. Reading support is broader
   than writing support.
+- Unix ar archives support flat regular files. Edits preserve GNU or BSD
+  naming. Debian packages and static libraries are not rebuilt as generic ar;
+  thin archives with external references are not opened.
+- With p7zip installed, Listi can create single-volume ARJ archives with
+  portable ASCII names. Install the optional HaikuPorts `arj` package for
+  compression. Level zero (or no compressor installed) uses Store. Listi
+  can edit archives with its portable header layout. Compatible DOS/Windows ARJ archives can also be read, including
+  compressed members; other header variants are not assumed editable.
+- LHA/LZH can be created and edited when the optional HaikuDepot `lha` tool
+  and libarchive are installed. Level zero stores files; other levels use LH7.
+- Single-volume Microsoft Cabinets support Store at level zero and MSZIP
+  compression at levels 1 to 9 when system zlib is available.
+  Nonempty folders are represented by their member paths. CAB cannot store an
+  empty folder; an edit that would leave one is refused without replacing the
+  archive. Signed, spanned and unsupported Cabinet variants are not editable.
+- Listi can create ISO 9660 data discs. It verifies the member names, contents
+  and permissions and records the image digest in a filesystem attribute.
+  Only images with that matching attribute can be edited. Other images
+  remain browseable where supported; they are not rebuilt as plain data discs.
 - Writable archive folders support Copy/Paste, new folders, rename, entry removal
   and supported moves. Removing an archive member is not local Trash. Editing
   rebuilds the container and needs scratch space for extracted content and the
@@ -199,7 +297,12 @@ capabilities. A successful listing does not establish member-data integrity.
 - Archive/local moves refuse unsupported metadata and file types rather than
   silently discarding them, including BFS attributes, source symlinks, special
   files and some hard-link cases. Use Copy to retain originals.
-- RAR writing and mutation of remote, split or nested archives are not supported.
+- With the p7zip RAR5 reader installed, Listi writes single-volume RAR5 using
+  Store (no compression). Ordinary existing RAR5 files, including supported
+  compressed members, can be edited if their metadata can be retained.
+  Rebuilding may increase the file size. RAR4, encrypted or multipart RAR,
+  recovery records and unsupported metadata are not writable.
+- Remote, split and nested archives cannot be edited in place.
 
 A failed or cancelled merge may leave destination copies, and cleanup may stop
 after some verified entries have moved. Inspect both locations before retrying.

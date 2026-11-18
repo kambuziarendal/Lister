@@ -4,7 +4,11 @@
 #include <Message.h>
 #include <vector>
 namespace Listi {
-struct SavedSearch { std::string name; SearchRequest request; bool live = false; };
+struct SavedSearch {
+  std::string name;
+  SearchRequest request;
+  bool live = false;
+};
 class SavedSearches {
 public:
   static constexpr size_t Limit = 64;
@@ -16,6 +20,7 @@ public:
   static SavedSearches FromMessage(const BMessage &);
   static SavedSearches Load(const std::string &file);
   void Save(const std::string &file) const;
+
 private:
   std::vector<SavedSearch> items;
 };

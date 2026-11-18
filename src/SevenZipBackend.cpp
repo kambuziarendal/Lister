@@ -5,6 +5,7 @@
 #include "ArchiveBackend.h"
 #include "ArchivePasswords.h"
 #include "ArchiveVolumes.h"
+#include "ArjWriter.h"
 #include "DynamicLibrary.h"
 #include "vendor/p7zip/CPP/7zip/Archive/IArchive.h"
 #include "vendor/p7zip/CPP/7zip/ICoder.h"
@@ -90,6 +91,8 @@ struct Module {
           key = "rar";
         if (!wcscmp(name.bstrVal, L"Rar5"))
           key = "rar5";
+        if (!wcscmp(name.bstrVal, L"Arj"))
+          key = "arj";
       }
       lib.Function<decltype(&VariantClear)>("VariantClear")(&name);
       if (key.empty())
@@ -522,8 +525,12 @@ struct Archive {
               "volumes");
       Variant size(*s.engine);
       Property(i, kpidSize, size);
-      e.sizeKnown = size.value.vt == VT_UI8;
-      if (e.sizeKnown) {
+      // The ARJ handler exposes its format's 32-bit uncompressed size.
+      const bool arjSize = s.format == "arj" && size.value.vt == VT_UI4;
+      e.sizeKnown = arjSize || size.value.vt == VT_UI8;
+      if (arjSize) {
+        e.size = size.value.ulVal;
+      } else if (e.sizeKnown) {
         Require(size.value.uhVal.QuadPart <= uint64_t(INT64_MAX),
                 "Archive member is too large");
         e.size = size.value.uhVal.QuadPart;
@@ -537,6 +544,18 @@ struct Archive {
       // p7zip encodes UNIX modes in the high word of Win32 attributes.
       Variant host(*s.engine);
       Property(i, kpidHostOS, host);
+      if (s.format == "arj") {
+        Variant position(*s.engine);
+        Property(i, kpidPosition, position);
+        Require(position.value.vt == VT_EMPTY,
+                "Split ARJ entries are not supported.");
+        // This p7zip handler maps UNIX ARJ entries to ordinary files and
+        // interprets epoch timestamps as DOS dates. Do not extract them.
+        const auto os =
+            host.value.vt == VT_BSTR ? UTF8(host.value.bstrVal) : "";
+        Require(os == "MSDOS" || os == "WIN95",
+                "Only DOS or Windows ARJ files can be read safely.");
+      }
       bool rarUnix = s.format == "rar5" && host.value.vt == VT_BSTR &&
                      UTF8(host.value.bstrVal) == "Unix";
       if (!bits && attr.value.vt == VT_UI4 &&
@@ -556,8 +575,10 @@ struct Archive {
       if (time.value.vt == VT_FILETIME) {
         uint64_t ticks = (uint64_t(time.value.filetime.dwHighDateTime) << 32) |
                          time.value.filetime.dwLowDateTime;
-        if (ticks >= 116444736000000000ULL)
+        if (ticks >= 116444736000000000ULL) {
           e.modified = (ticks - 116444736000000000ULL) / 10000000;
+          e.modifiedKnown = true;
+        }
       }
       out.push_back(e);
     }
@@ -748,7 +769,8 @@ struct WriteState {
     Check();
     Require(depth <= 64 && items.size() < 200000,
             "Archive exceeds the folder or entry limit.");
-    Require(!name.empty() && name.find_first_of("\r\n\\") == std::string::npos &&
+    Require(!name.empty() &&
+                name.find_first_of("\r\n\\") == std::string::npos &&
                 !(depth == 0 && name.size() > 1 && name[1] == ':'),
             "Unsupported archive entry name.");
     struct stat before, opened;
@@ -804,7 +826,8 @@ struct WriteInput : ISequentialInStream {
   const WriteItem &item;
   int fd = -1;
   uint64_t readBytes = 0;
-  WriteInput(WriteState &state, const WriteItem &entry) : s(state), item(entry) {
+  WriteInput(WriteState &state, const WriteItem &entry)
+      : s(state), item(entry) {
     fd = open(item.path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
     struct stat opened;
     if (fd < 0 || fstat(fd, &opened) || !Exact(item.snapshot, opened)) {
@@ -842,7 +865,8 @@ struct WriteInput : ISequentialInStream {
         struct stat opened, now;
         Require(readBytes == uint64_t(item.snapshot.st_size) &&
                     !fstat(fd, &opened) && Exact(item.snapshot, opened) &&
-                    !lstat(item.path.c_str(), &now) && Exact(item.snapshot, now),
+                    !lstat(item.path.c_str(), &now) &&
+                    Exact(item.snapshot, now),
                 "Archive source changed during packing");
       } else if (s.hooks.progress)
         s.hooks.progress(item.path, got);
@@ -923,8 +947,12 @@ struct UpdateCallback : IArchiveUpdateCallback, ICryptoGetTextPassword2 {
     AddRef();
     return S_OK;
   }
-  HRESULT SetTotal(UInt64) override { return s.Call([] {}); }
-  HRESULT SetCompleted(const UInt64 *) override { return s.Call([] {}); }
+  HRESULT SetTotal(UInt64) override {
+    return s.Call([] {});
+  }
+  HRESULT SetCompleted(const UInt64 *) override {
+    return s.Call([] {});
+  }
   HRESULT GetUpdateItemInfo(UInt32 index, Int32 *newData, Int32 *newProps,
                             UInt32 *indexInArchive) override {
     return s.Call([&] {
@@ -1003,6 +1031,20 @@ struct UpdateCallback : IArchiveUpdateCallback, ICryptoGetTextPassword2 {
 };
 } // namespace
 bool SevenZipAvailable() { return Engine()->lib.Available(); }
+bool ArjCanCreate() {
+  try {
+    return Engine()->formats.count("arj") != 0;
+  } catch (...) {
+    return false;
+  }
+}
+bool RarStoreCanCreate() {
+  try {
+    return Engine()->formats.count("rar5") != 0;
+  } catch (...) {
+    return false;
+  }
+}
 bool SevenZipCanCreate() {
   try {
     auto engine = Engine();
@@ -1076,7 +1118,7 @@ std::string SevenZipFormat(const std::string &path) {
   int fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   if (fd < 0)
     return "";
-  unsigned char bytes[8]{};
+  unsigned char bytes[11]{};
   struct stat st;
   ssize_t n = 0;
   if (!fstat(fd, &st) && S_ISREG(st.st_mode))
@@ -1088,6 +1130,12 @@ std::string SevenZipFormat(const std::string &path) {
     return "rar";
   if (n >= 8 && !memcmp(bytes, "Rar!\x1a\x07\x01\0", 8))
     return "rar5";
+  if (n >= 11 && bytes[0] == 0x60 && bytes[1] == 0xea) {
+    const unsigned size = bytes[2] | (unsigned(bytes[3]) << 8);
+    if (size >= 30 && size <= 2600 && bytes[4] >= 30 && bytes[4] <= size &&
+        bytes[10] == 2)
+      return "arj";
+  }
   return "";
 }
 std::string SevenZipOpen(const std::string &path, const TransferControl &c) {
@@ -1119,8 +1167,9 @@ std::vector<FileEntry> SevenZipList(const Location &location,
     } else {
       Require(child.name.empty() || child.directory,
               "Archive has conflicting file and folder paths");
+      if (!child.directory)
+        child.permissions = 0755;
       child.directory = true;
-      child.permissions = 0755;
     }
     child.name = leaf;
     child.path = ChildLocation(location.URL(), leaf);

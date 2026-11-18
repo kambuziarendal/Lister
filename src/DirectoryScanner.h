@@ -9,6 +9,7 @@
 struct DirectoryScanDelivery {
   std::atomic<int64> failedSerial{0};
 };
-BLooper *CreateDirectoryScanner(BMessenger target,
-    std::shared_ptr<std::atomic<int64>> generation,
-    std::shared_ptr<DirectoryScanDelivery> delivery = {});
+BLooper *
+CreateDirectoryScanner(BMessenger target,
+                       std::shared_ptr<std::atomic<int64>> generation,
+                       std::shared_ptr<DirectoryScanDelivery> delivery = {});

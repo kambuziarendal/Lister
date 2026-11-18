@@ -3,6 +3,18 @@
 Listi is a native Haiku development alpha. Small, focused changes with clear
 behaviour and reproducible tests are welcome.
 
+## Keeping changes small
+
+Before adding a file action, trace it from its UI entry points to the operation
+that owns it. For example, a new way to start a move should reuse the existing
+move and conflict handling, not grow its own copy. If the existing boundary no
+longer fits, extract the smallest useful piece and test the old callers before
+switching them. Keep unrelated cleanup out of the feature diff.
+
+If a change requires several subsystems to switch at once, lay out compatible
+steps first. Each step should build, preserve existing workflows and be
+reviewable on its own.
+
 ## Bugs and testing
 
 Include the Listi and Haiku versions, reproduction steps and whether files were

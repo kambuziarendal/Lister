@@ -10,6 +10,7 @@
 #include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sys/stat.h>
@@ -104,6 +105,25 @@ int main() {
       return 2;
     archivePath = job.destination;
     auto url = OpenArchive(archivePath);
+    if (!scenario) {
+      const auto sessions = root + "/cancelled-sessions";
+      Hooks cancelOpen;
+      cancelOpen.proceed = [&] {
+        if (std::filesystem::exists(sessions))
+          for (const auto &edit : std::filesystem::directory_iterator(sessions))
+            if (std::filesystem::exists(edit.path() / "work" / "item"))
+              return false;
+        return true;
+      };
+      bool cancelled = false;
+      try {
+        ArchiveEditSession::Open(ChildLocation(url, "item"), sessions, cancelOpen);
+      } catch (const Cancelled &) {
+        cancelled = true;
+      }
+      check(cancelled && std::filesystem::is_empty(sessions),
+            "cancelled open removes the unpublished working copy");
+    }
     auto session = ArchiveEditSession::Open(ChildLocation(url, "item"),
                                             root + "/sessions");
     journalPath = Join(session->Directory(), "session");

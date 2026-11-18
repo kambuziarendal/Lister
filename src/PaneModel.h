@@ -10,14 +10,19 @@ struct PaneEntry {
   std::string name, path;
   bool directory = false, parent = false, sizeKnown = true;
   int kind = 0, transferState = 0;
+  int64_t device = -1, node = -1;
   int64_t size = 0, modified = 0;
   float fraction = 0;
   std::shared_ptr<BBitmap> icon;
 };
 std::string FileTypeKey(const std::string &name);
-struct PaneSort { int column = 0; bool ascending = true; };
+struct PaneSort {
+  int column = 0;
+  bool ascending = true;
+};
 struct SelectionSummary {
-  size_t visible = 0, selected = 0, files = 0, folders = 0, links = 0, unknown = 0;
+  size_t visible = 0, selected = 0, files = 0, folders = 0, links = 0,
+         unknown = 0;
   uint64_t bytes = 0;
   bool overflow = false;
 };
@@ -32,7 +37,9 @@ public:
   PaneSort Sorting() const { return sorting; }
   const std::vector<PaneEntry *> &Visible() const { return visible; }
   size_t HiddenCount() const { return entries.size() - visible.size(); }
-  bool IsSelected(const std::string &path) const { return selection.count(path); }
+  bool IsSelected(const std::string &path) const {
+    return selection.count(path);
+  }
   std::vector<std::string> Selected() const;
   SelectionSummary Summary() const;
   void Select(int mode);
@@ -44,6 +51,7 @@ public:
                     const std::string &focus);
   PaneEntry *Focused() const;
   bool Transfer(const std::string &path, int state, float fraction);
+
 private:
   PaneSort sorting;
   std::vector<std::unique_ptr<PaneEntry>> entries;

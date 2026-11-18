@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 #include "FileOperation.h"
+#include "BulkRename.h"
 #include "ArchiveVolumes.h"
 #include "ArchiveJobs.h"
+#include "ImageConvert.h"
 #include "NamedEntry.h"
 #include "Trash.h"
 #include <Directory.h>
@@ -74,34 +76,97 @@ struct Runner {
   Result result;
   const Job *guardedJob = nullptr;
   std::string guardedSource;
+  std::map<std::string, size_t> outcomeIndex;
+  size_t mutations = 0;
+  EntryOutcome &Outcome(const std::string &src, const std::string &dst = {}) {
+    auto index = outcomeIndex.emplace(src, result.outcomes.size());
+    if (index.second)
+      result.outcomes.push_back({src, dst, "unprocessed", {}});
+    auto &row = result.outcomes[index.first->second];
+    if (!dst.empty())
+      row.destination = dst;
+    return row;
+  }
+  void Problem(const std::string &src, const std::string &error) {
+    auto &row = Outcome(src);
+    if (row.status == "unprocessed")
+      row.status = "failed";
+    row.detail = error;
+  }
+  void Removed(const std::string &src) {
+    Outcome(src).status = deferCompletion ? "moved" : "completed";
+    // A selected folder may still exist after some of its children have
+    // been removed. Don't report that its original tree is intact.
+    std::string parent = src;
+    while (parent != guardedSource) {
+      const auto slash = parent.rfind('/');
+      if (slash == std::string::npos)
+        break;
+      parent.resize(slash);
+      Outcome(parent).status = "partial";
+    }
+  }
+  using DirectoryStack = std::vector<std::pair<std::string, struct stat>>;
+  DirectoryStack copyDirectories;
+  void GuardDirectories() const {
+    for (const auto &[path, expected] : copyDirectories) {
+      struct stat now;
+      if (lstat(path.c_str(), &now) || !S_ISDIR(now.st_mode) ||
+          now.st_dev != expected.st_dev || now.st_ino != expected.st_ino)
+        throw std::runtime_error(path + ": destination folder changed during copy");
+    }
+  }
   void Guard() {
-    if (!guardedJob) return;
+    GuardDirectories();
+    if (!guardedJob)
+      return;
     struct stat st;
     if (!guardedJob->expectedSources.empty()) {
       auto expected = guardedJob->expectedSources.find(guardedSource);
       if (expected == guardedJob->expectedSources.end() ||
           lstat(guardedSource.c_str(), &st) ||
-          st.st_dev != expected->second.device || st.st_ino != expected->second.inode)
-        throw std::runtime_error(guardedSource + ": selected source changed; left untouched");
+          st.st_dev != expected->second.device ||
+          st.st_ino != expected->second.inode)
+        throw std::runtime_error(guardedSource +
+                                 ": selected source changed; left untouched");
     }
     const auto &destination = guardedJob->expectedDestination;
-    const auto &path = guardedJob->destinationFolder.empty() ? guardedJob->destination : guardedJob->destinationFolder;
-    if (destination.device >= 0 && (stat(path.c_str(), &st) || !S_ISDIR(st.st_mode) ||
-        st.st_dev != destination.device || st.st_ino != destination.inode))
-      throw std::runtime_error("Selected destination changed; operation stopped.");
+    const auto &path = guardedJob->destinationFolder.empty()
+                           ? guardedJob->destination
+                           : guardedJob->destinationFolder;
+    if (destination.device >= 0 &&
+        (stat(path.c_str(), &st) || !S_ISDIR(st.st_mode) ||
+         st.st_dev != destination.device || st.st_ino != destination.inode))
+      throw std::runtime_error(
+          "Selected destination changed; operation stopped.");
   }
 
   bool deferCompletion = false;
-  std::vector<std::pair<std::string, std::string>> copied;
-  void Done(const std::string &src, const std::string &dst) {
-    if (deferCompletion)
-      copied.emplace_back(src, dst);
-    else if (h.fileDone)
+  struct CopiedEntry {
+    std::string destination;
+    struct stat committed;
+  };
+  std::map<std::string, CopiedEntry> copied;
+  void Done(const std::string &src, const std::string &dst,
+            const struct stat &expected) {
+    ++mutations;
+    struct stat committed;
+    if (lstat(dst.c_str(), &committed) || expected.st_dev != committed.st_dev ||
+        expected.st_ino != committed.st_ino || expected.st_mode != committed.st_mode ||
+        expected.st_size != committed.st_size ||
+        expected.st_mtim.tv_sec != committed.st_mtim.tv_sec ||
+        expected.st_mtim.tv_nsec != committed.st_mtim.tv_nsec)
+      throw std::runtime_error(dst + ": committed destination moved or changed");
+    Outcome(src, dst).status = deferCompletion ? "source-retained" : "copied";
+    if (deferCompletion) {
+      copied.emplace(src, CopiedEntry{dst, committed});
+    } else if (h.fileDone)
       h.fileDone(src, dst);
   }
   void Check() {
     if (h.proceed && !h.proceed())
       throw Cancelled();
+    GuardDirectories();
   }
   void Tick(const std::string &p, uint64_t n = 0) {
     Check();
@@ -121,7 +186,8 @@ struct Runner {
       if (from.GetAttrInfo(name, &info) != B_OK)
         throw std::runtime_error(src + ": attribute changed during copy");
       if (info.size == 0)
-        throw std::runtime_error(src + ": zero-length attribute cannot be preserved: " + name);
+        throw std::runtime_error(
+            src + ": zero-length attribute cannot be preserved: " + name);
       off_t pos = 0;
       while (pos < info.size) {
         ssize_t n = from.ReadAttr(name, info.type, pos, buf.data(),
@@ -141,7 +207,8 @@ struct Runner {
     if (!Exists(dst))
       return true;
     if (guardedJob && guardedJob->action == Action::Duplicate)
-      throw std::runtime_error(dst + ": already exists; duplicate does not overwrite");
+      throw std::runtime_error(
+          dst + ": already exists; duplicate does not overwrite");
     if (skipAll) {
       result.skipped++;
       return false;
@@ -184,7 +251,8 @@ struct Runner {
     return true;
   }
   using Snapshot = std::map<std::string, struct stat>;
-  void SnapshotTree(const std::string &path, Snapshot &entries, dev_t volume, unsigned depth = 0) {
+  void SnapshotTree(const std::string &path, Snapshot &entries, dev_t volume,
+                    unsigned depth = 0) {
     Check();
     if (depth > 64 || entries.size() >= 200000)
       throw std::runtime_error("Folder tree exceeds the safe operation limit");
@@ -214,7 +282,25 @@ struct Runner {
            a.st_ctim.tv_sec == b.st_ctim.tv_sec &&
            a.st_ctim.tv_nsec == b.st_ctim.tv_nsec;
   }
-  void RemoveCopied(const std::string &root, const Snapshot &before) {
+  void VerifyCopy(const std::string &source) {
+    if (!deferCompletion)
+      return;
+    const auto recorded = copied.find(source);
+    if (recorded == copied.end())
+      throw std::runtime_error(source + ": no committed copy; source retained");
+    const auto &copy = recorded->second;
+    struct stat now;
+    if (lstat(copy.destination.c_str(), &now) || !SameEntry(copy.committed, now)) {
+      auto &row = Outcome(source);
+      row.status = "failed";
+      row.detail = copy.destination + ": destination changed; source retained";
+      if (source != guardedSource)
+        Outcome(guardedSource).status = "partial";
+      throw std::runtime_error(row.detail);
+    }
+  }
+  void RemoveCopied(const std::string &root, const Snapshot &before,
+                    bool *removedAny = nullptr) {
     Snapshot after;
     SnapshotTree(root, after, before.at(root).st_dev);
     if (before.size() != after.size())
@@ -222,6 +308,7 @@ struct Runner {
           root + ": source changed; copied data kept and source retained");
     for (auto &entry : before) {
       auto found = after.find(entry.first);
+      VerifyCopy(entry.first);
       if (found == after.end() || !SameEntry(entry.second, found->second))
         throw std::runtime_error(
             root + ": source changed; copied data kept and source retained");
@@ -234,14 +321,24 @@ struct Runner {
       struct stat now;
       if (lstat(it->first.c_str(), &now))
         Fail(it->first);
+      VerifyCopy(it->first);
       bool directory = S_ISDIR(it->second.st_mode);
       if (now.st_ino != it->second.st_ino || now.st_dev != it->second.st_dev ||
           (!directory && !SameEntry(it->second, now)))
         throw std::runtime_error(
             it->first + ": source changed during cleanup; left untouched");
-      if (directory ? rmdir(it->first.c_str()) : unlink(it->first.c_str()))
-        Fail(it->first);
-      Tick(it->first);
+      if (directory ? rmdir(it->first.c_str()) : unlink(it->first.c_str())) {
+        const std::string error = it->first + ": " + strerror(errno);
+        Problem(it->first, error);
+        throw std::runtime_error(error);
+      }
+      Removed(it->first);
+      if (removedAny)
+        *removedAny = true;
+      // The removal has committed. Poll before the next entry, not after
+      // this one: a late cancellation cannot bring the source back.
+      if (h.progress)
+        h.progress(it->first, 0);
     }
   }
   void Commit(const std::string &tmp, const std::string &dst, bool replace,
@@ -261,17 +358,42 @@ struct Runner {
     if (status != B_OK)
       throw std::runtime_error(dst + ": " + strerror(status));
   }
-  bool Copy(const std::string &src, const std::string &dst, unsigned depth = 0) {
+  bool Copy(const std::string &src, const std::string &dst,
+            unsigned depth = 0) {
+    Outcome(src, dst);
+    const size_t before = mutations;
+    try {
+      const bool complete = CopyEntry(src, dst, depth);
+      if (!complete)
+        Outcome(src).status = before == mutations ? "skipped" : "partial";
+      return complete;
+    } catch (const Cancelled &) {
+      auto &row = Outcome(src);
+      if (before != mutations)
+        row.status = "partial";
+      if (row.status == "unprocessed")
+        row.detail = "Cancelled before commit.";
+      throw;
+    } catch (const std::runtime_error &error) {
+      if (before != mutations)
+        Outcome(src).status = "partial";
+      Problem(src, error.what());
+      throw;
+    }
+  }
+  bool CopyEntry(const std::string &src, const std::string &dst, unsigned depth) {
     Check();
-    if (depth > 64) throw std::runtime_error("Folder tree exceeds the safe copy depth");
+    if (depth > 64)
+      throw std::runtime_error("Folder tree exceeds the safe copy depth");
     Guard();
     struct stat st;
     if (lstat(src.c_str(), &st) != 0)
       Fail(src);
-    struct stat before{};
+    struct stat before {};
     bool existed = Exists(dst, &before);
     if (existed && guardedJob && guardedJob->action == Action::Duplicate)
-      throw std::runtime_error(dst + ": already exists; duplicate does not overwrite");
+      throw std::runtime_error(
+          dst + ": already exists; duplicate does not overwrite");
     if (existed && st.st_dev == before.st_dev && st.st_ino == before.st_ino)
       throw std::runtime_error(src +
                                ": source and destination are the same entry");
@@ -280,8 +402,18 @@ struct Runner {
         throw std::runtime_error(
             dst + ": destination is not a directory; not replaced");
       // Merge directories, but never traverse destination symbolic links.
-      if (!existed && mkdir(dst.c_str(), 0700) != 0)
-        Fail(dst);
+      if (!existed) {
+        if (mkdir(dst.c_str(), 0700) != 0)
+          Fail(dst);
+        ++mutations;
+        if (lstat(dst.c_str(), &before) || !S_ISDIR(before.st_mode))
+          throw std::runtime_error(dst + ": new destination folder changed");
+      }
+      copyDirectories.emplace_back(dst, before);
+      struct DirectoryScope {
+        DirectoryStack &stack;
+        ~DirectoryScope() { stack.pop_back(); }
+      } scope{copyDirectories};
       bool complete = true;
       Dir dir(opendir(src.c_str()), closedir);
       if (!dir)
@@ -292,6 +424,7 @@ struct Runner {
         if (!Copy(Join(src, e->d_name), Join(dst, e->d_name), depth + 1))
           complete = false;
       }
+      Guard();
       if (!existed) {
         Attributes(src, dst);
         if (chmod(dst.c_str(), st.st_mode & 07777))
@@ -300,9 +433,13 @@ struct Runner {
         if (utimensat(AT_FDCWD, dst.c_str(), times, 0))
           Fail(dst);
       }
+      struct stat expected;
+      if (lstat(dst.c_str(), &expected))
+        Fail(dst);
       Tick(src);
+      Guard();
       if (complete)
-        Done(src, dst);
+        Done(src, dst, expected);
       return complete;
     }
     if (!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode))
@@ -313,13 +450,18 @@ struct Runner {
     if (!Allow(dst))
       return false;
     Guard();
-    std::string pattern = dst + ".listi-XXXXXX";
+    // Keep staging on the target volume without extending a possibly
+    // maximum-length destination leaf.
+    std::string pattern = dst.substr(0, dst.rfind('/') + 1) + ".listi-copy-XXXXXX";
     std::vector<char> name(pattern.begin(), pattern.end());
     name.push_back(0);
     FD out(mkstemp(name.data()));
     if (out.n < 0)
       Fail(dst);
     std::string tmp = name.data();
+    struct stat stagingIdentity;
+    if (fstat(out.n, &stagingIdentity))
+      Fail(tmp);
     try {
       if (S_ISLNK(st.st_mode)) {
         char link[PATH_MAX];
@@ -327,7 +469,8 @@ struct Runner {
         if (n < 0)
           Fail(src);
         link[n] = 0;
-        if (unlink(tmp.c_str()) || symlink(link, tmp.c_str()))
+        if (unlink(tmp.c_str()) || symlink(link, tmp.c_str()) ||
+            lstat(tmp.c_str(), &stagingIdentity))
           Fail(tmp);
       } else {
         FD in(open(src.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK));
@@ -373,29 +516,50 @@ struct Runner {
       struct stat current;
       if (lstat(src.c_str(), &current) || !SameEntry(current, st))
         throw std::runtime_error(src + ": source changed before commit");
+      struct stat staged;
+      if (lstat(tmp.c_str(), &staged) || staged.st_dev != stagingIdentity.st_dev ||
+          staged.st_ino != stagingIdentity.st_ino)
+        throw std::runtime_error(tmp + ": staging file changed");
       Commit(tmp, dst, existed, before);
-      Done(src, dst);
+      Done(src, dst, staged);
     } catch (...) {
-      unlink(tmp.c_str());
+      struct stat current;
+      if (lstat(tmp.c_str(), &current) == 0 &&
+          current.st_dev == stagingIdentity.st_dev && current.st_ino == stagingIdentity.st_ino)
+        unlink(tmp.c_str());
       throw;
     }
     return true;
   }
   void Execute(const Job &job) {
     guardedJob = &job;
-    const bool named = job.action == Action::Duplicate || job.action == Action::Link;
+    const bool named =
+        job.action == Action::Duplicate || job.action == Action::Link;
+    for (const auto &source : job.sources) {
+      std::string target;
+      if (job.action == Action::Rename)
+        target = job.destination;
+      else if (named || job.action == Action::Copy || job.action == Action::Move)
+        target = Join(job.destination, named ? job.entryName : Leaf(source));
+      Outcome(source, target);
+    }
     if (named) {
       if (job.sources.size() != 1 || job.expectedSources.size() != 1 ||
-          job.expectedDestination.device < 0)
-        throw std::runtime_error("Named entry operations require one guarded local source and destination.");
+          job.expectedDestination.device < 0 ||
+          (!job.destinationFolder.empty() &&
+           job.destinationFolder != job.destination))
+        throw std::runtime_error(
+            "Named entry operations require one guarded local source and destination.");
       ValidateNewEntryName(job.destination, job.entryName);
     }
     if (job.action == Action::MakeDirectory) {
+      Outcome("", job.destination);
       Check();
       Guard();
       if (mkdir(job.destination.c_str(), 0755))
         Fail(job.destination);
       result.completed++;
+      Outcome("").status = "completed";
       return;
     }
     for (auto &source : job.sources) {
@@ -422,19 +586,26 @@ struct Runner {
           if (directory.GetNodeRef(&node) != B_OK ||
               node.device != job.expectedDestination.device ||
               node.node != job.expectedDestination.inode)
-            throw std::runtime_error("The link destination changed; nothing was created.");
+            throw std::runtime_error(
+                "The link destination changed; nothing was created.");
           // One native exclusive create: existing files, folders and broken
           // symlinks are never replaced. No shell or source dereferencing.
           const auto text = LinkText(job);
-          status_t status = directory.CreateSymLink(job.entryName.c_str(), text.c_str(), nullptr);
-          if (status != B_OK) throw std::runtime_error("Could not create link: " + std::string(strerror(status)));
+          status_t status = directory.CreateSymLink(job.entryName.c_str(),
+                                                    text.c_str(), nullptr);
+          if (status != B_OK)
+            throw std::runtime_error("Could not create link: " +
+                                     std::string(strerror(status)));
           const auto destination = Join(job.destination, job.entryName);
+          Outcome(source, destination).status = "completed";
           result.completedRoots.emplace_back(source, destination);
           ++result.completed;
-          if (h.fileDone) h.fileDone(source, destination);
+          if (h.fileDone)
+            h.fileDone(source, destination);
           continue;
         }
-        if (S_ISDIR(sourceStat.st_mode) && job.action != Action::Copy && job.action != Action::Duplicate) {
+        if (S_ISDIR(sourceStat.st_mode) && job.action != Action::Copy &&
+            job.action != Action::Duplicate) {
           std::string parent = source.substr(0, source.find_last_of('/'));
           if (parent.empty())
             parent = "/";
@@ -447,9 +618,16 @@ struct Runner {
                 ": mounted volumes cannot be deleted, moved or renamed");
         }
         if (job.action == Action::Trash || job.action == Action::Restore) {
+          std::string warning;
           const std::string destination = job.action == Action::Trash
                                               ? MoveToTrash(source)
-                                              : RestoreFromTrash(source);
+                                              : RestoreFromTrash(source, &warning);
+          auto &row = Outcome(source, destination);
+          row.status = "moved";
+          if (!warning.empty()) {
+            row.detail = warning;
+            result.errors.push_back(warning);
+          }
           result.completed++;
           if (h.fileDone)
             h.fileDone(source, destination);
@@ -458,17 +636,20 @@ struct Runner {
         if (job.action == Action::Delete) {
           Snapshot deletion;
           SnapshotTree(source, deletion, sourceStat.st_dev);
+          for (const auto &entry : deletion)
+            Outcome(entry.first);
           RemoveCopied(source, deletion);
           result.completed++;
           continue;
         }
         std::string destination = job.action == Action::Rename
                                       ? job.destination
-                                      : Join(Canonical(job.destination), named ? job.entryName : leaf);
+                                      : Join(Canonical(job.destination),
+                                             named ? job.entryName : leaf);
         if (S_ISDIR(sourceStat.st_mode)) {
-          std::string from = Canonical(source),
-                      parent = Canonical(
-                          destination.substr(0, destination.find_last_of('/')));
+          const auto slash = destination.find_last_of('/');
+          const auto parent = Canonical(slash == 0 ? "/" : destination.substr(0, slash));
+          const auto from = Canonical(source);
           if (parent == from ||
               parent.compare(0, from.size() + 1, from + "/") == 0)
             throw std::runtime_error(
@@ -478,8 +659,9 @@ struct Runner {
           if (Exists(destination))
             throw std::runtime_error(
                 destination + ": already exists; rename does not overwrite");
-          struct stat empty{};
+          struct stat empty {};
           Commit(source, destination, false, empty);
+          Outcome(source, destination).status = "moved";
           if (h.fileDone)
             h.fileDone(source, destination);
           result.completed++;
@@ -491,31 +673,44 @@ struct Runner {
           BDirectory dir(job.destination.c_str());
           status_t s = e.MoveTo(&dir, leaf.c_str(), false);
           if (s == B_OK) {
+            Outcome(source, destination).status = "moved";
             result.completedRoots.emplace_back(source, destination);
+            ++result.completed;
             if (h.fileDone)
               h.fileDone(source, destination);
-            Tick(source);
-            result.completed++;
+            if (h.progress)
+              h.progress(source, 0);
             continue;
           }
           if (s != B_CROSS_DEVICE_LINK)
             throw std::runtime_error(source + ": " + strerror(s));
         }
         Snapshot beforeMove;
-        if (job.action == Action::Move)
+        if (job.action == Action::Move) {
           SnapshotTree(source, beforeMove, sourceStat.st_dev);
+          for (const auto &entry : beforeMove)
+            Outcome(entry.first, destination + entry.first.substr(source.size()));
+        }
         if (Copy(source, destination)) {
           if (job.action == Action::Move) {
             Guard();
-            RemoveCopied(source, beforeMove);
+            bool removedAny = false;
+            try {
+              RemoveCopied(source, beforeMove, &removedAny);
+            } catch (const Cancelled &) {
+              if (!removedAny)
+                result.retainedMoveCopy.emplace(source, destination);
+              throw;
+            }
           }
           result.completedRoots.emplace_back(source, destination);
           result.completed++;
           if (h.fileDone)
             for (auto &entry : copied)
-              h.fileDone(entry.first, entry.second);
+              h.fileDone(entry.first, entry.second.destination);
         }
       } catch (const std::runtime_error &e) {
+        Problem(source, e.what());
         result.errors.push_back(e.what());
         if (h.fileFailed)
           h.fileFailed(source, e.what());
@@ -525,8 +720,13 @@ struct Runner {
 };
 } // namespace
 Result Run(const Job &j, const Hooks &h) {
+  if (j.action == Action::BulkRename)
+    return RunBulkRename(j, h);
+  if (j.action == Action::ConvertImage)
+    return RunImageConversion(j, h);
   if (j.action == Action::CreateArchive || j.action == Action::ExtractArchive ||
-      j.action == Action::EditArchive || j.action == Action::MoveArchive) return RunArchiveJob(j,h);
+      j.action == Action::EditArchive || j.action == Action::MoveArchive)
+    return RunArchiveJob(j, h);
   // Source-only actions must not depend on the location in the other pane.
   const bool usesDestination =
       j.action == Action::Copy || j.action == Action::Move ||
@@ -538,15 +738,19 @@ Result Run(const Job &j, const Hooks &h) {
   if (virtualJob) {
     if (j.action == Action::Duplicate || j.action == Action::Link) {
       Result result;
-      result.errors.push_back("Guarded file clipboard transfers require local entries.");
+      result.errors.push_back(
+          "Guarded file clipboard transfers require local entries.");
       return result;
     }
     try {
       for (const auto &entry : j.expectedArchiveSets)
         if (FindArchiveVolumes(entry.first).Fingerprint() != entry.second)
-          throw std::runtime_error("Archive changed after selection. Select its entries again.");
+          throw std::runtime_error(
+              "Archive changed after selection. Select its entries again.");
     } catch (const std::exception &e) {
-      Result result;result.errors.push_back(e.what());return result;
+      Result result;
+      result.errors.push_back(e.what());
+      return result;
     }
     return RunVirtual(j, h);
   }
@@ -558,6 +762,8 @@ Result Run(const Job &j, const Hooks &h) {
     r.result.cancelled = true;
   } catch (const std::exception &e) {
     r.result.errors.push_back(e.what());
+    if (r.result.outcomes.size() == 1)
+      r.Problem(r.result.outcomes.front().source, e.what());
   }
   return r.result;
 }

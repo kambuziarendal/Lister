@@ -2,13 +2,30 @@
 #pragma once
 #include <functional>
 #include <map>
+#include <optional>
 #include <utility>
 #include <stdint.h>
 #include <string>
 #include <vector>
 
 namespace Listi {
-enum class Action { Copy, Move, Delete, Trash, Restore, MakeDirectory, Rename, Duplicate, Link, CreateArchive, ExtractArchive, EditArchive, MoveArchive };
+enum class Action {
+  Copy,
+  Move,
+  Delete,
+  Trash,
+  Restore,
+  MakeDirectory,
+  Rename,
+  Duplicate,
+  Link,
+  CreateArchive,
+  ExtractArchive,
+  EditArchive,
+  MoveArchive,
+  BulkRename,
+  ConvertImage
+};
 enum class Decision { Replace, ReplaceAll, Skip, SkipAll, Abort };
 struct NodeIdentity {
   int32_t device = -1;
@@ -27,13 +44,17 @@ struct Job {
   // Only Duplicate/Link use an explicit leaf name, always without replacement.
   std::string entryName;
   bool relativeLink = true;
+  // Selected Translation Kit output for ConvertImage.
+  uint32_t imageFormat = 0;
+  std::string imageMime;
   std::string archiveFormat = "zip";
   int archiveLevel = 6;
   // A process-local handle, never the password itself. Jobs cannot survive an
   // application restart with this handle, which is intentional.
   uint64_t archivePasswordToken = 0;
   bool archiveEncryptNames = false;
-  bool archiveVerifyOutput = false; // Decode and compare before replacing an edited archive.
+  bool archiveVerifyOutput =
+      false; // Decode and compare before replacing an edited archive.
   // EditArchive uses destination as the local archive, sources as local entries
   // to add, archivePath as the internal destination folder, and archiveRemove
   // as normalized member paths without a leading slash.
@@ -41,7 +62,10 @@ struct Job {
   std::vector<std::string> archiveRemove;
   std::vector<std::string> archiveFolders;
   std::map<std::string, std::string> archiveRenames;
-  std::string destinationFolder; // Captured parent for rename/new-folder questions.
+  // BulkRename maps each frozen source to its previewed leaf (also unchanged).
+  std::map<std::string, std::string> bulkNames;
+  std::string
+      destinationFolder; // Captured parent for rename/new-folder questions.
 };
 struct Hooks {
   std::function<bool()> proceed;
@@ -50,11 +74,18 @@ struct Hooks {
   std::function<void(const std::string &, const std::string &)> fileDone;
   std::function<void(const std::string &, const std::string &)> fileFailed;
 };
+struct EntryOutcome {
+  std::string source, destination, status, detail;
+};
 struct Result {
   int completed = 0, skipped = 0;
   bool cancelled = false;
   std::vector<std::string> errors;
   std::vector<std::pair<std::string, std::string>> completedRoots;
+  // A cancelled local move left a complete copy and removed no source entries.
+  std::optional<std::pair<std::string, std::string>> retainedMoveCopy;
+  // Selected roots and individual entries visited during a non-atomic transfer.
+  std::vector<EntryOutcome> outcomes;
 };
 Result Run(const Job &, const Hooks &);
 std::string Join(const std::string &, const std::string &);

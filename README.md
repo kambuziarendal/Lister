@@ -7,21 +7,20 @@ BFS attributes, queries, MIME applications and Tracker interoperability. Start
 with one file list, add a folder tree, work across two panels, or bring more tools
 together in the Smiðja workspace.
 
-[Download 0.31.1 alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.31.1)
+[Download 0.32.0 alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.32.0)
 · [Workflow guide](docs/GUIDE.md)
 · [Roadmap](docs/ROADMAP.md)
 · [Report a bug](https://github.com/kambuziarendal/listi/issues)
 
-## Implemented since 0.31.1 (not in the download)
+## What changed in 0.32.0
 
-The development build adds named workspace layouts, configurable buttons and
-module positions, and optional compact buttons for narrow windows. Operations
-now reports partial local moves per entry and lets you revisit or cancel a
-specific job. Other additions include Miller columns, a session Shelf, previewed
-local bulk rename, image conversion on drop, saving clipboard text or PNG images,
-and additional archive writers.
+- **Customise the workspace:** choose and order command buttons, position modules in fixed zones, and save named layouts. Compact buttons for narrow windows are opt-in.
+- **Work across folders:** browse in Miller columns, collect local files on the session Shelf, preview bulk renames, convert a dropped image, or save clipboard text and PNG images as files.
+- **Review file operations:** inspect or cancel a specific queued job. Partial local moves report which entries were moved and which sources were retained. If a destination copy changes before cleanup, Listi stops rather than deleting the source.
+- **Keep actions on the intended file:** a replacement at the same local path no longer inherits selection on refresh. Paste and drop reject colliding output names. Restore refuses an original folder redirected into Trash. Unreadable settings are preserved.
+- **Work with more archives:** supported single-volume RAR5 archives can be rebuilt in Store mode. CAB, ARJ and LHA/LZH have format-specific writing limits and optional dependencies. See the [archive guide](docs/GUIDE.md#archives) before editing an existing archive.
 
-See the [development workflow guide](https://github.com/kambuziarendal/listi/blob/work/format-review-20261118/docs/GUIDE.md) for menu paths and archive limitations.
+The [roadmap](docs/ROADMAP.md#feature-directions-and-current-foundations) distinguishes shipped features from plans. Folder comparison is read-only; duplicate finding, directory synchronisation and persistent job history are not in this release.
 
 | Smiðja: a file workbench | Tvískipt: source and destination |
 |---|---|
@@ -41,7 +40,7 @@ the names below. [Screenshot versions and credits](docs/screenshots/CREDITS.md).
 
 | Workspace | Layout | Useful for |
 |---|---|---|
-| **Einn** (`einn`) | One file panel; folders open in the same window by default | Simple, Tracker-like browsing |
+| **Einn** (`einn`) | One file panel with Miller columns by default | Simple, Tracker-like browsing |
 | **Askr** (`askr`) | Folder tree on the left, file list on the right | Navigating a folder hierarchy |
 | **Tvískipt** (`tviskipt`) | Two file panels side by side | Copying, moving and comparing locations |
 | **Smiðja** (`smidja`) | Panels, trees, image preview and action controls | Keeping several tools close at hand |
@@ -121,7 +120,7 @@ Word references: [listi](https://en.wiktionary.org/wiki/listi#Icelandic),
 | Saved criteria, extension, byte size and inclusive calendar dates. | Size checks or SHA-256, with paths and per-entry results. |
 
 Feature captures from 0.30.0 and 0.28.0. These workflows remain available in the
-current alpha; the images are not fresh 0.31.1 captures.
+current alpha; the images are not captures of 0.32.0.
 
 ### Browse and work inside archives
 
@@ -138,9 +137,9 @@ current alpha; the images are not fresh 0.31.1 captures.
 - Supported archive-to-archive and archive/local moves verify destination content
   before source cleanup. These are not atomic two-location transactions.
 
-Reading, creation and editing have different format capabilities. RAR writing,
-remote/split/nested archive mutation and full metadata preservation are not
-supported. Decrypted editing copies may remain on disk: see the
+Listi can rebuild supported single-volume RAR5 archives in their original
+format using Store (no compression). RAR4 writing, remote/split/nested archive
+mutation and full metadata preservation are not supported. Decrypted editing copies may remain on disk: see the
 [archive limits and recovery guidance](docs/GUIDE.md#archives).
 
 ### Connect to network locations
@@ -172,7 +171,7 @@ for scope and limitations across all these features.
 - **Sort without changing the task:** Name, Size or Modified, ascending or
   descending. This is separate from same-type selection; sorting by file type
   is not implemented in this alpha.
-- **Remember a folder's view:** choose Details, Icons, Large icons or Thumbnails,
+- **Remember a folder's view:** choose Details, Icons, Large icons, Thumbnails or Miller columns,
   save that display mode for the folder, or return it to the default.
 - **Get somewhere quickly:** per-panel Back/Forward, editable paths, Go shortcuts,
   named saved places, and **Same folder in other panel**.
@@ -190,18 +189,15 @@ where to find these controls and their scope.
 
 ## Install
 
-The public alpha targets **Haiku x86_64**. The release includes an HPKG, a ZIP
-containing the same package, and checksums.
+The GitHub test release targets **Haiku x86_64**. Download its HPKG and install it locally:
 
 ```sh
-pkgman install ./Listi-0.31.1-1-x86_64.hpkg
+pkgman install ./Listi-0.32.0-1-x86_64.hpkg
 ```
 
-[Download the alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.31.1)
+[Download the alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.32.0)
 
-0.31.1 updates project and workspace names without adding file-management
-features. Existing settings and numeric workspace values are retained. Scripts
-comparing the native `Workspace` display name must use the new names.
+If upgrading from before 0.31.1, the project and workspace names have changed. Existing numeric workspace values are retained; scripts comparing the native `Workspace` display name must use the new names.
 [Compatibility details](docs/DESIGN.md#names-and-compatibility).
 
 Keep a previous package for application rollback and independent backups for
@@ -234,7 +230,7 @@ text fields retain their normal text-editing shortcuts.
 Build inside **Haiku x86_64**:
 
 ```sh
-pkgman install haiku_devel python3 libarchive_devel curl_devel samba4_devel
+pkgman install haiku_devel python3 libarchive_devel zlib_devel curl_devel samba4_devel
 make
 make test
 make package
@@ -253,13 +249,13 @@ enough to grow with the task. The DOpus-inspired workflow is the starting point,
 not a goal to reproduce another application's interface.
 
 **Optional by design:** advanced tools should be there when useful, not imposed
-on everyone. The long-term goal is to move, add and remove buttons and modules,
-arrange the interface around a task, and save personal layouts. The current
-alpha offers preset layouts and visibility options, not a free-form layout editor.
+on everyone. The four presets are ready to use; **View > Workspace > Customize workspace…** opens the workspace editor.
+Choose and order command buttons, position tools in fixed zones, and save
+named layouts without changing file associations or folder-specific views.
+Placement uses fixed zones rather than free-form docking.
 
 The [roadmap](docs/ROADMAP.md) puts file safety and job clarity first, then
-explores duplicate search, bulk rename, optional Miller columns, synchronisation,
-clipboard-to-file, richer inspectors, tags, rules, saved project sessions, Git
+explores duplicate search, synchronisation, richer inspectors, tags, rules, saved project sessions, Git
 status and text/file diff. Its status table separates existing foundations from
 future work. There are no feature-parity or performance claims without supporting
 measurements.

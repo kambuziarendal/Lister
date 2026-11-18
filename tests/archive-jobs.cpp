@@ -52,7 +52,13 @@ void *run(void *) {
   auto formats=WritableArchiveFormats();check(!formats.empty(),"optional system writer available");
   std::string archive;std::map<std::string,std::string> madeArchives;
   for(const auto &f:formats){
-    auto job=PrepareArchiveJob(false,{input+"/folder",input+"/empty"});job.archiveFormat=f.id;
+    if (f.id == "cab") rmdir((input+"/folder/empty").c_str());
+    const bool flat = f.id == "ar";
+    const bool ascii = f.id == "arj";
+    const std::string leaf = ascii ? "literal name.txt" : "æ name ; $(no).txt";
+    if (ascii) rename((input+"/folder/æ name ; $(no).txt").c_str(),(input+"/folder/"+leaf).c_str());
+    const auto payload = (flat ? "/" : "/folder/")+leaf;
+    auto job=PrepareArchiveJob(false,{flat ? input+"/folder/"+leaf : input+"/folder",input+"/empty"});job.archiveFormat=f.id;
     SetArchiveDestination(job,out,"roundtrip"+f.extension);
     job=DecodeJob(EncodeJob(job,0));auto result=Run(job,{});
     if(!result.errors.empty())std::cerr<<result.errors.front()<<std::endl;
@@ -60,15 +66,77 @@ void *run(void *) {
     auto extract=PrepareArchiveJob(true,{job.destination});SetArchiveDestination(extract,out,"extract-"+f.id);
     auto unpack=Run(extract,{});if(!unpack.errors.empty())std::cerr<<unpack.errors.front()<<std::endl;
     check(unpack.completed==1 && unpack.errors.empty(),f.id+" extracts transactionally");
-    check(read(extract.destination+"/folder/æ name ; $(no).txt")=="payload\n",f.id+" Unicode and literal shell characters round trip");
-    check(exists(extract.destination+"/folder/empty") && exists(extract.destination+"/empty"),f.id+" empty file and empty folder preserved");
-    auto again=Run(job,{});check(!again.errors.empty() && read(extract.destination+"/folder/æ name ; $(no).txt")=="payload\n",f.id+" existing archive is not replaced");
+    check(read(extract.destination+payload)=="payload\n",f.id+" member name and content round trip");
+    check((flat || f.id == "cab" || exists(extract.destination+"/folder/empty")) && exists(extract.destination+"/empty"),f.id+" representable empty entries preserved");
+    auto again=Run(job,{});check(!again.errors.empty() && read(extract.destination+payload)=="payload\n",f.id+" existing archive is not replaced");
     for(int level:{0,9}) {
       auto variant=job;variant.archiveLevel=level;SetArchiveDestination(variant,out,f.id+std::to_string(level)+f.extension);
       auto done=Run(variant,{});if(!done.errors.empty())std::cerr<<done.errors.front()<<std::endl;
       check(done.completed==1 && done.errors.empty(),f.id+" compression level "+std::to_string(level));
     }
+    if (ascii) rename((input+"/folder/"+leaf).c_str(),(input+"/folder/æ name ; $(no).txt").c_str());
+    if (f.id == "cab") mkdir((input+"/folder/empty").c_str(),0700);
     archive=job.destination;madeArchives[f.id]=job.destination;
+  }
+  // Exercise the public job path with material that actually benefits from
+  // compression. A successful exit alone would not catch silent Store output.
+  for (const auto &format : formats) {
+    if ((format.id != "arj" && format.id != "cab") || !format.compression)
+      continue;
+    const std::string contents(128 * 1024, 'A');
+    const auto member = input + "/compressible.txt";
+    write(member, contents);
+    auto job = PrepareArchiveJob(false, {member});
+    job.archiveFormat = format.id;
+    job.archiveLevel = 6;
+    SetArchiveDestination(job, out, "compressed" + format.extension);
+    auto result = Run(job, {});
+    check(result.completed == 1 && result.errors.empty() &&
+              read(job.destination).size() < contents.size() / 2,
+          format.id + " job uses compression for repeated data");
+    check(vread(ChildLocation(OpenArchive(job.destination), "compressible.txt")) == contents &&
+              PrepareArchiveEditTarget(job.destination).archiveFormat == format.id,
+          format.id + " compressed result is readable and editable");
+  }
+  if (madeArchives.count("iso")) {
+    // Renamed images still have the same format; copying bytes without the
+    // verification attribute must not grant permission to rebuild an image.
+    const auto original = madeArchives.at("iso");
+    const auto renamed = out + "/without-extension";
+    check(rename(original.c_str(), renamed.c_str()) == 0 &&
+              PrepareArchiveEditTarget(renamed).archiveFormat == "iso",
+          "Listi data ISO remains editable when renamed");
+    const auto unmarked = out + "/unmarked.iso";
+    const auto image = read(renamed);
+    write(unmarked, image);
+    bool unmarkedRefused = false;
+    try { PrepareArchiveEditTarget(unmarked); }
+    catch (const std::exception &) { unmarkedRefused = true; }
+    check(unmarkedRefused && !OpenArchive(unmarked).empty() &&
+              read(unmarked) == image,
+          "unmarked ISO can be read but is never rebuilt");
+    const auto iso = OpenArchive(renamed);
+    const auto added = ChildLocation(iso, "new-folder");
+    const auto pending = PrepareArchiveMutation(
+        Job{Action::MakeDirectory, {}, added});
+    auto tampered = image;
+    tampered[0] = 1; // System area: outside the visible filesystem.
+    write(renamed, tampered);
+    const auto refused = Run(pending, {});
+    bool changedRefused = false;
+    try { PrepareArchiveEditTarget(renamed); }
+    catch (const std::exception &) { changedRefused = true; }
+    check(changedRefused && !refused.errors.empty() &&
+              read(renamed) == tampered && !OpenArchive(renamed).empty(),
+          "changed ISO retains exact bytes and remains readable");
+    write(renamed, image);
+    auto edited = Run(PrepareArchiveMutation(
+        Job{Action::MakeDirectory, {}, added}), {});
+    FileEntry info;
+    check(edited.completed == 1 && StatFile(added, info) && info.directory &&
+              PrepareArchiveEditTarget(renamed).archiveFormat == "iso",
+          "data ISO contents can be edited and reverified");
+    check(rename(renamed.c_str(), original.c_str()) == 0, "restore renamed ISO fixture");
   }
   mkdir((input+"/edit").c_str(),0700);mkdir((input+"/edit/replacement").c_str(),0700);
   write(input+"/edit/replacement/empty","replacement\n");write(input+"/edit/new.txt","new\n");

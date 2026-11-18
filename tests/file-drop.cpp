@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "FileDrop.h"
+#include "TransferCommand.h"
 #include "FileClipboard.h"
 #include <Application.h>
 #include <Node.h>
@@ -32,12 +33,28 @@ try{
  Check(Reject([&]{MakeFileDrag({a+"/folder",a+"/folder/sub/data"});}),"overlapping selections rejected");
  auto folder=MakeFileDrag({a+"/folder"});Check(Reject([&]{PrepareFileDrop(folder,a+"/folder/sub");}),"folder into descendant rejected");
  symlink((a+"/folder/sub").c_str(),(root+"/alias").c_str());Check(Reject([&]{PrepareFileDrop(folder,root+"/alias");}),"destination alias into source rejected");
+ auto outside = root + "/two";
+ Write(outside, "different");
+ auto ambiguous = MakeFileDrag({a+"/two", outside});
+ Check(Reject([&]{PrepareFileDrop(ambiguous,b);}) && Read(outside)=="different" &&
+       Read(a+"/two")=="second" && Read(b+"/two")=="second",
+       "drop refuses colliding output names before touching sources or destination");
+ for (auto action : {Action::Copy, Action::Move}) {
+   Check(Reject([&] { PrepareTransfer(Job{action, {a+"/folder"}, root+"/alias"}); }),
+         "panel commands share the descendant/alias checks used for drops");
+   Check(Reject([&] { PrepareTransfer(Job{action, {f}, a}); }),
+         "panel commands refuse the source folder before queueing");
+ }
+ Check(Reject([&] { PrepareFileDrop(malformed, "sftp://example.invalid/folder"); }),
+       "virtual destinations also check that drag references match the captured selection");
  job=PrepareFileDrop(MakeFileDrag({a+"/two"}),b);job.action=Action::Move;
  Hooks skip;skip.conflict=[](const auto&){return Decision::Skip;};result=Run(job,skip);Check(result.skipped==1 && Exists(a+"/two"),"skip preserves original move source");
  Hooks abort;abort.conflict=[](const auto&){return Decision::Abort;};result=Run(job,abort);Check(result.cancelled && Exists(a+"/two"),"cancel preserves original move source");
  Hooks replace;replace.conflict=[](const auto&){return Decision::Replace;};result=Run(job,replace);Check(result.completed==1 && !Exists(a+"/two") && Read(b+"/two")=="second","explicit move commits then removes original");
  job=PrepareFileDrop(MakeFileDrag({f}),b);rename(f.c_str(),(a+"/old").c_str());Write(f,"replacement");
  Check(Reject([&]{PrepareFileDrop(drag,b);}),"source replaced during drag rejected");
+ Check(Reject([&] { PrepareTransfer(job); }),
+       "re-preparing a captured transfer never refreshes a replaced source");
  result=Run(job,replace);Check(result.completed==0 && !result.errors.empty() && Read(f)=="replacement","source replaced during question rejected");
  job=PrepareFileDrop(MakeFileDrag({f}),b);rename(b.c_str(),(root+"/old-b").c_str());mkdir(b.c_str(),0755);result=Run(job,{});Check(result.completed==0 && !Exists(b+"/æ $' file.txt"),"destination replaced during question rejected");
  job=PrepareFileDrop(MakeFileDrag({f}),b);Write(b+"/æ $' file.txt","target");Hooks mutate;mutate.conflict=[&](const auto&){rename(f.c_str(),(a+"/old2").c_str());Write(f,"third");return Decision::Replace;};result=Run(job,mutate);Check(result.completed==0 && Read(b+"/æ $' file.txt")=="target" && Read(f)=="third","conflict-time source replacement leaves target untouched");

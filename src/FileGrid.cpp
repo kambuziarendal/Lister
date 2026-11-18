@@ -92,16 +92,19 @@ class GridView : public FileGrid {
 
 public:
   void SetActive(bool active) override {
-    const auto background = Listi::PanelBackground(B_DOCUMENT_BACKGROUND_COLOR, active);
-    if (ViewColor() == background) return;
+    const auto background =
+        Listi::PanelBackground(B_DOCUMENT_BACKGROUND_COLOR, active);
+    if (ViewColor() == background)
+      return;
     SetViewColor(background);
     SetLowColor(background);
     Invalidate();
   }
   GridView(Pane *p, PaneModel *state)
       : FileGrid("file grid", B_WILL_DRAW | B_NAVIGABLE | B_FRAME_EVENTS |
-                               B_FULL_UPDATE_ON_RESIZE),
-        pane(p), model(state), generation(std::make_shared<std::atomic<int64>>(0)) {
+                                  B_FULL_UPDATE_ON_RESIZE),
+        pane(p), model(state),
+        generation(std::make_shared<std::atomic<int64>>(0)) {
     // The scroll container owns geometry. Current viewport size must not
     // become a growing layout minimum when an unnecessary bar is reclaimed.
     SetExplicitMinSize(BSize(0, 0));
@@ -115,7 +118,11 @@ public:
       pane->SendSelection(true);
     };
     band->finished = [this] { pane->SendSelection(); };
-    band->activate = [this] { MakeFocus(); pressedIndex = -1; deferredPick = false; };
+    band->activate = [this] {
+      MakeFocus();
+      pressedIndex = -1;
+      deferredPick = false;
+    };
     band->outline = [this](BRect rect) {
       PushState();
       SetDrawingMode(B_OP_INVERT);
@@ -124,7 +131,8 @@ public:
     };
     band->empty = [this](BPoint p) {
       for (int i = 0; i < int(model->Visible().size()); ++i)
-        if (Cell(i).InsetByCopy(4, 4).Contains(p)) return false;
+        if (Cell(i).InsetByCopy(4, 4).Contains(p))
+          return false;
       return true;
     };
     band->select = [this](BRect rect, const auto &base) {
@@ -193,20 +201,25 @@ public:
       if (selected != bool(paintedSelection.count(path)) ||
           (focus != paintedFocus && (path == focus || path == paintedFocus)))
         Invalidate(Cell(i));
-      if (selected) paintedSelection.insert(path);
-      else paintedSelection.erase(path);
+      if (selected)
+        paintedSelection.insert(path);
+      else
+        paintedSelection.erase(path);
     }
     paintedFocus = focus;
   }
   float ContentHeight(float width) const override {
     const int columns = std::max(1, int((width + 1) / cellWidth));
-    return ((int(model->Visible().size()) + columns - 1) / columns) * cellHeight;
+    return ((int(model->Visible().size()) + columns - 1) / columns) *
+           cellHeight;
   }
   void Update() {
-    if (Parent()) Parent()->InvalidateLayout();
+    if (Parent())
+      Parent()->InvalidateLayout();
     if (auto bar = ScrollBar(B_VERTICAL)) {
       float height =
-          ((int(model->Visible().size()) + Columns() - 1) / Columns()) * cellHeight;
+          ((int(model->Visible().size()) + Columns() - 1) / Columns()) *
+          cellHeight;
       float visible = Bounds().Height() + 1;
       bar->SetRange(0, std::max(0.f, height - visible));
       bar->SetProportion(height > 0 ? std::min(1.f, visible / height) : 1.f);
@@ -216,9 +229,15 @@ public:
   }
   void RedrawEntry(const std::string &path) override {
     for (size_t i = 0; i < model->Visible().size(); ++i)
-      if (model->Visible()[i]->path == path) { Invalidate(Cell(i)); return; }
+      if (model->Visible()[i]->path == path) {
+        Invalidate(Cell(i));
+        return;
+      }
   }
-  void FrameResized(float, float) override { band->Cancel(); Update(); }
+  void FrameResized(float, float) override {
+    band->Cancel();
+    Update();
+  }
   void MakeFocus(bool focus = true) override {
     BView::MakeFocus(focus);
     if (focus)
@@ -230,14 +249,16 @@ public:
     int index = int(point.y / cellHeight) * Columns() +
                 std::min(Columns() - 1,
                          int(point.x / ((Bounds().Width() + 1) / Columns())));
-    if (Window()->CurrentMessage()->GetInt32("buttons", 0) & B_SECONDARY_MOUSE_BUTTON) {
+    if (Window()->CurrentMessage()->GetInt32("buttons", 0) &
+        B_SECONDARY_MOUSE_BUTTON) {
       pressedIndex = -1;
       dragging = deferredPick = false;
       if (index >= 0 && index < int(model->Visible().size()) &&
           !model->Visible()[index]->parent) {
         const auto path = model->Visible()[index]->path;
         pane->ContextMenu(path, ConvertToScreen(point));
-      } else pane->ContextMenu("", ConvertToScreen(point));
+      } else
+        pane->ContextMenu("", ConvertToScreen(point));
       return;
     }
     int32 mods = modifiers();
@@ -260,7 +281,8 @@ public:
   void MouseMoved(BPoint point, uint32, const BMessage *) override {
     if (dragging || pressedIndex < 0 ||
         pressedIndex >= int(model->Visible().size()) ||
-        (std::abs(point.x - pressed.x) < 5 && std::abs(point.y - pressed.y) < 5))
+        (std::abs(point.x - pressed.x) < 5 &&
+         std::abs(point.y - pressed.y) < 5))
       return;
     BPoint current;
     uint32 buttons;
@@ -268,8 +290,12 @@ public:
     if (!(buttons & B_PRIMARY_MOUSE_BUTTON))
       return;
     BMessage drag;
-    try { drag = Listi::MakeFileDrag(model->Selected()); }
-    catch (const std::exception &e) { pane->ShowStatus(e.what()); return; }
+    try {
+      drag = Listi::MakeFileDrag(model->Selected());
+    } catch (const std::exception &e) {
+      pane->ShowStatus(e.what());
+      return;
+    }
     dragging = true;
     DragMessage(&drag, BRect(point.x, point.y, point.x + 90, point.y + 22));
   }
@@ -326,7 +352,8 @@ public:
         return;
       }
       if (change) {
-        Pick(std::max(0, std::min(int(model->Visible().size()) - 1, index + change)),
+        Pick(std::max(
+                 0, std::min(int(model->Visible().size()) - 1, index + change)),
              modifiers() & B_SHIFT_KEY);
         return;
       }
@@ -368,8 +395,10 @@ public:
       auto row = model->Visible()[i];
       auto cell = Cell(i).InsetByCopy(4, 4);
       bool selected = Selected(row);
-      if (selected) SetHighUIColor(B_LIST_SELECTED_BACKGROUND_COLOR);
-      else SetHighColor(ViewColor());
+      if (selected)
+        SetHighUIColor(B_LIST_SELECTED_BACKGROUND_COLOR);
+      else
+        SetHighColor(ViewColor());
       FillRoundRect(cell, 4, 4);
       BBitmap *picture = row->icon.get();
       if (mode == 3 && !row->directory && !row->parent) {
@@ -420,10 +449,10 @@ public:
       if (row->transferState) {
         SetHighUIColor(row->transferState == 2   ? B_SUCCESS_COLOR
                        : row->transferState == 3 ? B_FAILURE_COLOR
-                                                  : B_STATUS_BAR_COLOR);
-        float width = std::max(
-            5.f, (cell.Width() - 8) *
-                     (row->transferState == 1 ? row->fraction : 1.f));
+                                                 : B_STATUS_BAR_COLOR);
+        float width =
+            std::max(5.f, (cell.Width() - 8) *
+                              (row->transferState == 1 ? row->fraction : 1.f));
         FillRect(BRect(cell.left + 4, cell.bottom - 3, cell.left + 4 + width,
                        cell.bottom - 1));
       }

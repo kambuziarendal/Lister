@@ -6,7 +6,9 @@
 #include <memory>
 namespace Listi {
 constexpr uint32 kSearchStart = 'ssrt', kSearchStop = 'sstp',
-    kSearchRows = 'shit', kSearchDone = 'sfin', kSearchBegin = 'sbeg';
+                 kSearchRows = 'shit', kSearchDone = 'sfin',
+                 kSearchBegin = 'sbeg';
 // The caller invalidates generation before Stop or Quit, interrupting scans.
-BLooper *NewSearchWorker(BMessenger target, std::shared_ptr<std::atomic<int64>> generation);
+BLooper *NewSearchWorker(BMessenger target,
+                         std::shared_ptr<std::atomic<int64>> generation);
 }

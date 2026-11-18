@@ -44,28 +44,33 @@ public:
     else
       v->SetHighColor(prefs.Color(n->entry->kind == 1   ? prefs.folders
                                   : n->entry->kind == 2 ? prefs.links
-                                                 : prefs.files));
+                                                        : prefs.files));
     if (prefs.icons) {
       if (n->entry->icon) {
         v->SetDrawingMode(B_OP_ALPHA);
         float top = r.top + (r.Height() - 16) / 2;
         BRect destination(r.left + 3, top, r.left + 18, top + 15);
         if (v == batchTarget)
-          v->DrawBitmapAsync(n->entry->icon.get(), n->entry->icon->Bounds(), destination);
+          v->DrawBitmapAsync(n->entry->icon.get(), n->entry->icon->Bounds(),
+                             destination);
         else
-          v->DrawBitmap(n->entry->icon.get(), n->entry->icon->Bounds(), destination);
+          v->DrawBitmap(n->entry->icon.get(), n->entry->icon->Bounds(),
+                        destination);
         v->SetDrawingMode(B_OP_COPY);
       }
       r.left += 23;
     }
     BStringColumn::DrawField(f, r, v);
     if (n->entry->transferState) {
-      rgb_color color = ui_color(n->entry->transferState == 2   ? B_SUCCESS_COLOR
-                                 : n->entry->transferState == 3 ? B_FAILURE_COLOR
-                                                         : B_STATUS_BAR_COLOR);
-      v->SetHighColor(tint_color(color, n->entry->transferState == 1 ? 1.2f : 1.f));
-      float width = std::max(
-          5.f, r.Width() * (n->entry->transferState == 1 ? n->entry->fraction : 1.f));
+      rgb_color color =
+          ui_color(n->entry->transferState == 2   ? B_SUCCESS_COLOR
+                   : n->entry->transferState == 3 ? B_FAILURE_COLOR
+                                                  : B_STATUS_BAR_COLOR);
+      v->SetHighColor(
+          tint_color(color, n->entry->transferState == 1 ? 1.2f : 1.f));
+      float width = std::max(5.f, r.Width() * (n->entry->transferState == 1
+                                                   ? n->entry->fraction
+                                                   : 1.f));
       v->FillRect(BRect(r.left, r.bottom - 2, r.left + width, r.bottom));
     }
     v->SetHighColor(old);
@@ -87,11 +92,13 @@ struct DateField : BDateField {
 class DateColumn : public BDateColumn {
 public:
   BFont font;
-  explicit DateColumn(const BFont &value) : BDateColumn("Modified", 160, 80, 280), font(value) {}
+  explicit DateColumn(const BFont &value)
+      : BDateColumn("Modified", 160, 80, 280), font(value) {}
   void DrawField(BField *field, BRect rect, BView *view) override {
     auto date = static_cast<DateField *>(field);
     view->SetFont(&font);
-    if (!date->formatted || date->formattedFont != font) date->SetWidth(-1);
+    if (!date->formatted || date->formattedFont != font)
+      date->SetWidth(-1);
     BDateColumn::DrawField(field, rect, view);
     // Haiku's date column tests the full cell width, but caches the width
     // minus its text margins. Normalize the key so selection repainting does
@@ -111,10 +118,12 @@ struct SizeField : BSizeField {
 class SizeColumn : public BSizeColumn {
 public:
   BFont font;
-  explicit SizeColumn(const BFont &value) : BSizeColumn("Size", 85, 50, 200), font(value) {}
+  explicit SizeColumn(const BFont &value)
+      : BSizeColumn("Size", 85, 50, 200), font(value) {}
   void DrawField(BField *field, BRect rect, BView *view) override {
     auto size = static_cast<SizeField *>(field);
-    if (size->Size() < 0) return;
+    if (size->Size() < 0)
+      return;
     if (!size->formatted) {
       char text[128];
       size->label = string_for_size(size->Size(), text, sizeof(text));
@@ -123,7 +132,8 @@ public:
     view->SetFont(&font);
     if (size->width != rect.Width() || size->formattedFont != font) {
       size->clipped = size->label;
-      view->TruncateString(&size->clipped, B_TRUNCATE_END, std::max(0.f, rect.Width() - 16));
+      view->TruncateString(&size->clipped, B_TRUNCATE_END,
+                           std::max(0.f, rect.Width() - 16));
       size->width = rect.Width();
       size->formattedFont = font;
     }
@@ -134,6 +144,7 @@ public:
 class ContextClick : public BMessageFilter {
   BColumnListView *list;
   Pane *pane;
+
 public:
   ContextClick(BColumnListView *view, Pane *owner)
       : BMessageFilter(B_MOUSE_DOWN), list(view), pane(owner) {}
@@ -141,7 +152,8 @@ public:
     if (!(message->GetInt32("buttons", 0) & B_SECONDARY_MOUSE_BUTTON))
       return B_DISPATCH_MESSAGE;
     BPoint point;
-    if (message->FindPoint("where", &point) != B_OK) return B_SKIP_MESSAGE;
+    if (message->FindPoint("where", &point) != B_OK)
+      return B_SKIP_MESSAGE;
     auto row = static_cast<FileRow *>(list->RowAt(point));
     if (row && !row->entry->parent) {
       const auto path = row->entry->path;
@@ -156,11 +168,12 @@ public:
 };
 constexpr uint32 kScrollLayout = 'sbar';
 class ColumnResizeFinished : public BMessageFilter {
-  BHandler* target;
+  BHandler *target;
+
 public:
-  explicit ColumnResizeFinished(BHandler* owner)
+  explicit ColumnResizeFinished(BHandler *owner)
       : BMessageFilter(B_MOUSE_UP), target(owner) {}
-  filter_result Filter(BMessage*, BHandler**) override {
+  filter_result Filter(BMessage *, BHandler **) override {
     BMessenger(target).SendMessage(kScrollLayout);
     return B_DISPATCH_MESSAGE;
   }
@@ -175,7 +188,8 @@ public:
   bool syncing = false, singlePane = false, arranging = false;
   RubberBand *band;
   DetailsList(Pane *p, PaneModel *state, const Preferences &prefs)
-      : BColumnListView("files", B_WILL_DRAW | B_NAVIGABLE | B_DRAW_ON_CHILDREN, B_FANCY_BORDER),
+      : BColumnListView("files", B_WILL_DRAW | B_NAVIGABLE | B_DRAW_ON_CHILDREN,
+                        B_FANCY_BORDER),
         pane(p), model(state) {
     singlePane = prefs.SinglePane();
     name = new NameColumn(prefs);
@@ -206,7 +220,9 @@ public:
       view->StrokeRect(rect);
       view->PopState();
     };
-    band->empty = [this](BPoint point) { return RowAt(point) == nullptr || ColumnAt(point) == nullptr; };
+    band->empty = [this](BPoint point) {
+      return RowAt(point) == nullptr || ColumnAt(point) == nullptr;
+    };
     band->select = [this](BRect rect, const auto &base) {
       auto paths = base;
       // Flat rows in current native sort order. GetRowRect walks from the
@@ -231,16 +247,19 @@ public:
       }
     };
     ScrollView()->AddFilter(band);
-    auto horizontal = static_cast<BScrollBar*>(FindView("horizontal_scroll_bar"));
+    auto horizontal =
+        static_cast<BScrollBar *>(FindView("horizontal_scroll_bar"));
     horizontal->Target()->AddFilter(new ColumnResizeFinished(this));
   }
   void UpdateScrollBars() { DoLayout(); }
   void DoLayout() override {
-    if (arranging) return;
+    if (arranging)
+      return;
     arranging = true;
     BColumnListView::DoLayout();
-    auto vertical = static_cast<BScrollBar*>(FindView("vertical_scroll_bar"));
-    auto horizontal = static_cast<BScrollBar*>(FindView("horizontal_scroll_bar"));
+    auto vertical = static_cast<BScrollBar *>(FindView("vertical_scroll_bar"));
+    auto horizontal =
+        static_cast<BScrollBar *>(FindView("horizontal_scroll_bar"));
     auto body = ScrollView();
     auto heading = horizontal->Target();
     const float verticalWidth = vertical->Frame().Width();
@@ -249,19 +268,24 @@ public:
     const float fullHeight = body->Bounds().Height() + horizontalHeight;
     // Obtain the native column margins through PreferredSize, not private
     // constants. PreferredSize includes hidden columns, which we subtract.
-    float contentWidth = BColumnListView::PreferredSize().width
-        - (Bounds().Width() - heading->Frame().Width());
+    float contentWidth = BColumnListView::PreferredSize().width -
+                         (Bounds().Width() - heading->Frame().Width());
     for (int32 i = 0; i < CountColumns(); ++i)
-      if (!ColumnAt(i)->IsVisible()) contentWidth -= ColumnAt(i)->Width();
+      if (!ColumnAt(i)->IsVisible())
+        contentWidth -= ColumnAt(i)->Width();
     float contentHeight = 0;
-    for (int32 i = 0; i < CountRows(); ++i) contentHeight += RowAt(i)->Height() + 1;
+    for (int32 i = 0; i < CountRows(); ++i)
+      contentHeight += RowAt(i)->Height() + 1;
     bool showVertical = !singlePane, showHorizontal = false;
     {
       // Adding one scrollbar can make the other necessary. Start without
       // either to avoid retaining mutually unnecessary bars at the boundary.
       for (int i = 0; i < 3; ++i) {
-        showHorizontal = contentWidth > fullWidth - (showVertical ? verticalWidth : 0);
-        showVertical = !singlePane || contentHeight > fullHeight - (showHorizontal ? horizontalHeight : 0);
+        showHorizontal =
+            contentWidth > fullWidth - (showVertical ? verticalWidth : 0);
+        showVertical = !singlePane ||
+                       contentHeight >
+                           fullHeight - (showHorizontal ? horizontalHeight : 0);
       }
     }
     const float extraWidth = showVertical ? 0 : verticalWidth;
@@ -273,18 +297,24 @@ public:
     for (auto item : {std::make_pair(vertical, showVertical),
                       std::make_pair(horizontal, showHorizontal)}) {
       if (item.second == item.first->IsHidden(this)) {
-        if (item.second) item.first->Show(); else item.first->Hide();
+        if (item.second)
+          item.first->Show();
+        else
+          item.first->Hide();
       }
     }
-    vertical->SetRange(0, std::max(0.f, contentHeight - body->Bounds().Height()));
-    horizontal->SetRange(0, std::max(0.f, contentWidth - heading->Bounds().Width()));
+    vertical->SetRange(0,
+                       std::max(0.f, contentHeight - body->Bounds().Height()));
+    horizontal->SetRange(
+        0, std::max(0.f, contentWidth - heading->Bounds().Width()));
     arranging = false;
   }
   void DrawAfterChildren(BRect) override {
     // One completion barrier for all row icons, before model-owned bitmaps can
     // be replaced. Native resize-buffer drawing remains synchronous.
     Sync();
-    if (!band->Active()) return;
+    if (!band->Active())
+      return;
     auto view = ScrollView();
     BRect clip = ConvertFromScreen(view->ConvertToScreen(view->Bounds()));
     BRegion region(clip);
@@ -299,7 +329,10 @@ public:
     SetTarget(this);
   }
   void MessageReceived(BMessage *message) override {
-    if (message->what == kScrollLayout) { UpdateScrollBars(); return; }
+    if (message->what == kScrollLayout) {
+      UpdateScrollBars();
+      return;
+    }
     if (message->what == kInvoke) {
       auto row = static_cast<FileRow *>(FocusRow());
       model->SetSelection(model->Selected(), row ? row->entry->path : "");
@@ -354,8 +387,12 @@ public:
   }
   bool InitiateDrag(BPoint point, bool) override {
     BMessage drag;
-    try { drag = Listi::MakeFileDrag(model->Selected()); }
-    catch (const std::exception &e) { pane->ShowStatus(e.what()); return false; }
+    try {
+      drag = Listi::MakeFileDrag(model->Selected());
+    } catch (const std::exception &e) {
+      pane->ShowStatus(e.what());
+      return false;
+    }
     DragMessage(&drag, BRect(point.x, point.y, point.x + 90, point.y + 22));
     return true;
   }
@@ -373,6 +410,7 @@ class DetailsView : public FileDetails {
   std::map<std::string, FileRow *> rows;
   Preferences prefs;
   bool active = false;
+
 public:
   DetailsView(Pane *pane, PaneModel *state, const Preferences &p)
       : FileDetails("file details", B_WILL_DRAW | B_SUPPORTS_LAYOUT),
@@ -388,8 +426,9 @@ public:
     return {state.GetInt32("sortID", 0), state.GetBool("sortascending", true)};
   }
   void Sort(PaneSort value) override {
-    BColumn *column = value.column == 1 ? static_cast<BColumn*>(list->size)
-      : value.column == 2 ? static_cast<BColumn*>(list->date) : list->name;
+    BColumn *column = value.column == 1   ? static_cast<BColumn *>(list->size)
+                      : value.column == 2 ? static_cast<BColumn *>(list->date)
+                                          : list->name;
     list->SetSortColumn(column, false, value.ascending);
     SyncSelection();
   }
@@ -398,7 +437,8 @@ public:
   void Redraw() override { list->Invalidate(); }
   void RedrawEntry(const std::string &path) override {
     auto found = rows.find(path);
-    if (found != rows.end()) list->UpdateRow(found->second);
+    if (found != rows.end())
+      list->UpdateRow(found->second);
   }
   void SetSinglePane(bool value) override {
     list->singlePane = value;
@@ -407,7 +447,8 @@ public:
   void SetActive(bool value) override {
     active = value;
     const auto color = Listi::PanelBackground(B_PANEL_BACKGROUND_COLOR, active);
-    if (list->Color(B_COLOR_BACKGROUND) != color) list->SetColor(B_COLOR_BACKGROUND, color);
+    if (list->Color(B_COLOR_BACKGROUND) != color)
+      list->SetColor(B_COLOR_BACKGROUND, color);
   }
   void Apply(const Preferences &p) override {
     prefs = p;
@@ -417,13 +458,14 @@ public:
     list->SetFont(&p.font);
     list->SetColumnVisible(1, p.size);
     list->SetColumnVisible(2, p.date);
-    list->SetColor(B_COLOR_BACKGROUND, Listi::PanelBackground(B_PANEL_BACKGROUND_COLOR, active));
+    list->SetColor(B_COLOR_BACKGROUND,
+                   Listi::PanelBackground(B_PANEL_BACKGROUND_COLOR, active));
     list->SetColor(B_COLOR_TEXT, ui_color(B_PANEL_TEXT_COLOR));
     list->SetColor(B_COLOR_SELECTION,
-                    tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.80));
+                   tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.80));
     list->SetColor(B_COLOR_SELECTION_TEXT, ui_color(B_PANEL_TEXT_COLOR));
     list->SetColor(B_COLOR_NON_FOCUS_SELECTION,
-                    tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.80));
+                   tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), 0.80));
     list->UpdateScrollBars();
     Redraw();
   }
@@ -445,7 +487,10 @@ public:
         continue;
       auto row = new FileRow(entry, std::max(22.f, prefs.font.Size() + 9));
       row->SetField(new NameField(entry), 0);
-      row->SetField(new SizeField(entry->directory || !entry->sizeKnown ? -1 : entry->size), 1);
+      row->SetField(new SizeField(entry->directory || !entry->sizeKnown
+                                      ? -1
+                                      : entry->size),
+                    1);
       time_t date = entry->modified;
       row->SetField(new DateField(&date), 2);
       rows.emplace(entry->path, row);
@@ -461,7 +506,8 @@ public:
     list->syncing = true;
     auto focused = model->Focused();
     std::set<BRow *> selected;
-    for (auto row = list->CurrentSelection(); row; row = list->CurrentSelection(row))
+    for (auto row = list->CurrentSelection(); row;
+         row = list->CurrentSelection(row))
       selected.insert(row);
     for (auto &item : rows) {
       bool want = model->IsSelected(item.first);

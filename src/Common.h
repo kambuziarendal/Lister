@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #pragma once
+#include "WorkspaceLayout.h"
 #include <Font.h>
 #include <InterfaceDefs.h>
 #include <Message.h>
@@ -43,6 +44,7 @@ enum : uint32 {
   kClipboardCopy = 'ccpy',
   kClipboardCut = 'ccut',
   kClipboardPaste = 'cpst',
+  kClipboardSaveText = 'ctsf',
   kDuplicate = 'dupl',
   kCreateLink = 'link',
   kCreateArchive = 'arcr',
@@ -57,6 +59,8 @@ enum : uint32 {
   kTrashFolder = 'trsh',
   kMkdir = 'mkdr',
   kRename = 'rnam',
+  kBulkRename = 'brnm',
+  kBulkRenameAccepted = 'brac',
   kView = 'view',
   kEdit = 'edit',
   kAll = 'sall',
@@ -92,62 +96,15 @@ enum : uint32 {
   kNameAccepted = 'name',
   kOpenPaths = 'opth'
 };
-// Values are the existing on-disk workspace IDs. Never reorder.
-enum class Workspace : int32 {
-  tviskipt = 0,
-  einn = 1,
-  askr = 2,
-  smidja = 3
-};
-inline const char *WorkspaceId(Workspace workspace) {
-  switch (workspace) {
-  case Workspace::einn: return "einn";
-  case Workspace::askr: return "askr";
-  case Workspace::smidja: return "smidja";
-  default: return "tviskipt";
-  }
-}
-inline const char *WorkspaceName(Workspace workspace) {
-  switch (workspace) {
-  case Workspace::einn: return "Einn";
-  case Workspace::askr: return "Askr";
-  case Workspace::smidja: return "Smiðja";
-  default: return "Tvískipt";
-  }
-}
-inline const char *WorkspaceMenuLabel(Workspace workspace) {
-  switch (workspace) {
-  case Workspace::einn: return "Einn: simple single-panel browsing";
-  case Workspace::askr: return "Askr: folder tree and file list";
-  case Workspace::smidja: return "Smiðja: workbench with more tools";
-  default: return "Tvískipt: side-by-side file panels";
-  }
-}
-struct Preferences {
+struct Preferences : WorkspaceLayout {
   BFont font = *be_plain_font;
-  bool icons = true, size = true, date = true, buttons = true, command = false;
-  int32 paneMode[2] = {0, 0};
-  bool paneTree[2] = {false, false};
-  bool smidjaTree[2] = {true, true};
-  bool preview = false;
-  bool smidjaPreview = true;
-  Workspace workspace = Workspace::tviskipt;
-  bool SinglePane() const {
-    return workspace == Workspace::einn || workspace == Workspace::askr;
+  bool icons = true, size = true, date = true;
+  WorkspaceProfiles profiles;
+  WorkspaceLayout CaptureLayout() const { return *this; }
+  void ApplyLayout(const WorkspaceLayout &layout) {
+    static_cast<WorkspaceLayout &>(*this) = layout;
   }
-  bool IsEinn() const { return workspace == Workspace::einn; }
-  bool IsSmidja() const { return workspace == Workspace::smidja; }
-  bool Tree(int pane) const {
-    return IsSmidja() ? smidjaTree[pane] : paneTree[pane];
-  }
-  void SetTree(int pane, bool value) {
-    (IsSmidja() ? smidjaTree[pane] : paneTree[pane]) = value;
-  }
-  bool Preview() const { return IsSmidja() ? smidjaPreview : preview; }
-  void SetPreview(bool value) {
-    (IsSmidja() ? smidjaPreview : preview) = value;
-  }
-  int32 singlePane = 0;
+  void ResetLayout() { ApplyLayout(WorkspaceLayout{}); }
   std::map<std::string, int32> folderModes;
   BString editor = "/boot/system/apps/StyledEdit",
           terminal = "/boot/system/apps/Terminal";

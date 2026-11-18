@@ -8,7 +8,7 @@
 namespace Listi {
 struct OpenApplication {
   std::string path, name, signature;
-  struct stat identity{};
+  struct stat identity {};
 };
 struct OpenTypeInfo {
   std::string mime, description, preferred;
@@ -23,10 +23,11 @@ public:
   OpenTypeInfo Inspect();
   void Validate();
   void Launch(const OpenApplication &application);
+
 private:
   std::string path;
   BFile file;
-  struct stat identity{};
+  struct stat identity {};
   entry_ref ref;
 };
 }

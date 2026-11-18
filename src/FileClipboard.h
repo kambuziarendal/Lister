@@ -20,14 +20,16 @@ struct ClipboardPaste {
   std::string lease;
   bool archiveCut = false;
 };
+std::string ReadClipboardText(BClipboard *clipboard = be_clipboard);
 // Tracker's native file-reference wire format. No text paths or credentials.
 std::vector<ClipboardItem> ReadFileClipboard(const BMessage &);
 BMessage MakeFileSelection(const std::vector<std::string> &, bool cut = false);
 void PutFileClipboard(const std::vector<std::string> &, bool cut,
                       BClipboard *clipboard = be_clipboard);
 ClipboardPaste PrepareFilePaste(const std::string &destination,
-                               BClipboard *clipboard = be_clipboard);
+                                BClipboard *clipboard = be_clipboard);
 // Consume only successfully moved roots, and never a newer clipboard selection.
-void FinishFilePaste(const ClipboardPaste &, const std::vector<std::string> &moved,
+void FinishFilePaste(const ClipboardPaste &,
+                     const std::vector<std::string> &moved,
                      BClipboard *clipboard = be_clipboard);
 } // namespace Listi

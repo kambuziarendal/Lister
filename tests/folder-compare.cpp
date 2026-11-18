@@ -178,24 +178,38 @@ int main() {
     check(changed && !overwritten.complete,
           "same-size source change during reading never passes verification");
     put(l + "/.hidden", "hidden");
-    auto native = root + "/native";
-    mkdir(native.c_str(), 0700);
-    mkdir((native + "/sub").c_str(), 0700);
-    put(native + "/sub/file", "archive comparison");
-    mkdir((native + "/empty").c_str(), 0700);
-    for (auto &format : WritableArchiveFormats()) {
-      auto job = PrepareArchiveJob(false, {native + "/sub", native + "/empty"});
+    for (const auto &format : WritableArchiveFormats()) {
+      const auto native = root + "/native-" + format.id;
+      mkdir(native.c_str(), 0700);
+      std::vector<std::string> sources;
+      // ar stores flat files; CAB represents directories through member paths.
+      const bool flat = format.id == "ar";
+      const auto member = flat ? "file" : "sub/file";
+      if (!flat)
+        mkdir((native + "/sub").c_str(), 0700);
+      put(native + "/" + member, "archive comparison");
+      sources.push_back(native + (flat ? "/file" : "/sub"));
+      if (!flat && format.id != "cab") {
+        mkdir((native + "/empty").c_str(), 0700);
+        sources.push_back(native + "/empty");
+      }
+
+      auto job = PrepareArchiveJob(false, sources);
       job.archiveFormat = format.id;
       SetArchiveDestination(job, root, "fixture-" + format.id);
       auto result = Run(job, {});
-      if (result.completed != 1)
-        throw std::runtime_error("archive fixture failed");
+      if (result.completed != 1 || !result.errors.empty()) {
+        check(false, format.id + " fixture: " +
+              (result.errors.empty() ? "not completed" : result.errors.front()));
+        continue;
+      }
       auto diff = CompareFolders({native, OpenArchive(job.destination), true});
-      check(diff.complete && diff.different == 0 && diff.verified == 1,
-            format.id +
-                " compares local folder against archive contents by SHA-256");
+      check(diff.complete && diff.different == 0 && diff.verified == 1 &&
+                state(diff, member, CompareState::Verified),
+            format.id + " compares local folder against archive contents by SHA-256" +
+                (diff.error.empty() ? "" : ": " + diff.error));
     }
-    check(CompareFolders({native, native, true}).complete,
+    check(CompareFolders({l, l, true}).complete,
           "same folder comparison is read-only and valid");
   } catch (const std::exception &e) {
     check(false, e.what());

@@ -14,6 +14,7 @@
 class FileDetails;
 class FileGrid;
 class FolderTree;
+class MillerColumns;
 class BCardView;
 class BGroupView;
 class BSplitView;
@@ -28,11 +29,15 @@ public:
   void Draw(BRect) override;
   void MessageReceived(BMessage *) override;
   void Navigate(const char *path);
+  void NavigateFromColumn(const std::string &folder,
+                          const std::string &selection = {},
+                          bool invoke = false, bool context = false,
+                          BPoint at = {});
   void Reload();
   void SetPlaces(const Listi::SavedPlaces &, bool writable);
   void SetSource(bool);
   void Apply(const Preferences &);
-  void SetWorkspace(Workspace);
+  void SetWorkspace(const Preferences &);
   void Select(int mode);
   bool SelectSameFileType();
   std::string SelectedFileType() const { return entries.FocusedFileType(); }
@@ -52,7 +57,9 @@ public:
   PaneSort Sorting();
   void Sort(PaneSort);
   int32 CurrentView() const { return mode; }
-  int32 DisplayMode() const { return prefs.paneMode[id]; }
+  int32 PaneOverride() const {
+    return prefs.HasPaneMode(id) ? prefs.PaneMode(id) : -1;
+  }
   bool TreeVisible() const { return prefs.Tree(id); }
   void FolderModes(const std::map<std::string, int32> &modes) {
     prefs.folderModes = modes;
@@ -66,16 +73,20 @@ private:
   IconCache icons;
   FileDetails *list;
   FileGrid *grid;
+  MillerColumns *columns;
   FolderTree *tree;
   bool treeVisible = true, einn = false;
   BCardView *cards;
   BGroupView *header, *filterRow;
   BSplitView *content;
   bool chromeVisible = true;
+  bool treeOnRight = false, filterAtBottom = false;
   float contentSplitterSize = 0;
   BMenuField *display;
   int32 mode = 0;
   void SetDisplayMode(int32);
+  int32 LocationMode() const;
+  void UpdateTreeVisibility();
   void PublishDisplay(bool folder = false, bool forget = false);
   BMenu *placesMenu;
   Listi::SavedPlaces places;
@@ -84,7 +95,8 @@ private:
   BTextControl *edit;
   BButton *back, *forward;
   Listi::NavigationHistory history;
-  void StartNavigation(const std::string &, int target = -1, bool trash = false);
+  void StartNavigation(const std::string &, int target = -1,
+                       bool trash = false);
   void UpdateNavigation();
   BTextControl *filter;
   BButton *clearFilter;
@@ -112,7 +124,8 @@ private:
   std::shared_ptr<std::atomic<int64>> generation;
   int64 serial = 0;
   bool scanning = false, refreshPending = false;
-  std::vector<std::string> savedSelection;
+  std::map<std::string, std::pair<int64_t, int64_t>> savedSelection;
+  BMessage columnAction;
   Listi::SearchHit reveal;
   void ApplyFilter();
   void ClearRows();

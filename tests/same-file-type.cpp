@@ -33,6 +33,10 @@ int main() {
   add("a.tar.gz");
   add("b.TAR.GZ");
   add("single.gz");
+  add("a.tar.lz4");
+  add("single.lz4");
+  add("a.tar.Z");
+  add("single.Z");
   model.Filter("");
   model.SetSelection({"/fixture/image.jpg", "/fixture/one.pdf"},
                      "/fixture/one.pdf");
@@ -62,6 +66,12 @@ int main() {
   model.SetSelection({"/fixture/a.tar.gz"}, "/fixture/a.tar.gz");
   check(model.SelectSameFileType() && model.Selected().size() == 2,
         "compound TAR extension is distinct from a plain gzip file");
+  for (const auto *name : {"a.tar.lz4", "a.tar.Z"}) {
+    const std::string path = "/fixture/" + std::string(name);
+    model.SetSelection({path}, path);
+    check(model.SelectSameFileType() && model.Selected() == std::vector<std::string>{path},
+          "compressed TAR is distinct from a single compressed stream");
+  }
   for (auto name :
        {"README", ".profile", "trailing.", "folder.pdf", "link.pdf"}) {
     auto path = "/fixture/" + std::string(name);

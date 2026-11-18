@@ -49,6 +49,7 @@ FileEntry Entry(const std::string &p, const struct stat &st) {
   e.link = S_ISLNK(st.st_mode);
   e.size = st.st_size;
   e.modified = st.st_mtime;
+  e.modifiedKnown = true;
   e.permissions = st.st_mode & 0777;
   return e;
 }
@@ -317,7 +318,8 @@ void MakeFolder(const std::string &p, const TransferControl &c) {
   c.Check();
   auto l = ParseLocation(p);
   if (l.Archive())
-    throw std::runtime_error("Use the archive editing actions to change a writable archive");
+    throw std::runtime_error(
+        "Use the archive editing actions to change a writable archive");
   if (!l.Local()) {
     ChangeNetwork(l, "mkdir", "", c);
     return;
@@ -329,7 +331,8 @@ void RemoveFile(const std::string &p, bool dir, const TransferControl &c) {
   c.Check();
   auto l = ParseLocation(p);
   if (l.Archive())
-    throw std::runtime_error("Use the archive editing actions to change a writable archive");
+    throw std::runtime_error(
+        "Use the archive editing actions to change a writable archive");
   if (!l.Local()) {
     ChangeNetwork(l, dir ? "rmdir" : "remove", "", c);
     return;
@@ -342,7 +345,8 @@ void RenameFile(const std::string &a, const std::string &b,
   c.Check();
   auto l = ParseLocation(a), to = ParseLocation(b);
   if (l.Archive() || to.Archive())
-    throw std::runtime_error("Use the archive editing actions to change a writable archive");
+    throw std::runtime_error(
+        "Use the archive editing actions to change a writable archive");
   if (l.Authority() != to.Authority())
     throw std::runtime_error("Rename requires the same connection");
   if (!l.Local()) {

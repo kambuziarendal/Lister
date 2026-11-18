@@ -1,0 +1,179 @@
+// SPDX-License-Identifier: MIT
+#include "TransferCommand.h"
+#include "Shelf.h"
+#include "ArchiveJobs.h"
+#include <algorithm>
+#include <cstdlib>
+#include <limits.h>
+#include <stdexcept>
+#include <sys/stat.h>
+
+namespace Listi {
+namespace {
+NodeIdentity Identity(const struct stat &st) {
+  return {int32_t(st.st_dev), int64_t(st.st_ino)};
+}
+
+bool Matches(const NodeIdentity &identity, const struct stat &st) {
+  return identity.device == int32_t(st.st_dev) &&
+         identity.inode == int64_t(st.st_ino);
+}
+
+std::string Parent(const std::string &path) {
+  return path.substr(0, std::max<size_t>(1, path.find_last_of('/')));
+}
+
+std::string Resolve(const std::string &directory) {
+  char path[PATH_MAX];
+  if (directory.empty() || directory.front() != '/' ||
+      !realpath(directory.c_str(), path))
+    throw std::runtime_error("Folder is unavailable: " + directory);
+  return path;
+}
+
+ShelfEntry Capture(const std::string &path) {
+  auto leaf = Leaf(path);
+  if (path.empty() || path.front() != '/' || leaf.empty() || leaf == "." ||
+      leaf == "..")
+    throw std::runtime_error("The Shelf accepts ordinary local entries only.");
+
+  // Resolve parent aliases, but never follow the selected entry if it is a
+  // symbolic link. Distinct hard-link names are also distinct references.
+  auto parent = Resolve(Parent(path));
+  auto source = Join(parent, leaf);
+  struct stat st;
+  if (lstat(source.c_str(), &st) ||
+      !(S_ISREG(st.st_mode) || S_ISDIR(st.st_mode) || S_ISLNK(st.st_mode)))
+    throw std::runtime_error("Entry is unavailable or unsupported: " + source);
+  if (S_ISDIR(st.st_mode)) {
+    struct stat parentStat;
+    if (stat(parent.c_str(), &parentStat) || st.st_dev != parentStat.st_dev)
+      throw std::runtime_error("The Shelf cannot collect volume roots.");
+  }
+  return {source, Identity(st), S_ISDIR(st.st_mode)};
+}
+} // namespace
+
+ShelfState ShelfEntry::State() const {
+  struct stat st;
+  if (lstat(path.c_str(), &st))
+    return ShelfState::Missing;
+  return Matches(identity, st) ? ShelfState::Ready : ShelfState::Replaced;
+}
+
+size_t Shelf::Add(const std::vector<std::string> &paths,
+                  const std::map<std::string, NodeIdentity> &expected) {
+  if (paths.empty() || paths.size() > kMaximumEntries)
+    throw std::runtime_error("Select between 1 and 1024 local entries first.");
+
+  std::vector<ShelfEntry> additions;
+  for (const auto &path : paths) {
+    auto entry = Capture(path);
+    if (!expected.empty()) {
+      auto original = expected.find(path);
+      if (original == expected.end() ||
+          entry.identity.device != original->second.device ||
+          entry.identity.inode != original->second.inode)
+        throw std::runtime_error("A dragged entry changed. Drag it again.");
+    }
+    additions.push_back(std::move(entry));
+  }
+  std::lock_guard<std::mutex> lock(mutex);
+  std::set<std::string> existing;
+  for (const auto &entry : current.entries)
+    existing.insert(entry.path);
+  additions.erase(std::remove_if(additions.begin(), additions.end(),
+                                 [&](const auto &entry) {
+                                   return !existing.insert(entry.path).second;
+                                 }),
+                  additions.end());
+  if (current.entries.size() + additions.size() > kMaximumEntries)
+    throw std::runtime_error("The Shelf can hold up to 1024 entries.");
+  if (!additions.empty()) {
+    current.entries.insert(current.entries.end(), additions.begin(),
+                           additions.end());
+    ++current.revision;
+  }
+  return additions.size();
+}
+
+void Shelf::Remove(const std::set<std::string> &paths) {
+  std::lock_guard<std::mutex> lock(mutex);
+  auto &entries = current.entries;
+  auto end = std::remove_if(entries.begin(), entries.end(),
+                            [&](const auto &e) { return paths.count(e.path); });
+  if (end != entries.end()) {
+    entries.erase(end, entries.end());
+    ++current.revision;
+  }
+}
+
+ShelfSnapshot Shelf::Snapshot() const {
+  std::lock_guard<std::mutex> lock(mutex);
+  return current;
+}
+
+namespace {
+void CheckShelfEntries(const ShelfSnapshot &shelf) {
+  if (shelf.entries.empty())
+    throw std::runtime_error("Add entries to the Shelf first.");
+  std::set<std::string> names;
+  for (const auto &entry : shelf.entries) {
+    if (entry.State() != ShelfState::Ready)
+      throw std::runtime_error("Remove the missing or replaced reference: " +
+                               entry.path);
+    const auto name = Leaf(entry.path);
+    if (!names.insert(name).second)
+      throw std::runtime_error(
+          "Two Shelf entries have the same name: " + name +
+          ". Remove one reference and try again.");
+  }
+}
+} // namespace
+
+void CheckShelfSources(const ShelfSnapshot &shelf) {
+  CheckShelfEntries(shelf);
+  std::set<std::string> paths;
+  for (const auto &entry : shelf.entries)
+    paths.insert(entry.path);
+  for (const auto &entry : shelf.entries) {
+    const auto prefix = entry.path + "/";
+    const auto child = paths.lower_bound(prefix);
+    if (entry.directory && child != paths.end() && child->rfind(prefix, 0) == 0)
+      throw std::runtime_error(
+          "Remove either a folder or its contents from the Shelf before moving.");
+  }
+}
+
+Job PrepareShelfMove(const ShelfSnapshot &shelf, const std::string &folder) {
+  CheckShelfSources(shelf);
+  Job job;
+  job.action = Action::Move;
+  job.destination = job.destinationFolder = Resolve(folder);
+  struct stat st;
+  if (stat(job.destination.c_str(), &st) || !S_ISDIR(st.st_mode))
+    throw std::runtime_error("Choose an available local destination folder.");
+  job.expectedDestination = Identity(st);
+  for (const auto &entry : shelf.entries) {
+    job.sources.push_back(entry.path);
+    job.expectedSources.emplace(entry.path, entry.identity);
+  }
+  return PrepareTransfer(std::move(job));
+}
+
+Job PrepareShelfZip(const ShelfSnapshot &shelf) {
+  CheckShelfEntries(shelf);
+  std::vector<std::string> paths;
+  for (const auto &entry : shelf.entries)
+    paths.push_back(entry.path);
+  auto job = PrepareArchiveJob(false, paths);
+  for (const auto &entry : shelf.entries) {
+    const auto &captured = job.expectedSources.at(entry.path);
+    if (captured.device != entry.identity.device ||
+        captured.inode != entry.identity.inode)
+      throw std::runtime_error("Remove the missing or replaced reference: " +
+                               entry.path);
+  }
+  return job;
+}
+} // namespace Listi

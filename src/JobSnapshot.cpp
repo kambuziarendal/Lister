@@ -2,18 +2,31 @@
 #include "JobSnapshot.h"
 #include "VirtualFile.h"
 #include <sys/stat.h>
+#include <algorithm>
 namespace Listi {
 void FreezeLocalJob(Job &job, const std::string &folder) {
   for (const auto &path : job.sources) {
-    if (IsVirtual(path)) continue;
+    if (IsVirtual(path))
+      continue;
     struct stat st;
-    if (lstat(path.c_str(), &st)) throw std::runtime_error("Selected entry is unavailable. Select it again.");
-    job.expectedSources[path] = {int32_t(st.st_dev), int64_t(st.st_ino)};
+    if (lstat(path.c_str(), &st))
+      throw std::runtime_error(
+          "Selected entry is unavailable. Select it again.");
+    auto inserted = job.expectedSources.emplace(
+        path, NodeIdentity{int32_t(st.st_dev), int64_t(st.st_ino)});
+    const auto &expected = inserted.first->second;
+    if (expected.device != st.st_dev || expected.inode != st.st_ino)
+      throw std::runtime_error("The selected entry was replaced: " + path);
   }
   if (!folder.empty() && !IsVirtual(folder)) {
     struct stat st;
     if (stat(folder.c_str(), &st) || !S_ISDIR(st.st_mode))
       throw std::runtime_error("The destination folder is unavailable.");
+    if (job.expectedDestination.device >= 0 &&
+        (job.expectedDestination.device != st.st_dev ||
+         job.expectedDestination.inode != st.st_ino))
+      throw std::runtime_error(
+          "The selected destination folder was replaced: " + folder);
     job.expectedDestination = {int32_t(st.st_dev), int64_t(st.st_ino)};
     job.destinationFolder = folder;
   }
@@ -29,9 +42,12 @@ BMessage EncodeJob(const Job &job, uint32 what) {
   m.AddString("archivePath", job.archivePath.c_str());
   for (const auto &path : job.archiveRemove)
     m.AddString("archiveRemove", path.c_str());
-  for (const auto &path : job.archiveFolders) m.AddString("archiveFolder", path.c_str());
+  for (const auto &path : job.archiveFolders)
+    m.AddString("archiveFolder", path.c_str());
   for (const auto &rename : job.archiveRenames) {
-    BMessage item; item.AddString("from", rename.first.c_str()); item.AddString("to", rename.second.c_str());
+    BMessage item;
+    item.AddString("from", rename.first.c_str());
+    item.AddString("to", rename.second.c_str());
     m.AddMessage("archiveRename", &item);
   }
   m.AddString("entryName", job.entryName.c_str());
@@ -39,7 +55,14 @@ BMessage EncodeJob(const Job &job, uint32 what) {
   m.AddString("destinationFolder", job.destinationFolder.c_str());
   m.AddInt32("destinationDevice", job.expectedDestination.device);
   m.AddInt64("destinationNode", job.expectedDestination.inode);
-  for (const auto &path : job.sources) m.AddString("source", path.c_str());
+  for (const auto &path : job.sources)
+    m.AddString("source", path.c_str());
+  for (const auto &rename : job.bulkNames) {
+    BMessage item;
+    item.AddString("source", rename.first.c_str());
+    item.AddString("name", rename.second.c_str());
+    m.AddMessage("bulkName", &item);
+  }
   for (const auto &entry : job.expectedSources) {
     BMessage item;
     item.AddString("path", entry.first.c_str());
@@ -48,7 +71,10 @@ BMessage EncodeJob(const Job &job, uint32 what) {
     m.AddMessage("identity", &item);
   }
   for (const auto &entry : job.expectedArchiveSets) {
-    BMessage item;item.AddString("path",entry.first.c_str());item.AddString("fingerprint",entry.second.c_str());m.AddMessage("archiveSet",&item);
+    BMessage item;
+    item.AddString("path", entry.first.c_str());
+    item.AddString("fingerprint", entry.second.c_str());
+    m.AddMessage("archiveSet", &item);
   }
   return m;
 }
@@ -64,9 +90,11 @@ Job DecodeJob(const BMessage &m) {
   job.entryName = m.GetString("entryName", "");
   job.destination = m.GetString("destination", "");
   job.destinationFolder = m.GetString("destinationFolder", "");
-  job.expectedDestination = {m.GetInt32("destinationDevice", -1), m.GetInt64("destinationNode", -1)};
+  job.expectedDestination = {m.GetInt32("destinationDevice", -1),
+                             m.GetInt64("destinationNode", -1)};
   const char *path;
-  for (int32 i = 0; m.FindString("source", i, &path) == B_OK; ++i) job.sources.emplace_back(path);
+  for (int32 i = 0; m.FindString("source", i, &path) == B_OK; ++i)
+    job.sources.emplace_back(path);
   for (int32 i = 0; m.FindString("archiveRemove", i, &path) == B_OK; ++i)
     job.archiveRemove.emplace_back(path);
   for (int32 i = 0; m.FindString("archiveFolder", i, &path) == B_OK; ++i)
@@ -74,10 +102,23 @@ Job DecodeJob(const BMessage &m) {
   BMessage item;
   for (int32 i = 0; m.FindMessage("archiveRename", i, &item) == B_OK; ++i)
     job.archiveRenames[item.GetString("from", "")] = item.GetString("to", "");
+  for (int32 i = 0; m.FindMessage("bulkName", i, &item) == B_OK; ++i)
+    job.bulkNames[item.GetString("source", "")] = item.GetString("name", "");
   for (int32 i = 0; m.FindMessage("identity", i, &item) == B_OK; ++i)
-    job.expectedSources[item.GetString("path", "")] = {item.GetInt32("device", -1), item.GetInt64("node", -1)};
-  for (int32 i=0;m.FindMessage("archiveSet",i,&item)==B_OK;++i)
-    job.expectedArchiveSets[item.GetString("path","")]=item.GetString("fingerprint","");
+    job.expectedSources[item.GetString("path", "")] = {
+        item.GetInt32("device", -1), item.GetInt64("node", -1)};
+  for (int32 i = 0; m.FindMessage("archiveSet", i, &item) == B_OK; ++i)
+    job.expectedArchiveSets[item.GetString("path", "")] =
+        item.GetString("fingerprint", "");
   return job;
+}
+std::optional<Job> DecodeSubmittedJob(const BMessage &message,
+                                      std::initializer_list<Action> allowed) {
+  int32 value;
+  if (message.IsSourceRemote() || message.FindInt32("action", &value) != B_OK ||
+      std::find(allowed.begin(), allowed.end(), static_cast<Action>(value)) ==
+          allowed.end())
+    return std::nullopt;
+  return DecodeJob(message);
 }
 }
