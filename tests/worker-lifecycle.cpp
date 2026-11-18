@@ -25,6 +25,18 @@ public:
     return B_SKIP_MESSAGE;
   }
 };
+// Thread names are system-wide on Haiku. Never hold or wait for a worker
+// belonging to a running file manager or a second test process.
+thread_id FindReader(const char *name) {
+  int32 cookie = 0;
+  thread_info info;
+  while (get_next_thread_info(be_app->Team(), &cookie, &info) == B_OK) {
+    if (strcmp(info.name, name) == 0)
+      return info.thread;
+  }
+  return B_NAME_NOT_FOUND;
+}
+
 int main() {
   BApplication app("application/x-vnd.Listi-WorkerLifecycleTest");
   int checks=0, failures=0;
@@ -37,7 +49,7 @@ int main() {
     window->AddChild(new ImagePreview());
     window->Show();
     BMessenger search=OpenFileSearch(BMessenger(window),0,"/tmp",Listi::SavedSearches().Message());
-    thread_id reader=find_thread(name);
+    thread_id reader=FindReader(name);
     check(reader>=0,std::string(name)+" created by real view");
     if(reader<0)return 2;
     Hold hold;
@@ -63,7 +75,7 @@ int main() {
     // Also allow the unfixed negative control to finish its posted quits before
     // the next case or BApplication teardown; the assertion above stays failed.
     for(const char *other:{"thumbnail reader","image preview reader","directory reader","folder tree reader","file search"}) {
-      thread_id id=find_thread(other);if(id>=0)wait_for_thread(id,&result);
+      thread_id id=FindReader(other);if(id>=0)wait_for_thread(id,&result);
     }
   }
   std::cout<<checks<<" checks, "<<failures<<" failures"<<std::endl;
