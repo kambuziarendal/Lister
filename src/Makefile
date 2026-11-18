@@ -1,7 +1,7 @@
 NAME = Listi
 TYPE = APP
 SRCS = SearchFilters.cpp LocalMoveTree.cpp Sha256.cpp FolderCompare.cpp FolderCompareWindow.cpp ArchiveEditor.cpp ArchiveEditorWindow.cpp ArchiveVolumes.cpp SevenZipBackend.cpp ArchivePasswords.cpp ArchivePasswordWindow.cpp ArchiveSettings.cpp ArchiveJobs.cpp ArchiveWindow.cpp JobSnapshot.cpp FileContextMenu.cpp NamedEntry.cpp FileDrop.cpp OpenWith.cpp OpenWithWindow.cpp FileProperties.cpp PropertiesWindow.cpp FileClipboard.cpp MessageStore.cpp SavedSearches.cpp SearchWorker.cpp FileSearch.cpp SearchWindow.cpp SavedPlaces.cpp App.cpp Pane.cpp PaneModel.cpp FileDetails.cpp FileGrid.cpp DirectoryScanner.cpp FileOperation.cpp Trash.cpp OperationQueue.cpp Preferences.cpp SelfTest.cpp VirtualFile.cpp ArchiveFile.cpp LibarchiveBackend.cpp NetworkFile.cpp VirtualTest.cpp VirtualOperation.cpp ConnectionView.cpp InlineAction.cpp ImagePreview.cpp FolderTree.cpp
-SRCS += Shelf.cpp ShelfWindow.cpp ImageConvert.cpp BulkRename.cpp BulkRenameWindow.cpp ClipboardTextFile.cpp
+SRCS += LhaWriter.cpp Shelf.cpp ShelfWindow.cpp ImageConvert.cpp BulkRename.cpp BulkRenameWindow.cpp ClipboardTextFile.cpp
 LIBS = shared translation be columnlistview tracker $(STDCPPLIBS)
 RDEFS = Listi.rdef
 OPTIMIZE := FULL

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "DynamicLibrary.h"
 #include "ArchiveBackend.h"
+#include "ArchiveTextLocale.h"
 #include "ArchivePasswords.h"
 #include <memory>
 #include <algorithm>
@@ -219,6 +220,7 @@ std::string EntryName(Reader &reader, struct archive_entry *entry,
 } // namespace
 bool LibarchiveAvailable() { return Library().Available(); }
 std::string LibarchiveOpen(const std::string &path, const TransferControl &c) {
+  ArchiveTextLocale locale;
   if (IsVirtual(path))
     return "";
   bool expected = ArchiveExtension(path);
@@ -254,6 +256,7 @@ std::string LibarchiveOpen(const std::string &path, const TransferControl &c) {
 }
 std::vector<FileEntry> LibarchiveList(const Location &location,
                                       const TransferControl &c) {
+  ArchiveTextLocale locale;
   Reader reader(location.archive, c);
   std::map<std::string, FileEntry> children;
   std::string prefix =
@@ -340,6 +343,7 @@ void VerifyReader(Reader &reader) {
 void ClearLibarchiveReadCache() { sequentialReader.reset(); }
 void LibarchiveRead(const Location &location, const DataSink &sink,
                     const TransferControl &c) {
+  ArchiveTextLocale locale;
   const bool scoped = ArchiveListingScopeActive();
   std::unique_ptr<Reader> local;
   auto &slot = scoped ? sequentialReader : local;
