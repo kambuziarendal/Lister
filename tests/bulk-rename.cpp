@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <fcntl.h>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -196,6 +197,31 @@ int main() {
           "rollback collision preserves the new entry and reports the temporary location");
     unlink(x.c_str());
     rename(retained.c_str(), x.c_str());
+
+    // Move the original anchor elsewhere after its first step. The failed
+    // rollback must not claim it remains at the now empty staging name.
+    const auto relocated = Join(folder, "relocated");
+    renameCalls = 0;
+    Hooks interference;
+    interference.proceed = [&] {
+      if (renameCalls == 1 && !Exists(relocated)) {
+        for (const auto &entry : std::filesystem::directory_iterator(folder)) {
+          const auto path = entry.path().string();
+          if (Leaf(path).find(".listi-rename-") == 0) {
+            if (rename(path.c_str(), relocated.c_str()))
+              throw std::runtime_error("Cannot relocate staged fixture");
+            break;
+          }
+        }
+      }
+      return true;
+    };
+    failedSwap = Run(swap, interference);
+    Check(!failedSwap.completed && failedSwap.bulkRenameRecoveryNeeded &&
+              failedSwap.outcomes[0].destination == relocated &&
+              Read(relocated) == "x" && Read(y) == "y",
+          "recovery discovers the expected identity at its relocated sibling name");
+    rename(relocated.c_str(), x.c_str());
 
     auto swapped = Run(swap, {});
     Check(swapped.completed == 2 && swapped.bulkRenameUndo &&

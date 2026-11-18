@@ -296,12 +296,17 @@ std::string TemporaryName(int parent, const std::set<std::string> &reserved) {
 }
 
 std::string CurrentFolder(const Job &job) {
+  struct stat st;
+  if (!stat(job.destinationFolder.c_str(), &st) &&
+      SameNode(st, job.expectedDestination))
+    return job.destinationFolder;
   const node_ref ref(job.expectedDestination.device,
                      job.expectedDestination.inode);
   BDirectory directory(&ref);
   BEntry entry;
   BPath path;
-  if (directory.GetEntry(&entry) == B_OK && entry.GetPath(&path) == B_OK)
+  if (directory.GetEntry(&entry) == B_OK && entry.GetPath(&path) == B_OK &&
+      !stat(path.Path(), &st) && SameNode(st, job.expectedDestination))
     return path.Path();
   return {};
 }
@@ -566,16 +571,44 @@ Result RunBulkRename(const Job &job, const Hooks &hooks) {
     }
 
     const auto actualFolder = CurrentFolder(job);
+    using NodeKey = std::pair<int32_t, int64_t>;
+    std::optional<std::map<NodeKey, std::string>> nearby;
     for (size_t i = 0; i < confirmed.rows.size(); ++i) {
       if (confirmed.rows[i].before == confirmed.rows[i].after)
         continue;
       auto &outcome = result.outcomes[i];
       struct stat st;
-      const bool located = !actualFolder.empty() &&
-                           Stat(folder.fd, current[i], st) &&
-                           SameNode(st, *identities[i]);
-      outcome.destination = located ? Join(actualFolder, current[i]) : "";
-      if (!located) {
+      std::string located;
+      if (!actualFolder.empty()) {
+        if (Stat(folder.fd, current[i], st) && SameNode(st, *identities[i])) {
+          located = current[i];
+        } else {
+          // Another process may have renamed an entry between our steps.
+          // Search this folder once; do not guess among hard-linked names.
+          if (!nearby) {
+            nearby.emplace();
+            try {
+              for (const auto &name : ChildNames(folder.fd)) {
+                if (Stat(folder.fd, name, st)) {
+                  const auto item = nearby->emplace(
+                      NodeKey{int32_t(st.st_dev), int64_t(st.st_ino)}, name);
+                  if (!item.second)
+                    item.first->second.clear();
+                }
+              }
+            } catch (const std::runtime_error &) {
+              nearby->clear();
+            }
+          }
+          const auto found = nearby->find(
+              NodeKey{identities[i]->device, identities[i]->inode});
+          if (found != nearby->end() && !found->second.empty() &&
+              Stat(folder.fd, found->second, st) && SameNode(st, *identities[i]))
+            located = found->second;
+        }
+      }
+      outcome.destination = located.empty() ? "" : Join(actualFolder, located);
+      if (located.empty()) {
         outcome.status = "unconfirmed";
         outcome.detail = "Last known name: " + current[i];
         result.bulkRenameRecoveryNeeded |= !history.empty();
