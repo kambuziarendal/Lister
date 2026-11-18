@@ -157,9 +157,7 @@ public:
       return error;
     }
 
-    BMessage tick(kPollTerminal);
-    runner = std::make_unique<BMessageRunner>(BMessenger(this), &tick, 30000);
-    if (runner->InitCheck() != B_OK) {
+    if (!StartPolling()) {
       Stop();
       return EIO;
     }
@@ -169,6 +167,7 @@ public:
 
   void Stop() {
     runner.reset();
+    ++pollGeneration;
     session.Stop();
     pending.clear();
     if (state)
@@ -178,10 +177,29 @@ public:
     Invalidate();
   }
 
+  void AttachedToWindow() override {
+    BView::AttachedToWindow();
+    if (Active())
+      StartPolling();
+  }
+
+  void DetachedFromWindow() override {
+    runner.reset();
+    ++pollGeneration;
+    selecting = false;
+    BView::DetachedFromWindow();
+  }
+
   void FrameResized(float width, float height) override {
     BView::FrameResized(width, height);
-    columns = std::clamp(int((width - 2 * kPadding) / columnWidth), 2, 512);
-    rows = std::clamp(int((height - 2 * kPadding) / rowHeight), 2, 256);
+    const int newColumns =
+        std::clamp(int((width - 2 * kPadding) / columnWidth), 2, 512);
+    const int newRows =
+        std::clamp(int((height - 2 * kPadding) / rowHeight), 2, 256);
+    if (columns == newColumns && rows == newRows)
+      return;
+    columns = newColumns;
+    rows = newRows;
     if (state) {
       selection = {};
       vterm_set_size(state, rows, columns);
@@ -201,8 +219,13 @@ public:
     }
   }
 
+  void KeyDown(const char *bytes, int32 length) override {
+    if (!HandleKey(Window()->CurrentMessage()))
+      BView::KeyDown(bytes, length);
+  }
+
   bool HandleKey(BMessage *message) {
-    if (message->what != B_KEY_DOWN)
+    if (!message || message->what != B_KEY_DOWN)
       return false;
     const char *bytes = message->GetString("bytes", "");
     const int32 mods = message->GetInt32("modifiers", 0);
@@ -251,7 +274,14 @@ public:
   void MessageReceived(BMessage *message) override {
     switch (message->what) {
     case kPollTerminal:
-      Poll();
+      if (message->GetInt64("poll generation", -1) == pollGeneration)
+        Poll();
+      break;
+    case B_COPY:
+      Copy();
+      break;
+    case B_PASTE:
+      Paste();
       break;
     case B_MOUSE_WHEEL_CHANGED: {
       const float delta = message->GetFloat("be:wheel_delta_y", 0);
@@ -341,6 +371,13 @@ public:
   }
 
 private:
+  bool StartPolling() {
+    BMessage tick(kPollTerminal);
+    tick.AddInt64("poll generation", ++pollGeneration);
+    runner = std::make_unique<BMessageRunner>(BMessenger(this), &tick, 30000);
+    return runner->InitCheck() == B_OK;
+  }
+
   struct Selection {
     int start = 0;
     int end = 0;
@@ -531,6 +568,7 @@ private:
   VTerm *state = nullptr;
   VTermScreen *screen = nullptr;
   std::unique_ptr<BMessageRunner> runner;
+  int64 pollGeneration = 0;
   std::string pending;
   std::deque<std::vector<VTermScreenCell>> history;
   int historyOffset = 0;
@@ -544,10 +582,12 @@ private:
   bool selecting = false;
 };
 
-TerminalPanel::TerminalPanel()
+TerminalPanel::TerminalPanel(BMessenger owner)
     : BGroupView(B_VERTICAL, 0),
       location(new BStringView("terminal location", "Listi CLI")),
-      terminal(new TerminalView()) {
+      terminal(new TerminalView()),
+      move(new BButton("Detach CLI", nullptr)),
+      close(new BButton("Close CLI", nullptr)) {
   SetName("Listi CLI");
   location->SetTruncation(B_TRUNCATE_MIDDLE);
   location->SetExplicitMinSize(BSize(0, B_SIZE_UNSET));
@@ -556,9 +596,24 @@ TerminalPanel::TerminalPanel()
       .AddGroup(B_HORIZONTAL, B_USE_HALF_ITEM_SPACING)
       .SetInsets(B_USE_HALF_ITEM_SPACING, 0)
       .Add(location)
-      .Add(new BButton("Close CLI", new BMessage(kCloseTerminal)))
+      .Add(move)
+      .Add(close)
       .End()
       .Add(terminal);
+  move->SetTarget(owner);
+  close->SetTarget(owner);
+  move->SetTimeout(0);
+  close->SetTimeout(0);
+}
+
+void TerminalPanel::SetPlacement(bool floating, int64 placement) {
+  move->SetLabel(floating ? "Dock CLI" : "Detach CLI");
+  auto change = new BMessage(floating ? kDockTerminal : kFloatTerminal);
+  change->AddInt64("terminal placement", placement);
+  move->SetMessage(change);
+  auto stop = new BMessage(kCloseTerminal);
+  stop->AddInt64("terminal placement", placement);
+  close->SetMessage(stop);
 }
 
 bool TerminalPanel::Active() const { return terminal->Active(); }

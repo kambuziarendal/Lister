@@ -29,7 +29,7 @@
 #include "InlineAction.h"
 #include "OperationQueue.h"
 #include "Pane.h"
-#include "TerminalPanel.h"
+#include "TerminalDock.h"
 #include "VirtualFile.h"
 #include "WorkspaceEditor.h"
 #include "WorkspaceActions.h"
@@ -444,7 +444,7 @@ class MainWindow : public BWindow {
   BMenuItem *saveClipboardTextItem, *saveClipboardImageItem, *undoBulkRenameItem;
   BSplitView *split;
   BSplitView *terminalSplit;
-  Listi::TerminalPanel *terminalPanel;
+  std::unique_ptr<Listi::TerminalDock> terminalDock;
   BGroupView *topTools, *bottomTools;
   bool inspectorOnLeft = false;
   bool bankOnTop = false, commandOnTop = false;
@@ -1274,7 +1274,10 @@ public:
     terminalMenu->AddItem(new BMenuItem(
         "Beside file panels", new BMessage(Listi::kTerminalBeside)));
     terminalMenu->AddItem(new BMenuItem(
-        "Separate window", new BMessage(Listi::kTerminalWindow)));
+        "Detached Listi CLI", new BMessage(Listi::kShowFloatingTerminal),
+        'T', B_SHIFT_KEY));
+    terminalMenu->AddItem(new BMenuItem(
+        "External terminal window", new BMessage(Listi::kTerminalWindow)));
     view->AddItem(terminalMenu);
     view->AddItem(new BMenuItem("Operations", new BMessage(kShowJobs), 'O'));
     view->AddItem(new BMenuItem("Show Shelf", new BMessage(Listi::kShowShelf)));
@@ -1295,11 +1298,10 @@ public:
     split->SetCollapsible(0, false);
     split->SetCollapsible(1, false);
     terminalSplit = new BSplitView(B_VERTICAL, 6);
-    terminalPanel = new Listi::TerminalPanel();
     terminalSplit->AddChild(split, 0.68f);
-    terminalSplit->AddChild(terminalPanel, 0.32f);
+    terminalDock =
+        std::make_unique<Listi::TerminalDock>(terminalSplit, BMessenger(this));
     terminalSplit->SetCollapsible(0, false);
-    terminalSplit->SetItemCollapsed(1, true);
     bank = new BGroupView(B_VERTICAL, 5);
     bank->SetName("workspace action buttons");
     auto shortcuts = new BStringView(
@@ -1398,7 +1400,10 @@ public:
       return this;
     return BWindow::ResolveSpecifier(msg, index, spec, what, property);
   }
-  ~MainWindow() { delete queue; }
+  ~MainWindow() {
+    terminalDock.reset();
+    delete queue;
+  }
   void MenusBeginning() override {
     BWindow::MenusBeginning();
     for (int32 i = 0; i < ViewModeCount; ++i)
@@ -1640,8 +1645,11 @@ public:
       if (!actionArea->Pending() && archiveClipboardPending)
         CloseAction();
       RefreshBank();
-      if (!actionArea->Pending() && !terminalPanel->HasFocus())
-        panes[source]->FocusList();
+      if (!actionArea->Pending()) {
+        const auto *terminalPanel = terminalDock->Docked();
+        if (!terminalPanel || !terminalPanel->HasFocus())
+          panes[source]->FocusList();
+      }
       break;
     case kInlineCancel:
       if (panes[source]->CancelSelectionGesture())
@@ -2233,7 +2241,18 @@ public:
       break;
     case kTerminal:
     case Listi::kTerminalBelow:
-    case Listi::kTerminalBeside: {
+    case Listi::kTerminalBeside:
+    case Listi::kShowFloatingTerminal: {
+      if (terminalDock->FocusFloating())
+        break;
+      auto *terminalPanel = terminalDock->Docked();
+      if (!terminalPanel)
+        break;
+      const bool floating = m->what == Listi::kShowFloatingTerminal;
+      if (floating && terminalPanel->Active()) {
+        terminalDock->Float();
+        break;
+      }
       const char *path = m->GetString("folder", panes[source]->Path());
       if (!strcmp(path, "@disks") || Listi::IsVirtual(path)) {
         Notice("Open a local folder first.");
@@ -2253,9 +2272,10 @@ public:
           break;
         terminalPanel->Stop();
       }
-      terminalSplit->SetOrientation(m->what == Listi::kTerminalBeside
-                                        ? B_HORIZONTAL
-                                        : B_VERTICAL);
+      if (!floating)
+        terminalSplit->SetOrientation(m->what == Listi::kTerminalBeside
+                                          ? B_HORIZONTAL
+                                          : B_VERTICAL);
       terminalSplit->SetItemCollapsed(1, false);
       if (!terminalPanel->Active()) {
         if (const int error = terminalPanel->Start(path)) {
@@ -2266,13 +2286,21 @@ public:
           break;
         }
       }
-      terminalPanel->Focus();
+      if (!floating || !terminalDock->Float())
+        terminalPanel->Focus();
       break;
     }
+    case Listi::kFloatTerminal:
+      terminalDock->Float(m->GetInt64("terminal placement", -1));
+      break;
+    case Listi::kDockTerminal:
+      terminalDock->Dock(m->GetInt64("terminal placement", -1));
+      break;
     case Listi::kCloseTerminal:
-      panes[source]->FocusList();
-      terminalPanel->Stop();
-      terminalSplit->SetItemCollapsed(1, true);
+      if (terminalDock->Close(m->GetInt64("terminal placement", -1))) {
+        Activate();
+        panes[source]->FocusList();
+      }
       break;
     case Listi::kTerminalWindow:
     case kCommand: {

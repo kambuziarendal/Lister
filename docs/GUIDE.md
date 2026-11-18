@@ -74,7 +74,12 @@ in this alpha.
   shortcuts remain available when the bank is hidden.
 - **Terminal here:** start an interactive shell in the active local folder.
   Choose **Below file panels** or **Beside file panels** to keep the shell in
-  the Listi window, or **Separate window** to launch the configured terminal.
+  the main window. **Detach CLI** moves that same shell to its own Listi window;
+  **Dock CLI** or closing the detached window returns it to the file panels.
+  Moving the CLI keeps running commands, shell state and scrollback. **Close
+  CLI** ends the shell. **Detached Listi CLI** (Command+Shift+T) opens or
+  brings forward the Listi-owned detached CLI. **External terminal window**
+  launches the separate terminal application configured in Settings.
 - **Open with:** choose a native application once without rewriting associations.
 - **Properties:** inspect metadata and explicitly save supported local typed
   attributes or ordinary permissions; opening the window alone changes nothing.
