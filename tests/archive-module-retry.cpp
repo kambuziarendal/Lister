@@ -6,7 +6,8 @@
 static bool deny = true;
 extern "C" void *__real_dlopen(const char *, int);
 extern "C" void *__wrap_dlopen(const char *path, int flags) {
-  if (deny && path && strstr(path, "libarchive.so")) return nullptr;
+  if (deny && path && (strstr(path, "libarchive.so") || strstr(path, "/p7zip/7z.so")))
+    return nullptr;
   return __real_dlopen(path, flags);
 }
 int main(int argc, char **argv) {

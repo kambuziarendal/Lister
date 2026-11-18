@@ -2,6 +2,7 @@
 #include "ArchiveJobs.h"
 #include "VirtualFile.h"
 #include <Application.h>
+#include <cerrno>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -27,7 +28,13 @@ int main(int argc,char **argv){
   }catch(const std::exception &e){++failed;std::cerr<<"FAIL "<<file<<": "<<e.what()<<std::endl;}
  }
  for(const char *file:{"unsafe.zip","links.tar","broken.7z","test_read_format_rar5_encrypted.rar","test_read_format_rar5_multiarchive.part01.rar"}){
-   ++count;auto job=PrepareArchiveJob(true,{root+"/"+file});SetArchiveDestination(job,out,"invalid-"+std::to_string(count));
+   const auto fixture = root + "/" + file;
+  if (std::string(file).find("test_read_format_") == 0 &&
+      access(fixture.c_str(), F_OK) && errno == ENOENT) {
+    std::cout << "SKIP optional external fixture " << file << std::endl;
+    continue;
+  }
+  ++count;auto job=PrepareArchiveJob(true,{root+"/"+file});SetArchiveDestination(job,out,"invalid-"+std::to_string(count));
    auto result=Run(job,{});struct stat s;bool ok=!result.errors.empty()&&lstat(job.destination.c_str(),&s)!=0;
    failed+=!ok;std::cout<<(ok?"PASS ":"FAIL ")<<"negative archive job "<<file<<std::endl;
  }

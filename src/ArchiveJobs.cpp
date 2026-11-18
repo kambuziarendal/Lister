@@ -810,7 +810,7 @@ Result RunArchiveEdit(const Job &job, const Hooks &hooks,
     Require(output.n >= 0, "Cannot create updated archive output.");
     auto secret = protection.Password();
     Require(!secret || format == "zip" || format == "7z",
-            "The writer cannot preserve this archive’s password protection.");
+            "The writer cannot preserve this archive's password protection.");
     CreateOutput(output.n, format, Children(work), job.archiveLevel,
                  secret && format == "7z", secret, internal);
     Require(!fsync(output.n), "Cannot flush updated archive to disk.");
@@ -925,10 +925,15 @@ std::vector<ArchiveFormat> WritableArchiveFormats() {
       w.Check(LIBCALL(w.lib, archive_write_close)(w.a));
       auto available = f;
       if (f.id == "zip") {
-        auto probe = std::make_shared<ArchiveSecret>("Listi format probe");
-        Writer encrypted;
-        encrypted.Configure(f.id, 6, probe);
-        available.encryption = true;
+        // AES support is optional even when the ordinary ZIP writer works.
+        try {
+          auto probe = std::make_shared<ArchiveSecret>("Listi format probe");
+          Writer encrypted;
+          encrypted.Configure(f.id, 6, probe);
+          available.encryption = true;
+        } catch (const std::exception &) {
+          available.encryption = false;
+        }
       } else if (f.id == "7z" && SevenZipCanCreate()) {
         available.encryption = true;
         available.encryptedNames = true;
