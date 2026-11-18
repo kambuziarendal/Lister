@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include "ArchiveJobs.h"
 #include "JobSnapshot.h"
 #include "Shelf.h"
 #include <cstdlib>
@@ -28,6 +29,11 @@ void Check(bool success, const char *name) {
   if (!success)
     throw std::runtime_error(name);
   std::cout << "PASS " << name << '\n';
+}
+
+std::string Read(const fs::path &path) {
+  std::ifstream stream(path);
+  return std::string(std::istreambuf_iterator<char>(stream), {});
 }
 
 template <typename Action>
@@ -73,6 +79,8 @@ int main() {
     shelf.Add({collision});
     Refused([&] { Listi::PrepareShelfMove(shelf.Snapshot(), target.string()); },
             "same name", "same-name entries cannot overwrite each other");
+    Refused([&] { Listi::PrepareShelfZip(shelf.Snapshot()); }, "same name",
+            "ambiguous ZIP root names are refused");
     shelf.Remove({collision});
     Check(fs::exists(collision),
           "removing a shelf row leaves its original file");
@@ -84,6 +92,36 @@ int main() {
     Refused([&] { Listi::PrepareShelfMove(shelf.Snapshot(), a.string()); },
             "already in", "refuse a move back into an original folder");
 
+    const auto zipSnapshot = shelf.Snapshot();
+    auto zip = Listi::PrepareShelfZip(zipSnapshot);
+    Listi::SetArchiveDestination(zip, target.string(), "shelf.zip");
+    zip = Listi::DecodeJob(Listi::EncodeJob(zip, 'test'));
+    auto packed = Listi::Run(zip, {});
+    Check(packed.completed == 1 && packed.errors.empty() &&
+              zip.archiveFormat == "zip" && Read(first) == "original" &&
+              Read(second) == "second" &&
+              shelf.Snapshot().revision == zipSnapshot.revision,
+          "create a ZIP without modifying originals or Shelf");
+    auto unpack = Listi::PrepareArchiveJob(true, {zip.destination});
+    Listi::SetArchiveDestination(unpack, target.string(), "unpacked");
+    auto extracted = Listi::Run(unpack, {});
+    Check(extracted.completed == 1 && extracted.errors.empty() &&
+              Read(target / "unpacked" / "first") == "original" &&
+              Read(target / "unpacked" / "second") == "second",
+          "round trip ZIP members collected from different folders");
+    auto occupied = Listi::PrepareShelfZip(shelf.Snapshot());
+    Listi::SetArchiveDestination(occupied, target.string(), "occupied.zip");
+    Listi::Hooks occupyTarget;
+    occupyTarget.progress = [&](const std::string &, uint64_t) {
+      std::ofstream(occupied.destination) << "do not replace";
+    };
+    auto refused = Listi::Run(occupied, occupyTarget);
+    Check(refused.completed == 0 && !refused.errors.empty() &&
+              Read(occupied.destination) == "do not replace",
+          "ZIP job cannot replace a target created while packing");
+
+    auto guardedZip = Listi::PrepareShelfZip(shelf.Snapshot());
+    Listi::SetArchiveDestination(guardedZip, target.string(), "stale.zip");
     auto job = Listi::PrepareShelfMove(shelf.Snapshot(), target.string());
     job = Listi::DecodeJob(Listi::EncodeJob(job, 'test'));
     const auto original = first + ".original";
@@ -99,6 +137,12 @@ int main() {
             "a drag with the old inode cannot collect its replacement");
     Refused([&] { Listi::PrepareShelfMove(shelf.Snapshot(), target.string()); },
             "missing or replaced", "reject stale sources before queuing");
+    Refused([&] { Listi::PrepareShelfZip(shelf.Snapshot()); },
+            "missing or replaced", "reject a stale Shelf reference for ZIP");
+    auto stale = Listi::Run(guardedZip, {});
+    Check(stale.completed == 0 && !stale.errors.empty() &&
+              !fs::exists(guardedZip.destination),
+          "ZIP job refuses a source replaced after picking");
 
     const auto outcome = Listi::Run(job, {});
     Check(outcome.completed == 1 && !outcome.errors.empty() &&
@@ -109,8 +153,11 @@ int main() {
               shelf.Snapshot().entries.back().State() ==
                   Listi::ShelfState::Missing,
           "shelf retains references and shows a moved source as unavailable");
+    shelf.Remove({first});
+    Refused([&] { Listi::PrepareShelfZip(shelf.Snapshot()); },
+            "missing or replaced", "reject a missing Shelf reference for ZIP");
 
-    shelf.Remove({first, second});
+    shelf.Remove({second});
     shelf.Add({first});
     auto destinationJob =
         Listi::PrepareShelfMove(shelf.Snapshot(), target.string());

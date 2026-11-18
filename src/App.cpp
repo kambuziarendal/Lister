@@ -1156,11 +1156,15 @@ public:
     case Listi::kAddToShelf:
       AddToShelf();
       break;
-    case Listi::kSubmitShelfMove: {
+    case Listi::kSubmitShelfMove:
+    case Listi::kSubmitShelfZip: {
       if (m->IsSourceRemote())
         break;
       auto job = Listi::DecodeJob(*m);
-      if (job.action == Listi::Action::Move && !job.sources.empty() &&
+      const auto expected = m->what == Listi::kSubmitShelfMove
+                                ? Listi::Action::Move
+                                : Listi::Action::CreateArchive;
+      if (job.action == expected && !job.sources.empty() &&
           job.expectedSources.size() == job.sources.size() &&
           job.expectedDestination.device >= 0)
         queue->Enqueue(job);

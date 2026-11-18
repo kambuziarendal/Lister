@@ -37,4 +37,5 @@ private:
 
 void CheckShelfSources(const ShelfSnapshot &);
 Job PrepareShelfMove(const ShelfSnapshot &, const std::string &folder);
+Job PrepareShelfZip(const ShelfSnapshot &);
 } // namespace Listi

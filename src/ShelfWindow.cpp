@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "ShelfWindow.h"
+#include "ArchiveJobs.h"
 #include "Shelf.h"
 #include "FileClipboard.h"
 #include "JobSnapshot.h"
@@ -13,11 +14,13 @@
 #include <StringView.h>
 #include <Window.h>
 #include <stdexcept>
+#include <strings.h>
 
 namespace Listi {
 namespace {
 constexpr uint32 kRemove = 'sfrm', kSelect = 'sfsl', kPickFolder = 'sfbw',
-                 kFolderChosen = 'sfdc', kDropped = 'sfdp';
+                 kFolderChosen = 'sfdc', kDropped = 'sfdp',
+                 kPickZip = 'sfzp', kZipChosen = 'sfzc';
 
 std::string RefPath(const entry_ref &ref, bool traverse) {
   BEntry entry(&ref, traverse);
@@ -106,7 +109,7 @@ class ShelfWindow : public BWindow {
   BMessenger owner;
   std::shared_ptr<Shelf> shelf;
   ShelfList *rows;
-  BButton *remove, *move;
+  BButton *remove, *move, *zip;
   BStringView *status;
   std::map<std::string, ShelfRow *> displayed;
   std::unique_ptr<BFilePanel> picker;
@@ -153,6 +156,7 @@ class ShelfWindow : public BWindow {
     }
     remove->SetEnabled(rows->CurrentSelection() != nullptr);
     move->SetEnabled(!snapshot.entries.empty());
+    zip->SetEnabled(!snapshot.entries.empty());
   }
 
   void Add(const BMessage &message) {
@@ -213,6 +217,46 @@ class ShelfWindow : public BWindow {
     Status("Move submitted. See Operations for progress.");
   }
 
+  void PickZip() {
+    if (picker) {
+      picker->Show();
+      return;
+    }
+    const auto snapshot = shelf->Snapshot();
+    PrepareShelfZip(snapshot);
+    pickerRevision = snapshot.revision;
+    BMessenger here(this);
+    BMessage chosen(kZipChosen);
+    chosen.AddInt64("shelf picker", ++pickerSerial);
+    picker = std::make_unique<BFilePanel>(B_SAVE_PANEL, &here, nullptr,
+                                          B_FILE_NODE, false, &chosen);
+    picker->SetSaveText("Shelf.zip");
+    picker->SetButtonLabel(B_DEFAULT_BUTTON, "Create ZIP");
+    picker->Window()->SetTitle("Listi: Create ZIP from Shelf");
+    picker->Show();
+  }
+
+  void ConfirmZip(const BMessage &message) {
+    if (!picker || message.GetInt64("shelf picker", -1) != pickerSerial)
+      return;
+    picker.reset();
+    const auto snapshot = shelf->Snapshot();
+    if (snapshot.revision != pickerRevision)
+      throw std::runtime_error("The Shelf changed. Choose a destination again.");
+    entry_ref folder;
+    std::string name = message.GetString("name", "");
+    if (message.FindRef("directory", &folder) != B_OK || name.empty())
+      throw std::runtime_error("Choose a destination and enter a name.");
+    if (name.size() < 4 || strcasecmp(name.c_str() + name.size() - 4, ".zip"))
+      name += ".zip";
+    auto job = PrepareShelfZip(snapshot);
+    SetArchiveDestination(job, RefPath(folder, true), name);
+    auto request = EncodeJob(job, kSubmitShelfZip);
+    if (owner.SendMessage(&request, (BHandler *)nullptr, 0) != B_OK)
+      throw std::runtime_error("Could not submit the ZIP. The Shelf is unchanged.");
+    Status("ZIP submitted. See Operations for progress.");
+  }
+
 public:
   ShelfWindow(BMessenger receiver, std::shared_ptr<Shelf> collection)
       : BWindow(BRect(150, 115, 700, 455), "Listi: Shelf", B_TITLED_WINDOW,
@@ -238,6 +282,7 @@ public:
     status->SetTruncation(B_TRUNCATE_END);
     remove = new BButton("Remove from Shelf", new BMessage(kRemove));
     move = new BButton("Move all...", new BMessage(kPickFolder));
+    zip = new BButton("Create ZIP...", new BMessage(kPickZip));
     BLayoutBuilder::Group<>(this, B_VERTICAL, 8)
         .SetInsets(10)
         .Add(rows)
@@ -247,6 +292,7 @@ public:
         .Add(remove)
         .AddGlue()
         .Add(move)
+        .Add(zip)
         .End();
     AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
     Render();
@@ -281,6 +327,12 @@ public:
         return;
       case kFolderChosen:
         ConfirmFolder(*message);
+        return;
+      case kPickZip:
+        PickZip();
+        return;
+      case kZipChosen:
+        ConfirmZip(*message);
         return;
       case B_CANCEL:
         if (message->GetInt64("shelf picker", -1) == pickerSerial)

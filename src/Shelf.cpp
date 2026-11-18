@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "Shelf.h"
+#include "ArchiveJobs.h"
 #include <algorithm>
 #include <cstdlib>
 #include <limits.h>
@@ -111,19 +112,29 @@ ShelfSnapshot Shelf::Snapshot() const {
   return current;
 }
 
-void CheckShelfSources(const ShelfSnapshot &shelf) {
+namespace {
+void CheckShelfEntries(const ShelfSnapshot &shelf) {
   if (shelf.entries.empty())
     throw std::runtime_error("Add entries to the Shelf first.");
-  std::set<std::string> paths, names;
+  std::set<std::string> names;
   for (const auto &entry : shelf.entries) {
     if (entry.State() != ShelfState::Ready)
       throw std::runtime_error("Remove the missing or replaced reference: " +
                                entry.path);
-    if (!names.insert(Leaf(entry.path)).second)
+    const auto name = Leaf(entry.path);
+    if (!names.insert(name).second)
       throw std::runtime_error(
-          "Two Shelf entries have the same name. Move them separately.");
-    paths.insert(entry.path);
+          "Two Shelf entries have the same name: " + name +
+          ". Remove one reference and try again.");
   }
+}
+} // namespace
+
+void CheckShelfSources(const ShelfSnapshot &shelf) {
+  CheckShelfEntries(shelf);
+  std::set<std::string> paths;
+  for (const auto &entry : shelf.entries)
+    paths.insert(entry.path);
   for (const auto &entry : shelf.entries) {
     const auto prefix = entry.path + "/";
     const auto child = paths.lower_bound(prefix);
@@ -152,6 +163,22 @@ Job PrepareShelfMove(const ShelfSnapshot &shelf, const std::string &folder) {
           "A folder cannot move into itself or its contents.");
     job.sources.push_back(entry.path);
     job.expectedSources.emplace(entry.path, entry.identity);
+  }
+  return job;
+}
+
+Job PrepareShelfZip(const ShelfSnapshot &shelf) {
+  CheckShelfEntries(shelf);
+  std::vector<std::string> paths;
+  for (const auto &entry : shelf.entries)
+    paths.push_back(entry.path);
+  auto job = PrepareArchiveJob(false, paths);
+  for (const auto &entry : shelf.entries) {
+    const auto &captured = job.expectedSources.at(entry.path);
+    if (captured.device != entry.identity.device ||
+        captured.inode != entry.identity.inode)
+      throw std::runtime_error("Remove the missing or replaced reference: " +
+                               entry.path);
   }
   return job;
 }
