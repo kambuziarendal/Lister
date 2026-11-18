@@ -42,8 +42,8 @@ int main() {
     auto choice = field ? field->Menu()->ItemAt(1) : nullptr;
     check(tabs && tabs->CountTabs() >= 2, "settings split into named pages");
     check(field && field->Menu()->CountItems() == ViewModeCount &&
-              field->Menu()->ItemAt(MillerMode)->IsMarked(),
-          "Einn default visible and all file views available");
+              field->Menu()->ItemAt(0)->IsMarked(),
+          "Einn starts in Details and all file views remain available");
     if (choice) {
       choice->SetMarked(true);
     }
