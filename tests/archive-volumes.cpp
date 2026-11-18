@@ -55,6 +55,12 @@ void *run(void *){try{
  selected=clone("plain.7z.001");write(selected.substr(0,selected.size()-3)+"005","extra");check(fails([&]{OpenArchive(selected);}),"extra trailing 7z part refused");
  selected=clone("plain.part1.rar");write(selected.substr(0,selected.size()-5)+"5.rar",disk(base+"plain.part4.rar"));check(fails([&]{OpenArchive(selected);}),"unconsumed RAR part refused");
  selected=clone("plain.7z.001");write(selected.substr(0,selected.size()-12)+"PLAIN.7Z.001",disk(selected));check(fails([&]{FindArchiveVolumes(selected);}),"ambiguous case-folded part refused");
+ selected=clone("plain.7z.001");
+ const auto alternate=selected.substr(0,selected.size()-3)+"0001";
+ check(!rename(selected.c_str(),alternate.c_str()) &&
+       fails([&]{FindArchiveVolumes(selected);}) &&
+       FindArchiveVolumes(alternate).files.size()==4,
+       "missing selected pathname cannot silently open an alternate part number spelling");
  for(const char *leaf:{"encrypted.7z.002","encrypted.part2.rar"}){
   password();int calls=0;SetArchivePasswordPrompt([&](const std::string &,bool,const TransferControl &){return std::make_shared<ArchiveSecret>(++calls==1?"wrong":"Listi-test-only");});check(read(ChildLocation(OpenArchive(base+leaf),"payload.bin"))==disk(base+"original/payload.bin")&&calls==2,"multipart wrong password retry");
   password();SetArchivePasswordPrompt([](const std::string &,bool,const TransferControl &){return ArchiveSecretPtr();});auto job=PrepareArchiveJob(true,{base+leaf});SetArchiveDestination(job,root+"/out",std::string("cancel-")+leaf);auto result=RunArchiveJob(job,{});check(result.cancelled&&!exists(job.destination),"multipart password cancel publishes nothing");

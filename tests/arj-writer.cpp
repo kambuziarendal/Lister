@@ -64,10 +64,17 @@ void Test(int level) {
   Require(!utimensat(AT_FDCWD, file.c_str(), times, 0),
           "Cannot set ARJ test source timestamp");
 
+  // A normal nested tree must fit on a file-operation worker's small stack.
+  std::string nested = Join(scratch.path, "tree");
+  for (int i = 0; i < 32; ++i)
+    nested = Join(nested, "d");
+  std::filesystem::create_directories(nested);
+  Write(Join(nested, "leaf"), "nested");
+
   const auto archive = Join(scratch.path, "output.arj");
   FD output{open(archive.c_str(), O_RDWR | O_CREAT | O_EXCL, 0600)};
   Require(output.value >= 0, "Cannot create ARJ test archive");
-  ArjWrite(output.value, {source}, {}, level);
+  ArjWrite(output.value, {source, Join(scratch.path, "tree")}, {}, level);
   if (level > 0 && ArjCanCompress()) {
     struct stat result;
     Require(!fstat(output.value, &result) &&
@@ -78,7 +85,12 @@ void Test(int level) {
   const auto root = OpenArchive(archive);
   const auto parent = ChildLocation(root, "parent");
   const auto member = ChildLocation(parent, "space [a].bin");
-  Require(ListFiles(root).size() == 1 && ListFiles(parent).size() == 3 &&
+  auto nestedMember = ChildLocation(root, "tree");
+  for (int i = 0; i < 32; ++i)
+    nestedMember = ChildLocation(nestedMember, "d");
+  Require(Read(ChildLocation(nestedMember, "leaf")) == "nested",
+          "ARJ lost the nested member");
+  Require(ListFiles(root).size() == 2 && ListFiles(parent).size() == 3 &&
               ListFiles(ChildLocation(parent, "empty-folder")).empty(),
           "ARJ listing did not preserve explicit directories");
   Require(Read(member) == bytes &&

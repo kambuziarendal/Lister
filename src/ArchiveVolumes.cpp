@@ -59,6 +59,7 @@ ArchiveVolumes FindArchiveVolumes(const std::string &path) {
     out.files.push_back(Capture(path));
     return out;
   }
+  const auto requested = Capture(path);
   std::unique_ptr<DIR, decltype(&closedir)> dir(opendir(folder.c_str()),
                                                 closedir);
   if (!dir)
@@ -94,7 +95,8 @@ ArchiveVolumes FindArchiveVolumes(const std::string &path) {
     out.files.push_back(
         Capture(folder + (folder == "/" ? "" : "/") + item.second));
   }
-  if (!found.count(selected.index))
+  if (!found.count(selected.index) ||
+      out.files[selected.index - first].identity != requested.identity)
     throw std::runtime_error("Selected archive part disappeared.");
   out.kind = selected.kind == 1 ? ArchiveVolumes::Joined7z
              : (selected.kind == 2 || out.files.size() > 1)

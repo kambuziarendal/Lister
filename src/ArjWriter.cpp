@@ -246,6 +246,8 @@ struct Encoder {
   const Hooks &hooks;
   std::set<std::string> names;
   Compression *compression;
+  // Share one transfer buffer across recursive directory frames.
+  std::vector<unsigned char> bytes = std::vector<unsigned char>(65536);
   void Check() const {
     if (hooks.proceed && !hooks.proceed())
       throw Cancelled();
@@ -290,7 +292,6 @@ struct Encoder {
     } else {
       Write(output, block.data(), block.size());
     }
-    std::array<unsigned char, 65536> bytes;
     uint32_t crc = 0;
     off_t left = st.st_size;
     while (left) {
