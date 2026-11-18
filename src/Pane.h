@@ -73,6 +73,7 @@ private:
   BString path = "/boot/home";
   PaneModel entries;
   std::vector<std::string> attributeColumns;
+  bool attributeDetails = false;
   IconCache icons;
   FileDetails *list;
   FileGrid *grid;

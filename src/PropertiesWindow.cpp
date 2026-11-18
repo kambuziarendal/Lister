@@ -366,7 +366,7 @@ public:
       break;
     case kShowAttributeColumn:
     case kMakeSearchable: {
-      if (busy || !MayReplaceDraft())
+      if (busy || (message->what == kMakeSearchable && !MayReplaceDraft()))
         break;
       auto row = static_cast<AttributeRow *>(attributes->CurrentSelection());
       if (!row) {

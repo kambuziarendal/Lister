@@ -54,6 +54,15 @@ For a manual workspace check, select files in either panel, set a panel filter,
 and open **View > File view > Flat View…**. Close it and confirm that the same
 panel, selection, filter and workspace remain in place.
 
+### BFS attribute columns
+
+Run `python3 tests/run-native-audit.py attribute-columns attribute-columns-ui file-properties properties-faults`.
+The UI fixture opens Properties and two panes looking at the same folder. It
+checks stored, empty and missing values, adds a second column without touching
+an open edit draft, then sorts and clears the columns. Clearing restores the
+original pane view without changing the other pane. The separate attribute
+test creates and removes its own disposable BFS index.
+
 ### File operation fault and job-result tests
 
 On Haiku, run `python3 tests/run-native-audit.py file-operation-faults operation-queue bulk-rename`

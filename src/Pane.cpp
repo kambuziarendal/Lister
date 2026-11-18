@@ -381,6 +381,8 @@ void Pane::Sort(PaneSort value) {
   SendSelection();
 }
 int32 Pane::LocationMode() const {
+  if (attributeDetails && path[0] == '/' && !Listi::IsVirtual(path.String()))
+    return 0;
   auto remembered = prefs.folderModes.find(path.String());
   return remembered == prefs.folderModes.end() ? prefs.PaneMode(id)
                                                : remembered->second;
@@ -965,7 +967,14 @@ void Pane::MessageReceived(BMessage *m) {
     std::string name = m->GetString("attribute", "");
     BMessage reply(B_REPLY);
     if (m->what == kClearAttributeColumns) {
+      if (attributeColumns.empty())
+        break;
       attributeColumns.clear();
+      attributeDetails = false;
+    } else if (path[0] != '/' || Listi::IsVirtual(path.String())) {
+      reply.AddString("status", "Attribute columns require a local folder.");
+      m->SendReply(&reply);
+      break;
     } else if (name.empty() || name.size() >= B_ATTR_NAME_LENGTH ||
                (attributeColumns.size() >= 4 &&
                 std::find(attributeColumns.begin(), attributeColumns.end(),
@@ -979,11 +988,7 @@ void Pane::MessageReceived(BMessage *m) {
       if (std::find(attributeColumns.begin(), attributeColumns.end(), name) ==
           attributeColumns.end())
         attributeColumns.push_back(name);
-      prefs.SetPaneMode(id, 0);
-      auto remembered = prefs.folderModes.find(path.String());
-      if (remembered != prefs.folderModes.end())
-        remembered->second = 0;
-      PublishDisplay(remembered != prefs.folderModes.end());
+      attributeDetails = true;
     }
     list->SetAttributes(attributeColumns);
     StartNavigation(path.String());
@@ -992,6 +997,7 @@ void Pane::MessageReceived(BMessage *m) {
     break;
   }
   case kGridMode: {
+    attributeDetails = false;
     auto requestedMode = m->GetInt32("mode", 0);
     prefs.SetPaneMode(id, requestedMode);
     const bool remembered = prefs.folderModes.count(path.String());
@@ -1018,6 +1024,7 @@ void Pane::MessageReceived(BMessage *m) {
     PublishDisplay(true);
     break;
   case kForgetView:
+    attributeDetails = false;
     prefs.folderModes.erase(path.String());
     SetDisplayMode(LocationMode());
     PublishDisplay(true, true);
