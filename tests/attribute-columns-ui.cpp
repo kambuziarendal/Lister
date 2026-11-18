@@ -185,6 +185,10 @@ int main() {
           }),
           "both panes start in their shared remembered Icons view");
 
+    const auto device = first.Read().stat.st_dev;
+    index_info beforeIndex{};
+    const bool hadIndex = fs_stat_index(device, kLabel, &beforeIndex) == 0;
+    Check(hadIndex || errno == ENOENT, "read the prior volume index state");
     OpenFileProperties(f.first, BMessenger(left));
     BWindow *properties = nullptr;
     for (int32 i = 0; i < app.CountWindows(); ++i) {
@@ -224,8 +228,9 @@ int main() {
     {
       WindowLock lock(properties);
       index_info info;
-      Check(fs_stat_index(first.Read().stat.st_dev, kLabel, &info) != 0 && errno == ENOENT,
-            "cancelling the volume action creates no index");
+      const bool hasIndex = fs_stat_index(device, kLabel, &info) == 0;
+      Check(hasIndex == hadIndex && (hasIndex ? info.type == beforeIndex.type : errno == ENOENT),
+            "cancelling the volume action leaves indexes untouched");
       Check(Click(*properties, "Show in Details"),
             "selected string attribute is sent to the originating pane");
     }
