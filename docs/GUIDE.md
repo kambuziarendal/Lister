@@ -220,6 +220,13 @@ capabilities. A successful listing does not establish member-data integrity.
   xz, bzip2, LZMA, lzip or Unix compress (.tar.Z), CPIO and XAR. Zstandard/LZ4 wrappers are gated by the
   installed engine rather than universally promised. Reading support is broader
   than writing support.
+- Unix ar archives support flat regular files. Edits preserve GNU or BSD
+  naming. Debian packages and static libraries are not rebuilt as generic ar;
+  thin archives with external references are not opened.
+- With p7zip installed, Listi can create single-volume ARJ archives using the
+  Store method and portable ASCII names. It can edit archives with that header
+  layout. Compatible DOS/Windows ARJ archives can also be read, including
+  compressed members; other header variants are not assumed editable.
 - LHA/LZH can be created and edited when the optional HaikuDepot `lha` tool
   and libarchive are installed. Level zero stores files; other levels use LH7.
 - Single-volume Microsoft Cabinets can be rebuilt with uncompressed data.

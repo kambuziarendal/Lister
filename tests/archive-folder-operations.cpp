@@ -6,6 +6,7 @@
 #include <Directory.h>
 #include <Entry.h>
 #include <Path.h>
+#include <fcntl.h>
 #include <fstream>
 #include <iostream>
 #include <sys/stat.h>
@@ -21,11 +22,16 @@ int main(){
  for(const auto &format:WritableArchiveFormats()){
   std::cout<<"FORMAT "<<format.id<<std::endl;
   std::vector<std::string> sources{root+"/in/original.txt"};
+  if (format.id=="ar") {
+   struct timespec epoch[2]{};
+   check(utimensat(AT_FDCWD,sources.front().c_str(),epoch,0)==0,"prepare epoch ar member");
+  }
   if(format.id=="cab"){
    mkdir((root+"/in/new-folder").c_str(),0700);
    std::ofstream(root+"/in/new-folder/keep.txt")<<"seed";
    sources.push_back(root+"/in/new-folder");
   }
+  if (format.id!="ar") utimensat(AT_FDCWD,sources.front().c_str(),nullptr,0);
   auto create=PrepareArchiveJob(false,sources);create.archiveFormat=format.id;SetArchiveDestination(create,root,"archive"+format.extension);
   auto result=Run(create,{});check(result.completed==1&&result.errors.empty(),format.id+" create");if(!result.errors.empty()){std::cerr<<result.errors[0]<<std::endl;continue;}
   try {
@@ -42,6 +48,7 @@ int main(){
     FileEntry entry;
     check(result.completed==1 && !StatFile(renamed,entry) &&
           content(ChildLocation(url,"original.txt"))=="retained","ar delete preserves original");
+    check(StatFile(ChildLocation(url,"original.txt"),entry) && entry.modified==0,"ar preserves explicit epoch timestamp after edits");
     continue;
    }
    auto folder=ChildLocation(url,"new-folder");

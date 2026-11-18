@@ -416,6 +416,7 @@ std::vector<FileEntry> ArList(const Location &location,
     entry.directory = directory;
     entry.permissions = directory ? 0755 : member.mode & 0777;
     entry.size = directory ? 0 : member.size;
+    entry.modifiedKnown = !directory;
     entry.modified = directory ? 0 : member.modified;
     children.emplace(leaf, std::move(entry));
   }

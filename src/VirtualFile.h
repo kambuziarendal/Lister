@@ -35,6 +35,7 @@ struct FileEntry {
   bool sizeKnown = true;
   int64_t size = 0, modified = 0;
   unsigned permissions = 0644;
+  bool modifiedKnown = false; // Distinguishes an explicit epoch from an absent timestamp.
 };
 struct Connection {
   std::string username, password, domain, privateKey, knownHosts;

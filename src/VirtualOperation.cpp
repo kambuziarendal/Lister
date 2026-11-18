@@ -56,7 +56,7 @@ struct TempFile {
     // Preserve available portable metadata, never import setuid/setgid bits.
     if (fchmod(fd, source.permissions & 0777))
       throw std::runtime_error(strerror(errno));
-    if (source.modified > 0) {
+    if (source.modifiedKnown || source.modified > 0) {
       struct timespec times[2] = {{0, UTIME_OMIT}, {source.modified, 0}};
       if (futimens(fd, times))
         throw std::runtime_error(strerror(errno));
@@ -223,7 +223,7 @@ struct Runner {
       if (!exists && !IsVirtual(dst)) {
         if (chmod(dst.c_str(), source.permissions & 0777))
           throw std::runtime_error(strerror(errno));
-        if (source.modified > 0) {
+        if (source.modifiedKnown || source.modified > 0) {
           struct timespec times[2] = {{0, UTIME_OMIT}, {source.modified, 0}};
           if (utimensat(AT_FDCWD, dst.c_str(), times, AT_SYMLINK_NOFOLLOW))
             throw std::runtime_error(strerror(errno));
