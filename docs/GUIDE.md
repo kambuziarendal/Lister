@@ -1,13 +1,14 @@
 # Workflow guide
 
-This guide describes the 0.32.0 alpha. Test with disposable copies and keep
-independent backups: file operations can fail or complete only partially.
+This guide describes the **0.35.0 source build**. The latest downloadable
+[0.32.1 alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.32.1)
+predates the current inspector and several other workflows. Test changes with
+disposable copies and keep independent backups.
 
 ## Small features at a glance
 
-These are implemented conveniences in the 0.32.0 alpha. Availability depends on
-whether the location is local, an archive or a network provider; disabled menu
-items are not promises of support.
+Available actions depend on whether the location is local, in an archive or on
+a network server. Unsupported actions are disabled.
 
 ### Right-click: the selection or the current folder
 
@@ -99,7 +100,7 @@ in this alpha.
 - **Operations:** reopen the progress window after hiding it; pause/resume,
   cancel and choose Replace/Skip/Abort when conflicts occur.
 
-### Custom workspaces (development build)
+### Custom workspaces
 
 Open **View > Workspace > Customize workspace…**. The four built-in presets
 still work without changing any settings.
@@ -146,6 +147,53 @@ choices.
   from current archive:** manage retained external-editor sessions. Decrypted
   working copies may remain on disk; read the recovery notes below.
 
+## Inspect and edit a file
+
+Choose the view that fits the task:
+
+- **Listi > Quick view** (Command+Shift+P) shows the current selection next to the active panel in any workspace. In a two-panel layout, it temporarily replaces the other panel on screen. Move through the active list to inspect another file. Toggle Quick view off to return to the previous layout; the other panel has not navigated away. Space still selects files.
+- **View** (Command+Shift+V) opens a separate viewer for one file. Escape or Command+W closes it. **Listi > Inspector panel** keeps an inspector in a two-panel layout instead.
+- **Edit** (Command+E) from the file manager still uses the configured external editor for a local file. **Edit** *inside the preview* opens Listi’s native editor. Opening a preview alone does not change the file.
+
+### Text, source code and unknown formats
+
+Plain text, code, Markdown and HTML display as text; scripts do not run.
+The panel previews the first 256 KiB of a long file; the separate viewer can
+show up to 1 MiB. Neither can save a truncated preview over the original.
+
+In the preview, choose **Edit**. For an unfamiliar format, **Try as text…**
+opens it only if the complete file passes UTF-8 and binary-content checks.
+The editor accepts writable local regular files up to 256 KiB, including any
+UTF-8 byte-order mark and line endings. Read-only files, files with set-user-ID
+or set-group-ID permissions, symbolic links, archive members, network entries
+and files with mixed or classic CR endings cannot be edited here. Archive editing has a separate
+[save-back workflow](#editing-an-archive-member).
+
+The editor colours recognised code, markup and Markdown without changing the
+file. Use **Search > Find and replace…** (Command+F) for literal text,
+**Find next** (Command+G), or **Go to line…** (Command+L). **View > Wrap lines**
+changes the display only. Undo and redo are available in the Edit menu.
+An asterisk in the window title marks unsaved changes. **Save** (Command+S)
+preserves the original UTF-8 marker, LF or CRLF convention and BFS attributes.
+Closing with edits offers **Discard**, **Cancel** or **Save**.
+
+If the source was replaced or its bytes changed, Listi refuses the save and
+keeps the edit open. Copy your edited text somewhere safe before reopening
+the file. Listi writes a private original-byte recovery file in the same
+folder before changing the original node; the folder must permit creating it.
+If restoration cannot be verified, the error gives its path. After an
+interrupted save, look for a hidden file beginning with
+`.Listi-text-recovery-` in that folder. Compare it with the source before
+restoring anything. This is not a version history or a lock against every
+application that already has the file open.
+
+### Photos, PDF and media
+
+- **Photos:** open **Image…** for **Fit to window**, **Actual pixels (100%)**, **Zoom in** or **Zoom out**. Scroll over the image to zoom; drag it to pan. These controls do not crop or resize the original file.
+- **Camera information:** for a JPEG with recognised EXIF tags, **Image… > Camera details…** can show the camera, lens, capture time and exposure settings. **Show GPS coordinates…** is a separate, explicit choice when location tags are present. The coordinates do not appear in ordinary camera details; no map or network lookup is used to interpret the tags.
+- **PDF:** use **Previous** and **Next** to inspect individual pages.
+- **Audio or video:** **Play preview** plays a sample of up to 15 seconds using installed Haiku codecs. Choose **Stop preview** to stop early. For a local file, **MediaPlayer** opens the full Haiku player instead. Selection alone does not play or launch anything.
+
 ## Panels and jobs
 
 The highlighted panel is the source. Direct Copy or Move uses the other panel
@@ -160,7 +208,7 @@ selected: type e.g. `Listi-forslag.md` and press Enter, or keep
 contents when opened and never replaces an existing file. Pasting in an
 editable text field still inserts text into that field.
 
-In the development build, open **Operations > Details** and choose a job by
+Open **Operations > Details** and choose a job by
 number to review its result, even after another job has started. **Recent
 activity** is the combined log; a specific job shows its source and destination
 paths where available. Large reports have multiple pages. Job results are for
@@ -190,7 +238,7 @@ restarting file work. **Select same file type** replaces the active panel's
 selection with visible ordinary files sharing an extension; it is not MIME or
 content detection. `.jpg` and `.jpeg` remain distinct.
 
-**Shelf (development build):** Select local entries and press Command+Shift+Y
+**Shelf:** Select local entries and press Command+Shift+Y
 (**Files > Add to Shelf**). Open **Listi > Show Shelf** to see their names,
 original folders and status. You can also drop local entries onto the list.
 Select one or more rows and click **Remove from Shelf** to remove just those
@@ -230,13 +278,13 @@ panel's current folder, not the row under the pointer. Duplicate and symbolic
 link creation are local, single-entry actions; links can be relative or absolute.
 Archive and network drops remain copy-only.
 
-**Convert here (development build):** Drop one local image onto a local panel,
+**Convert here:** Drop one local image onto a local panel,
 choose **Convert here**, select a format and confirm **Convert**. The choices
 depend on the image and the installed Haiku translators. Listi creates a new
 file in the receiving folder and won't replace the original or an existing
 output file.
 
-**Bulk rename (development build):** Select two or more entries in one local
+**Bulk rename:** Select two or more entries in one local
 folder and choose **Files > Bulk rename...**. Enter a prefix, suffix, case-sensitive replacement or sequence number, then
 choose **Update preview** to compare current and proposed names.
 Rules preserve extensions. For a swap, select each row, type its complete new

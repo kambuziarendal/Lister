@@ -1,12 +1,13 @@
 # Screenshots and credits
 
-The images are real captures of Listi running on Haiku with synthetic example
-files. They illustrate implemented workflows, not generated mockups. Feature
-windows below are cropped from existing captures; no UI content was retouched.
-They are historical illustrations, not fresh verification of the current build.
+These are captures of Listi on Haiku, using example files and the credited
+photograph. The capture version identifies the interface shown; older images
+illustrate workflows rather than verifying the current build.
 
 | File | Capture version | What it shows |
 |---|---|---|
+| `listi-quick-view-0.35.0.png` | 0.35.0 source | Photograph in Quick view beside the active panel |
+| `listi-source-editor-0.35.0.png` | 0.35.0 source | Native source editor with syntax colouring |
 | `listi-smidja-preview-0.31.0.png` | 0.31.0 | Smiðja/Workbench with image preview |
 | `listi-tviskipt-context-dark-0.31.0.png` | 0.31.0 | Tvískipt/Commander with file actions in dark appearance |
 | `listi-search-filters-0.30.0.png` | 0.30.0 | Saved search criteria, extension, size and date filters |
@@ -26,7 +27,7 @@ The sunset photograph is **Sunset 2007-1**, showing Porto Covo, Portugal, by
 [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Sunset_2007-1.jpg).
 Licensed under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
 
-The photograph is scaled by Listi's thumbnail/preview display, not retouched.
-The screenshot incorporating it, `listi-smidja-preview-0.31.0.png`, is also
-supplied under CC BY-SA 3.0. The photograph is not covered by the code's MIT
+The photograph is displayed within Listi. Both screenshots incorporating it,
+`listi-smidja-preview-0.31.0.png` and `listi-quick-view-0.35.0.png`, are
+also supplied under CC BY-SA 3.0. The photograph is not covered by the code's MIT
 licence. Its inclusion does not imply endorsement by the photographer.

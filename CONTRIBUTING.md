@@ -20,7 +20,11 @@ reviewable on its own.
 Include the Listi and Haiku versions, reproduction steps and whether files were
 affected. Use disposable fixtures and independent backups when testing file
 operations. Never attach passwords, private files or personal filenames to a
-public issue. See the [testing guide](docs/VERIFICATION.md).
+public issue. For the inspector, say whether you used Quick view, the panel
+inspector or the separate viewer. For an editor save issue, note the file
+encoding and line endings if known. For a photo issue, use a synthetic or
+openly licensed example without personal GPS tags. See the
+[testing guide](docs/VERIFICATION.md).
 
 ## Public documentation
 
@@ -30,7 +34,11 @@ public issue. See the [testing guide](docs/VERIFICATION.md).
   requests, internal approvals or tool/agent activity.
 - Keep local machine paths, private service addresses and internal acceptance
   logs out of public documentation and release assets.
-- Preserve useful limitations, reproducible test instructions and required
-  attribution. Distinguish implemented behaviour from planned work.
+- Distinguish what is in the source tree from what is in the downloadable
+  package and from proposed features. Link a release by tag and use the exact
+  HPKG asset name in installation examples.
+- Use real, version-labelled screenshots, descriptive alternative text and
+  attribution for the images they contain. Preserve reproducible tests and
+  useful limitations alongside feature descriptions.
 - Keep documentation links and package staging valid when moving or removing
   files. Keep implementation changes separate from editorial cleanup.

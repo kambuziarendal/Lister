@@ -7,18 +7,37 @@ BFS attributes, queries, MIME applications and Tracker interoperability. Start
 with one file list, add a folder tree, work across two panels, or bring more tools
 together in the Smiðja workspace.
 
-[Download 0.32.0 alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.32.0)
+[Download 0.32.1 alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.32.1)
 · [Workflow guide](docs/GUIDE.md)
 · [Roadmap](docs/ROADMAP.md)
 · [Report a bug](https://github.com/kambuziarendal/listi/issues)
 
-## In the development build
+## In the 0.35.0 source build
 
-Paste text or an image directly into a folder, browse a tree in read-only
-Flat View, swap names and undo an eligible bulk rename, use typed BFS attributes
-as Details columns or searchable indexes, and save named Shelf collections.
-See the [workflow guide](docs/GUIDE.md). These changes are not in the linked
-0.32.0 download.
+Select a file and choose **Listi > Quick view** (Command+Shift+P) in any
+workspace. The preview follows the selection without opening each file in
+another application. Use the same command to return to the previous layout.
+For an independent viewer, choose **View** (Command+Shift+V).
+
+| Inspect a photograph | Edit a source file |
+|---|---|
+| ![Quick view showing a sunset photograph alongside the active file panel](docs/screenshots/listi-quick-view-0.35.0.png) | ![Listi’s native source editor with syntax colouring and editing controls](docs/screenshots/listi-source-editor-0.35.0.png) |
+
+- **Photographs:** zoom, pan or inspect individual pixels. Open **Image… > Camera details…** to read available JPEG EXIF fields. GPS coordinates appear only if you choose to reveal them. Listi does not contact a map service.
+- **Text and code:** choose **Edit** inside the preview to open a local UTF-8 file of up to 256 KiB. Find and replace text, jump to a line, undo changes and save explicitly. For an unrecognised format, **Try as text…** checks the complete file before editing.
+- **Audio and video:** sample up to 15 seconds in the inspector, or choose **MediaPlayer** on a local file to open Haiku’s full player. Merely selecting a file does not start playback.
+
+The source also includes the earlier workflows: paste clipboard text or an image
+as a named file; browse a tree in read-only Flat View; swap names and undo an
+eligible bulk rename; use typed BFS attributes as Details columns or searchable
+indexes; and save named Shelf collections. In Smiðja each panel can have its own
+sidebar. In Tvískipt the button bank can be hidden. The Listi shell can move from
+below or beside the panels to its own window without restarting the session.
+
+See the [workflow guide](docs/GUIDE.md#inspect-and-edit-a-file) for controls and
+limits. The downloadable [0.32.1 package](https://github.com/kambuziarendal/listi/releases/tag/v0.32.1)
+predates these source-build changes. It fixes device-icon scanning and preserves
+shared ancestor columns while navigating in Einn.
 
 ## What changed in 0.32.0
 
@@ -81,7 +100,7 @@ Word references: [listi](https://en.wiktionary.org/wiki/listi#Icelandic),
 [skipta](https://en.wiktionary.org/wiki/skipta#Icelandic) and
 [smiðja](https://en.wiktionary.org/wiki/smi%C3%B0ja#Old_Norse).
 
-## Available in the alpha
+## File manager features
 
 ### Browse, select and organise
 
@@ -128,7 +147,7 @@ Word references: [listi](https://en.wiktionary.org/wiki/listi#Icelandic),
 | Saved criteria, extension, byte size and inclusive calendar dates. | Size checks or SHA-256, with paths and per-entry results. |
 
 Feature captures from 0.30.0 and 0.28.0. These workflows remain available in the
-current alpha; the images are not captures of 0.32.0.
+current source build; the images are historical captures.
 
 ### Browse and work inside archives
 
@@ -200,10 +219,10 @@ where to find these controls and their scope.
 The GitHub test release targets **Haiku x86_64**. Download its HPKG and install it locally:
 
 ```sh
-pkgman install ./Listi-0.32.0-1-x86_64.hpkg
+pkgman install ./Listi-0.32.1-1-x86_64.hpkg
 ```
 
-[Download the alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.32.0)
+[Download the 0.32.1 alpha and SHA-256 checksum](https://github.com/kambuziarendal/listi/releases/tag/v0.32.1)
 
 If upgrading from before 0.31.1, the project and workspace names have changed. Existing numeric workspace values are retained; scripts comparing the native `Workspace` display name must use the new names.
 [Compatibility details](docs/DESIGN.md#names-and-compatibility).
@@ -224,7 +243,8 @@ Haiku's **Command modifier** is normally **Alt**, depending on the system keymap
 | Clipboard copy / cut / paste | Command+C / X / V |
 | Copy directly to the other panel | Command+Shift+C |
 | Move directly to the other panel | Command+M |
-| View / edit | Command+Shift+V / Command+E |
+| Open a viewer / open the configured editor | Command+Shift+V / Command+E |
+| Toggle Quick view (0.35.0 source) | Command+Shift+P |
 | Rename / new folder / Trash | Command+R / N / D |
 | Filter / find files | Command+F / Command+Shift+F |
 | Open with / properties | Command+Shift+O / Command+Shift+I |

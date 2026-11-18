@@ -39,6 +39,32 @@ Its interface uses Haiku controls, system colours, MIME icons and Layout Kit.
 - Archive and network adapters share the panel and queue workflow. Format and
   protocol capabilities depend on the backend and must be reported explicitly.
 
+## Preview and editing boundaries
+
+Quick view changes the split layout, not the identity of either panel. The
+active panel keeps navigation and selection; the hidden panel is not replaced
+by a new file browser. Quick view, the panel inspector and the separate viewer
+share readers. Selection changes invalidate stale results from the preview
+worker; selecting media does not trigger playback or launch an application.
+
+Text previews may read a bounded prefix. The native editor never uses that
+prefix as a document: `Inspector::Document` opens the regular local file,
+checks its complete bytes and remembers the original encoding marker and line
+endings. The editor window owns its edits independently of the panel selection.
+Command+E in the file manager still targets the configured external editor.
+
+On save, the document locks its open node and compares the current path,
+identity and bytes. It syncs an original-byte recovery file in the same folder
+before updating the pinned node. Preserving the node also preserves its BFS
+attributes. This is not an atomic replacement or a volume-wide lock:
+descriptors opened by another process before the lock may still write.
+Unverified restoration leaves the recovery path for inspection.
+
+Image navigation transforms the view, not the image. The JPEG reader examines
+bounded metadata segments; camera fields are separate from coordinates. GPS
+display is opt-in and neither it nor camera inspection consults a map service.
+Previewing a file on a network share can still transfer its contents.
+
 ## Trash and recovery
 
 `src/Trash.cpp` uses native Haiku filesystem APIs and Tracker's

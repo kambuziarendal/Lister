@@ -14,8 +14,9 @@ interfaces. Coverage, responsiveness and resource use must be demonstrated task
 by task. This is a direction, not a claim that the alpha already matches or
 outperforms Directory Opus, Tracker or Dolphin.
 
-For the 0.32.0 GitHub test release, see the [README](../README.md) and the
-[workflow guide](GUIDE.md). The ideas below are not a release schedule.
+The latest downloadable GitHub alpha is [0.32.1](https://github.com/kambuziarendal/listi/releases/tag/v0.32.1).
+The [README](../README.md) and [workflow guide](GUIDE.md) also describe the
+0.35.0 source build. The ideas below are not a release schedule.
 
 ## Optional by design
 
@@ -70,7 +71,7 @@ are session information, not a persistent audit log or an undo mechanism.
 
 ## Priorities after 0.32.0
 
-### Implemented in the development build
+### Implemented in the 0.35.0 source build
 
 - **Direct Paste:** ordinary Paste in a local file panel now accepts file
   references, text and images. Text and images open a filename prompt; Paste
@@ -87,6 +88,15 @@ are session information, not a persistent audit log or an undo mechanism.
 - **Named Shelf collections:** save and restore references, follow verified
   BFS identities within bounded searches, or explicitly relink a missing or
   ambiguous member. A collection is not a backup or a saved file job.
+- **Workspace and CLI controls:** choose trees or favourite destinations per
+  Smiðja panel; toggle the Tvískipt button bank. Keep a live shell below or
+  beside the panels, detach it into a window, or dock the same session again.
+- **Quick view and the inspector:** toggle a preview beside the selection in
+  any workspace or open a separate viewer. Zoom and pan images, read JPEG EXIF
+  locally, reveal GPS coordinates by choice, and open local media in MediaPlayer.
+- **Native source editing:** explicitly edit complete, writable local UTF-8
+  text, with syntax colouring, find/replace, go to line and guarded saves.
+  This is not an archive editor, binary editor or document renderer.
 
 See the [workflow guide](GUIDE.md) for the controls and limitations.
 
@@ -99,11 +109,10 @@ See the [workflow guide](GUIDE.md) for the controls and limitations.
    create or synchronise files just because someone navigates. Follow with
    independent panel tabs and named paired sets that restore locations and
    view state, never file jobs.
-2. **Quick view and reusable buttons.** Reuse the Smiðja preview from every
-   workspace, temporarily in the opposite panel when available. Closing it
-   restores the panel, focus and selection; Space still selects. Let the
-   workspace editor save presets for existing commands, starting with rename
-   previews rather than a scripting language.
+2. **Reusable buttons.** Let the workspace editor save presets for existing
+   commands, starting with rename previews rather than a scripting language.
+   Quick view no longer depends on this work; it already reuses the inspector
+   across all four workspaces.
 
 ### Focused follow-ups, not prerequisites
 
@@ -146,17 +155,17 @@ See the [workflow guide](GUIDE.md) for the controls and limitations.
 
 ## Feature directions and current foundations
 
-“Available now” means included in 0.32.0. A related foundation is
-not the same as a finished feature.
+“Available now” means implemented in the 0.35.0 source build, not necessarily
+in the 0.32.1 download. A related foundation is not a finished feature.
 
 | Direction | Available now | Planned or exploratory work |
 |---|---|---|
 | Duplicate finder | SHA-256 folder comparison; Duplicate creates another copy | Search one or more chosen folders for duplicate contents and review groups |
-| Bulk rename | Local multi-file preview, text replacement, numbering and collision checks | Broader rename transformations |
+| Bulk rename | Local preview, exact row overrides, swaps, collision checks and guarded undo | Broader rename transformations |
 | Miller columns and adaptive views | Four presets, optional Miller columns and opt-in compact buttons | Automatic file-view changes remain exploratory |
 | Directory synchronisation | Read-only recursive size/SHA-256 comparison | Previewed, conflict-aware one-way or two-way synchronisation |
-| Clipboard contents to a new file | Copy/Cut/Paste of file references; save clipboard text or PNG images as a new file | Explore additional clipboard formats when useful |
-| Rich built-in inspectors | Smiðja file inspector, image thumbnails, archive browsing, local properties | Detailed image navigation and camera EXIF/GPS metadata |
+| Clipboard contents to a new file | Panel Paste accepts file references; pasting text or an image creates a new file without replacement | Explore additional clipboard formats when useful |
+| Rich built-in inspectors | Quick view, standalone viewer, native text editor, zoom/pan, offline JPEG EXIF and optional GPS display | Broader metadata and richer support for other formats |
 | Copy queues and pause | Per-job results, pause/resume and targeted cancellation | Persistent history is not implemented |
 | Automatic rules and drop folders | Manual file actions, search filters and live BFS queries | Opt-in sorting rules and configured drop targets for extract/rename/move workflows |
 | Colour coding and tags | Configurable file/folder/link colours and typed BFS attribute editing | Dedicated per-item labels, tag editing/filtering and optional colour rules |
@@ -193,16 +202,13 @@ must not replay old file jobs or store credentials in plain layout files.
 
 ### Inspect files without leaving the task
 
-The optional Smiðja inspector shows images, code, text, Markdown and HTML
-source, PDF pages, and supported audio/video previews. Next, add high-resolution
-image navigation and camera EXIF metadata, including GPS coordinates where
-present. Decoding an image today does not mean those inspection tools already
-exist. Location display must not contact map services or expose coordinates
-without an explicit choice.
-
-Preview must not execute scripts or modify files. Explicit editing, read-only
-states and unsaved-change handling remain important. **Terminal here** offers
-an integrated shell or a separate terminal window for a local working folder.
+Quick view, the separate viewer and the panel inspector share file readers.
+They show images, readable source, PDF pages and supported audio/video; viewing
+does not execute scripts or change the original file. The 0.35.0 source adds zoom/pan,
+JPEG camera details and a separate, offline GPS display. Text editing is an
+explicit action on complete local files with guarded saves. Future format
+support should preserve those boundaries and distinguish unsupported metadata
+from a missing value. See [Inspect and edit a file](GUIDE.md#inspect-and-edit-a-file).
 
 Built-in text/file diff should complement existing folder comparison with
 readable side-by-side differences. Comparison and editing/merging are separate
