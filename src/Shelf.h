@@ -31,8 +31,10 @@ struct ShelfEntry {
   std::optional<ShelfProof> proof;
   bool restored = false;
   bool unresolved = false;
+  ShelfState restoredState = ShelfState::Ambiguous;
 
   ShelfState State() const;
+  ShelfState DisplayState() const { return restored ? restoredState : State(); }
 };
 
 struct ShelfSnapshot {
@@ -52,7 +54,9 @@ public:
   void Load(std::vector<ShelfEntry> entries, size_t revision);
   void RefreshSavedReferences();
   void Relink(const std::string &oldPath, const std::string &newPath,
-              size_t revision);
+              size_t revision,
+              const std::optional<NodeIdentity> &expected = std::nullopt,
+              const std::optional<ShelfNodeStamp> &stamp = std::nullopt);
   ShelfSnapshot Snapshot() const;
 
 private:

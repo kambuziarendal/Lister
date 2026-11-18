@@ -37,7 +37,7 @@ python3 tests/run-native-audit.py selection-model search-filters
 For Shelf collections, run:
 
 ```sh
-python3 tests/run-native-audit.py shelf shelf-collections
+python3 tests/run-native-audit.py shelf shelf-collections shelf-collections-window
 ```
 
 To test a restart and mount cycle, use a disposable BFS

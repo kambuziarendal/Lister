@@ -57,6 +57,8 @@ ShelfEntry Capture(const std::string &path) {
 } // namespace
 
 ShelfState ShelfEntry::State() const {
+  if (restored && unresolved)
+    return restoredState;
   struct stat st;
   if (lstat(path.c_str(), &st))
     return ShelfState::Missing;
@@ -146,6 +148,7 @@ void Shelf::RefreshSavedReferences() {
     auto &old = current.entries[i];
     auto &updated = next.entries[i];
     if (old.path != updated.path || old.unresolved != updated.unresolved ||
+        old.restoredState != updated.restoredState ||
         old.identity.device != updated.identity.device) {
       current.entries = std::move(next.entries);
       ++current.revision;
@@ -155,8 +158,13 @@ void Shelf::RefreshSavedReferences() {
 }
 
 void Shelf::Relink(const std::string &oldPath, const std::string &newPath,
-                   size_t revision) {
+                   size_t revision, const std::optional<NodeIdentity> &expected,
+                   const std::optional<ShelfNodeStamp> &stamp) {
   auto replacement = Capture(newPath);
+  if ((expected && (expected->device != replacement.identity.device ||
+                    expected->inode != replacement.identity.inode)) ||
+      (stamp && replacement.proof && !(replacement.proof->entry == *stamp)))
+    throw std::runtime_error("The chosen entry changed. Open the chooser again.");
   std::lock_guard<std::mutex> lock(mutex);
   if (current.revision != revision)
     throw std::runtime_error("The Shelf changed. Choose the reference again.");

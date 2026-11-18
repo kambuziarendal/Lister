@@ -22,6 +22,7 @@
 #include <Window.h>
 #include <algorithm>
 #include <stdexcept>
+#include <thread>
 
 namespace Listi {
 namespace {
@@ -30,7 +31,8 @@ constexpr uint32 kRemove = 'sfrm', kSelect = 'sfsl', kPickMove = 'sfbw',
                  kCreateArchive = 'sfar', kClear = 'sfcl',
                  kSaveCollection = 'sfsc', kCollectionNamed = 'sfcn',
                  kLoadCollection = 'sflc', kDeleteCollection = 'sfxc',
-                 kPickRelink = 'sfrl', kRelinkChosen = 'sfrc';
+                 kPickRelink = 'sfrl', kRelinkChosen = 'sfrc',
+                 kResolveFinished = 'sfrx';
 
 std::string CollectionsFile() {
   BPath path;
@@ -96,7 +98,7 @@ class ShelfRow : public BRow {
 public:
   std::string path;
   explicit ShelfRow(const ShelfEntry &entry)
-      : state(entry.State()), path(entry.path) {
+      : state(entry.DisplayState()), path(entry.path) {
     const auto slash = path.find_last_of('/');
     SetField(new BStringField(path.substr(slash + 1).c_str()), 0);
     SetField(new BStringField(path.substr(0, slash ? slash : 1).c_str()), 1);
@@ -142,6 +144,7 @@ class ShelfWindow : public BWindow {
   size_t pickerRevision = 0;
   int64 pickerSerial = 0;
   std::string relinking;
+  bool resolving = false;
 
   void Status(const std::string &text) {
     status->SetText(text.c_str());
@@ -163,7 +166,7 @@ class ShelfWindow : public BWindow {
         std::any_of(snapshot.entries.begin(), snapshot.entries.end(),
                     [&](const auto &entry) {
                       return entry.path == *selected.begin() &&
-                             entry.State() != ShelfState::Ready;
+                             entry.DisplayState() != ShelfState::Ready;
                     }));
   }
 
@@ -174,7 +177,7 @@ class ShelfWindow : public BWindow {
       present.insert(entry.path);
       auto existing = displayed.find(entry.path);
       if (existing != displayed.end()) {
-        if (existing->second->UpdateState(entry.State()))
+        if (existing->second->UpdateState(entry.DisplayState()))
           rows->UpdateRow(existing->second);
       } else {
         auto row = new ShelfRow(entry);
@@ -257,6 +260,8 @@ class ShelfWindow : public BWindow {
   }
 
   void LoadCollection(const std::string &name) {
+    if (resolving)
+      throw std::runtime_error("Wait for the Shelf refresh to finish.");
     const auto collections = ShelfCollections::Load(collectionsFile);
     const auto item = collections.Find(name);
     if (!item)
@@ -268,9 +273,38 @@ class ShelfWindow : public BWindow {
                      "”? This does not change files or saved collections.",
                  "Load"))
       return;
-    shelf->Load(item->entries, snapshot.revision);
-    Render();
-    Status("Loaded “" + name + "”. Relink any unavailable references.");
+    BeginResolve(item->entries, snapshot.revision, name);
+  }
+
+  void BeginResolve(std::vector<ShelfEntry> entries, size_t revision,
+                    std::string name) {
+    if (resolving)
+      return;
+    if (name.empty()) {
+      const auto snapshot = shelf->Snapshot();
+      if (std::none_of(snapshot.entries.begin(), snapshot.entries.end(),
+                       [](const auto &entry) { return entry.restored; }))
+        return;
+    }
+    const BMessenger target(this);
+    std::thread worker([target, working = shelf, entries = std::move(entries),
+                        revision, name = std::move(name)]() mutable {
+      BMessage done(kResolveFinished);
+      try {
+        if (name.empty()) {
+          working->RefreshSavedReferences();
+        } else {
+          working->Load(std::move(entries), revision);
+          done.AddString("loaded", name.c_str());
+        }
+      } catch (const std::exception &e) {
+        done.AddString("error", e.what());
+      }
+      target.SendMessage(&done);
+    });
+    worker.detach();
+    resolving = true;
+    Status("Checking saved references...");
   }
 
   void DeleteCollection(const std::string &name) {
@@ -378,7 +412,23 @@ class ShelfWindow : public BWindow {
     entry_ref ref;
     if (message.FindRef("refs", &ref) != B_OK)
       throw std::runtime_error("Choose a replacement reference.");
-    shelf->Relink(relinking, RefPath(ref, false), pickerRevision);
+    if (shelf->Snapshot().revision != pickerRevision)
+      throw std::runtime_error("The Shelf changed. Choose the reference again.");
+    const auto chosen = RefPath(ref, false);
+    BEntry candidate(&ref, false);
+    struct stat st;
+    if (candidate.GetStat(&st) != B_OK)
+      throw std::runtime_error("The chosen entry is no longer available.");
+    if (!Confirm("Relink Shelf reference",
+                 "Relink this reference?\n\nFrom: " + relinking +
+                     "\nTo: " + chosen +
+                     "\n\nThis does not move, rename or change any file.",
+                 "Relink"))
+      return;
+    shelf->Relink(relinking, chosen, pickerRevision,
+                  NodeIdentity{int32(st.st_dev), int64(st.st_ino)},
+                  ShelfNodeStamp{int64(st.st_ino), int64(st.st_crtim.tv_sec),
+                                 int32(st.st_crtim.tv_nsec)});
     Render();
     Status("Reference relinked. Save the collection to keep this change.");
   }
@@ -401,11 +451,12 @@ class ShelfWindow : public BWindow {
   }
 
 public:
-  ShelfWindow(BMessenger receiver, std::shared_ptr<Shelf> collection)
+  ShelfWindow(BMessenger receiver, std::shared_ptr<Shelf> collection,
+              const std::string &settingsFile)
       : BWindow(BRect(150, 115, 780, 455), "Listi: Shelf", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         owner(receiver), shelf(std::move(collection)),
-        collectionsFile(CollectionsFile()) {
+        collectionsFile(settingsFile.empty() ? CollectionsFile() : settingsFile) {
     auto menu = new BMenuBar("shelf menu");
     auto collections = new BMenu("Collections");
     saveCollection = new BMenuItem("Save current Shelf...",
@@ -445,6 +496,7 @@ public:
     archive = new BButton("Create archive...", new BMessage(kCreateArchive));
     relink = new BButton("Relink...", new BMessage(kPickRelink));
     question = new InlineAction(BMessenger(this));
+    question->SetName("shelf collection prompt");
     question->Hide();
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
         .Add(menu)
@@ -488,8 +540,19 @@ public:
         Activate();
         return;
       case kRefreshShelf:
-        shelf->RefreshSavedReferences();
         Render();
+        BeginResolve({}, 0, {});
+        return;
+      case kResolveFinished:
+        resolving = false;
+        Render();
+        if (const char *error = message->GetString("error", nullptr))
+          Status(error);
+        else if (const char *loaded = message->GetString("loaded", nullptr))
+          Status(std::string("Loaded “") + loaded +
+                 "”. Relink any unavailable references.");
+        else
+          Status("Shelf refreshed.");
         return;
       case kSelect:
         UpdateSelection(shelf->Snapshot());
@@ -559,10 +622,10 @@ public:
 } // namespace
 
 void OpenShelfWindow(BMessenger owner, const std::shared_ptr<Shelf> &shelf,
-                     BMessenger &window) {
+                     BMessenger &window, const std::string &settingsFile) {
   if (window.SendMessage(kShowShelf) == B_OK)
     return;
-  auto shelfWindow = new ShelfWindow(owner, shelf);
+  auto shelfWindow = new ShelfWindow(owner, shelf, settingsFile);
   window = BMessenger(shelfWindow);
   shelfWindow->Show();
 }

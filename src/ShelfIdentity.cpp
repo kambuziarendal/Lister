@@ -58,6 +58,7 @@ bool MatchesEntry(const ShelfProof &proof, const struct stat &st) {
 void Bind(ShelfEntry &entry, const struct stat &st) {
   entry.identity = {int32(st.st_dev), int64(st.st_ino)};
   entry.unresolved = false;
+  entry.restoredState = ShelfState::Ready;
 }
 
 std::string LeafName(const std::string &path) {
@@ -216,12 +217,14 @@ void ResolveShelfReferences(std::vector<ShelfEntry> &entries) {
     if (!entry.restored || !entry.proof)
       continue;
     entry.unresolved = true;
+    entry.restoredState = ShelfState::Missing;
     const auto &proof = *entry.proof;
     const std::pair<dev_t, VolumeProof> *matched = nullptr;
     for (const auto &volume : volumes) {
       if (!MatchesVolume(proof, volume.second))
         continue;
       if (matched) {
+        entry.restoredState = ShelfState::Ambiguous;
         matched = nullptr;
         break;
       }
@@ -231,10 +234,13 @@ void ResolveShelfReferences(std::vector<ShelfEntry> &entries) {
       continue;
     const auto &[device, volume] = *matched;
     struct stat st;
-    if (lstat(entry.path.c_str(), &st) == 0 && st.st_dev == device &&
-        MatchesEntry(proof, st)) {
-      Bind(entry, st);
-      continue;
+    if (lstat(entry.path.c_str(), &st) == 0) {
+      if (st.st_dev == device && MatchesEntry(proof, st)) {
+        Bind(entry, st);
+        continue;
+      }
+      entry.restoredState = st.st_dev == device ? ShelfState::Replaced
+                                                : ShelfState::Ambiguous;
     }
     ResolveInParent(entry, device, budget, reserved, volume.trash);
     if (entry.unresolved)
