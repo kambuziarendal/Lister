@@ -396,9 +396,11 @@ public:
                             AttributeTypeName(attr.type) + " index for “" +
                             attr.name + "” on the entire volume “" + volume +
                             "”? Existing files will not be rewritten.";
-      if ((new BAlert("Volume index", warning.c_str(), "Cancel",
-                      "Make searchable"))
-              ->Go() != 1)
+      auto alert = new BAlert("Volume index", warning.c_str(), "Cancel",
+                              "Make searchable");
+      alert->SetDefaultButton(alert->ButtonAt(0));
+      alert->SetShortcut(0, B_ESCAPE);
+      if (alert->Go() != 1)
         break;
       auto holder = delivery;
       Work([holder, attr](PropertySession &s) {

@@ -3,6 +3,8 @@
 #include "Pane.h"
 #include "PropertiesWindow.h"
 #include <Application.h>
+#include <Alert.h>
+#include <fs_index.h>
 #include <ColumnListView.h>
 #include <ColumnTypes.h>
 #include <LayoutBuilder.h>
@@ -205,6 +207,25 @@ int main() {
           properties->FindView("property attributes"));
       Check(attributes != nullptr, "Properties exposes its attribute list");
       SelectAttribute(*attributes, kLabel);
+      Check(Click(*properties, "Make searchable…"), "index action asks before making the volume searchable");
+    }
+    Check(Await([&] {
+            for (int32 i = 0; i < app.CountWindows(); ++i) {
+              auto alert = dynamic_cast<BAlert *>(app.WindowAt(i));
+              if (!alert || alert->LockWithTimeout(100000) != B_OK) continue;
+              auto cancel = alert->ButtonAt(0);
+              bool ok = !alert->IsHidden() && cancel && cancel->IsDefault() &&
+                        cancel->Invoke() == B_OK;
+              alert->Unlock();
+              if (ok) return true;
+            }
+            return false;
+          }), "cancel the default choice in the native volume confirmation");
+    {
+      WindowLock lock(properties);
+      index_info info;
+      Check(fs_stat_index(first.Read().stat.st_dev, kLabel, &info) != 0 && errno == ENOENT,
+            "cancelling the volume action creates no index");
       Check(Click(*properties, "Show in Details"),
             "selected string attribute is sent to the originating pane");
     }
