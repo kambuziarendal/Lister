@@ -1167,8 +1167,9 @@ std::vector<FileEntry> SevenZipList(const Location &location,
     } else {
       Require(child.name.empty() || child.directory,
               "Archive has conflicting file and folder paths");
+      if (!child.directory)
+        child.permissions = 0755;
       child.directory = true;
-      child.permissions = 0755;
     }
     child.name = leaf;
     child.path = ChildLocation(location.URL(), leaf);

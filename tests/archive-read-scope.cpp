@@ -5,6 +5,7 @@
 #include <Directory.h>
 #include <Entry.h>
 #include <Path.h>
+#include <fcntl.h>
 #include <fstream>
 #include <iostream>
 #include <sys/stat.h>
@@ -16,6 +17,10 @@ int main(){BApplication app("application/x-vnd.Listi-ArchiveReadScope");char tem
  int checks=0,failures=0;auto check=[&](bool ok,const std::string&label){++checks;failures+=!ok;std::cout<<(ok?"PASS ":"FAIL ")<<label<<std::endl;};
  try{for(auto format:{"zip","tgz","cpio","xar","7z"}){
   std::ofstream(root+"/a")<<"aaaa";std::ofstream(root+"/b")<<"bbbb";
+  if (std::string(format) == "tgz") {
+    const struct timespec epoch[2]{};
+    check(!utimensat(AT_FDCWD,(root+"/b").c_str(),epoch,0),"set explicit epoch on TAR member");
+  }
   auto create=PrepareArchiveJob(false,{root+"/b",root+"/a"});create.archiveFormat=format;SetArchiveDestination(create,root,std::string("archive-")+format);if(Run(create,{}).completed!=1)return 3;
   auto archive=OpenArchive(create.destination),a=ChildLocation(archive,"a"),b=ChildLocation(archive,"b");
   {
@@ -26,6 +31,8 @@ int main(){BApplication app("application/x-vnd.Listi-ArchiveReadScope");char tem
    check(stopped&&content(b)=="bbbb",std::string(format)+" cancellation discards reader and next operation recovers");
    std::ofstream(root+"/a")<<"new content";auto edit=PrepareArchiveEditJob(create.destination,{root+"/a"},{});Hooks replace;replace.conflict=[](const std::string&){return Decision::Replace;};
    check(Run(edit,replace).completed==1&&StatFile(a,entry)&&entry.size==11&&content(a)=="new content",std::string(format)+" publication invalidates metadata and reader in same scope");
+   if (std::string(format) == "tgz")
+     check(StatFile(b,entry)&&entry.modifiedKnown&&entry.modified==0,"editing TAR preserves an unchanged member's explicit Unix epoch");
    std::ofstream(root+"/c")<<"cccc";edit=PrepareArchiveEditJob(create.destination,{root+"/c"},{});
    check(Run(edit,{}).completed==1&&ListFiles(archive).size()==3,std::string(format)+" added member invalidates cached directory set");
   }

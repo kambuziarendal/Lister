@@ -72,7 +72,8 @@ void Test() {
   Write(file, bytes);
   Write(Join(source, ".empty"), "");
   const struct timespec times[2]{{0, 0}, {0, 0}};
-  Require(!utimensat(AT_FDCWD, file.c_str(), times, 0) &&
+  Require(!chmod(source.c_str(), 0700) &&
+              !utimensat(AT_FDCWD, file.c_str(), times, 0) &&
               !chmod(file.c_str(), 0751),
           "Cannot set RAR5 test source metadata");
 
@@ -92,6 +93,8 @@ void Test() {
               Read(ChildLocation(parent, ".empty")).empty(),
           "RAR5 read-back changed bytes, a Unicode name or an empty file");
   FileEntry entry;
+  Require(StatFile(parent, entry) && entry.permissions == 0700,
+          "Listing children changed the explicit parent directory permissions");
   Require(StatFile(member, entry) && entry.modified == 0 &&
               entry.modifiedKnown && entry.permissions == 0751,
           "RAR5 read-back changed Unix mode or epoch mtime");
