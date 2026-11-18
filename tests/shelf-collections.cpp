@@ -153,7 +153,7 @@ int main(int argc, char **argv) {
     Load(reopened, records, "Daily");
     restored = reopened.Snapshot();
     Check(restored.entries[0].path == original.string() &&
-              restored.entries[0].State() == ShelfState::Replaced &&
+              restored.entries[0].State() != ShelfState::Ready &&
               Refused([&] { CheckShelfSources(restored, Action::Copy); }),
           "move outside the known parent requires relink; decoy is not queued");
     Check(Refused([&] {

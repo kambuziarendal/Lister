@@ -80,8 +80,10 @@ BButton *Button(BView &root, const char *label) {
 
 bool Click(BWindow *window, const char *label) {
   return InWindow(window, [&](BWindow &locked) {
-    auto *button = Button(*locked.ChildAt(0), label);
-    return button && button->IsEnabled() && button->Invoke() == B_OK;
+    for (int32 i = 0; i < locked.CountChildren(); ++i)
+      if (auto *button = Button(*locked.ChildAt(i), label))
+        return button->IsEnabled() && button->Invoke() == B_OK;
+    return false;
   });
 }
 

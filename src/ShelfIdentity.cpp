@@ -97,8 +97,13 @@ void ResolveInParent(ShelfEntry &entry, dev_t volume, size_t &budget,
   // for the original BFS inode, verifying its birth time as well.
   const auto leaf = LeafName(entry.path);
   BEntry candidate(&parent, leaf.c_str(), false);
-  if (candidate.GetStat(&st) != B_OK || st.st_dev != volume ||
-      !MatchesEntry(proof, st)) {
+  const auto status = candidate.GetStat(&st);
+  if (status != B_OK || st.st_dev != volume || !MatchesEntry(proof, st)) {
+    BPath old;
+    if (status == B_OK && candidate.GetPath(&old) == B_OK &&
+        entry.path == old.Path())
+      entry.restoredState = st.st_dev == volume ? ShelfState::Replaced
+                                                : ShelfState::Ambiguous;
     for (;;) {
       if (!budget)
         return;
@@ -113,8 +118,9 @@ void ResolveInParent(ShelfEntry &entry, dev_t volume, size_t &budget,
   BPath found;
   struct stat current;
   if (candidate.GetPath(&found) != B_OK ||
-      !SafeCandidate(found.Path(), trash, reserved) ||
-      lstat(found.Path(), &current) || current.st_dev != volume ||
+      (entry.path != found.Path() &&
+       !SafeCandidate(found.Path(), trash, reserved)) ||
+      candidate.GetStat(&current) != B_OK || current.st_dev != volume ||
       !MatchesEntry(proof, current))
     return;
   entry.path = found.Path();
@@ -138,6 +144,8 @@ void ResolveByName(ShelfEntry &entry, dev_t device, size_t &budget,
     return;
 
   std::string matched;
+  struct stat current;
+  ShelfNodeStamp parentStamp;
   const auto &proof = *entry.proof;
   for (;;) {
     BEntry candidate;
@@ -149,25 +157,29 @@ void ResolveByName(ShelfEntry &entry, dev_t device, size_t &budget,
     --budget;
     BPath path;
     struct stat st;
-    if (candidate.GetPath(&path) != B_OK ||
-        LeafName(path.Path()) != leaf || lstat(path.Path(), &st) ||
+    if (candidate.GetPath(&path) != B_OK || LeafName(path.Path()) != leaf ||
+        candidate.GetStat(&st) != B_OK ||
         st.st_dev != device || !MatchesEntry(proof, st))
       continue;
-    if (!matched.empty() || !SafeCandidate(path.Path(), trash, reserved))
+    if (!matched.empty() ||
+        (entry.path != path.Path() &&
+         !SafeCandidate(path.Path(), trash, reserved)))
       return;
+    BEntry parent;
+    struct stat parentStat;
+    if (candidate.GetParent(&parent) != B_OK ||
+        parent.GetStat(&parentStat) != B_OK || parentStat.st_dev != device ||
+        parentStat.st_crtim.tv_sec <= 0)
+      return;
+    parentStamp = Stamp(parentStat);
+    current = st;
     matched = path.Path();
   }
 
-  struct stat current;
-  if (matched.empty() || lstat(matched.c_str(), &current) ||
-      current.st_dev != device || !MatchesEntry(proof, current))
-    return;
-  auto updated = CaptureShelfProof(matched, current);
-  if (!updated || !(updated->volumeRoot == proof.volumeRoot) ||
-      updated->device != proof.device || !(updated->entry == proof.entry))
+  if (matched.empty())
     return;
   entry.path = std::move(matched);
-  entry.proof = std::move(updated);
+  entry.proof->parent = parentStamp;
   Bind(entry, current);
 }
 }
@@ -233,15 +245,8 @@ void ResolveShelfReferences(std::vector<ShelfEntry> &entries) {
     if (!matched)
       continue;
     const auto &[device, volume] = *matched;
-    struct stat st;
-    if (lstat(entry.path.c_str(), &st) == 0) {
-      if (st.st_dev == device && MatchesEntry(proof, st)) {
-        Bind(entry, st);
-        continue;
-      }
-      entry.restoredState = st.st_dev == device ? ShelfState::Replaced
-                                                : ShelfState::Ambiguous;
-    }
+    // Do not open a path merely because it was recorded in settings.
+    // Inspect entries anchored in the verified BFS parent or its name index.
     ResolveInParent(entry, device, budget, reserved, volume.trash);
     if (entry.unresolved)
       ResolveByName(entry, device, budget, reserved, volume.trash);
