@@ -225,9 +225,16 @@ output file.
 **Bulk rename (development build):** Select two or more entries in one local
 folder and choose **Files > Bulk rename...**. Enter a prefix, suffix, case-sensitive replacement or sequence number, then
 choose **Update preview** to compare current and proposed names.
-File extensions are kept. Occupied or duplicate names block the batch. Choose
-**Apply rename** to queue the displayed changes. If interrupted, completed
-renames stay in place; check operation history before retrying.
+Rules preserve extensions. For a swap, select each row, type its complete new
+name and click **Set name**. The preview permits a name another selected row
+will release, but rejects duplicate outputs and occupied, unrelated names.
+**Apply rename** submits only the checked preview. An interrupted batch tries
+to restore its original names; review Operations for any retained entries.
+
+With the queue idle, use **Files > Undo last bulk rename**. Undo rechecks
+identities and contents and refuses changed entries. A batch too large or
+unreadable to verify has no undo. Haiku's rename API cannot atomically exclude
+a competing writer between the final destination check and the rename.
 
 **Files > Properties** pins one local entry and exposes timestamps, numeric
 ownership, ordinary octal permissions and supported typed BFS attributes. Saves

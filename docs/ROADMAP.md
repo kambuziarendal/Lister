@@ -70,45 +70,36 @@ are session information, not a persistent audit log or an undo mechanism.
 
 ## Priorities after 0.32.0
 
-### Immediate usability fix: paste clipboard contents directly
+### Implemented in the development build
 
-In a writable local file panel, ordinary Paste (keyboard shortcut or context
-menu) should use the clipboard type. Keep existing file-reference Copy/Cut
-behaviour first. For plain text, open the existing filename prompt immediately
-with the name selected so the user can type `Listi-forslag.md` and press Enter.
-For an image, offer the existing PNG save flow. Keep ordinary text paste in
-editable fields unchanged. Check cancellation creates nothing and an existing
-file is never overwritten. No submenu should be necessary.
+- **Direct Paste:** ordinary Paste in a local file panel now accepts file
+  references, text and images. Text and images open a filename prompt; Paste
+  in an editable field retains its normal meaning.
+- **Flat View:** files from a local folder tree appear in one read-only list
+  with relative parent folders. Filter, stop the scan or collect selected
+  originals on the Shelf. Multi-folder rename is still a future extension.
+- **Bulk rename:** dependency-ordered chains, swaps, exact row overrides and
+  guarded undo of the last eligible batch in this session. Regex, date/time
+  and typed BFS placeholders remain possible extensions.
+- **BFS attributes:** Properties can add typed Details columns and create or
+  verify a volume index with explicit confirmation. A query checks the
+  selected entry; old values are not silently rewritten.
+- **Named Shelf collections:** save and restore references, follow verified
+  BFS identities within bounded searches, or explicitly relink a missing or
+  ambiguous member. A collection is not a backup or a saved file job.
+
+See the [workflow guide](GUIDE.md) for the controls and limitations.
 
 ### Next workflows, in priority order
 
-1. **Flat View follow-up.** The development build has a read-only [Flat
-   View](GUIDE.md#filtering-and-search) for selecting local files and adding
-   references to the Shelf. Multi-folder rename comes only once preview and
-   job results identify every original.
-2. **Extend bulk rename rules.** Chains, swaps and guarded session undo are
-   available. Later add regex, date/time and typed BFS attribute placeholders
-   with per-row previews. External-editor name lists can wait until row
-   identity survives edits and reordering.
-3. **BFS attribute columns, then searchable attributes.** Let users choose
-   typed columns in Details and distinguish missing values from empty ones.
-   Start with existing indexes and live queries, including tag searches.
-   Prototype “Make searchable” separately: show the affected volume, check
-   type, index support and permissions, and verify whether existing files
-   actually appear in a query. Never silently create a volume-wide index.
-4. **Saved collections on the Shelf.** Save named sets of references, not
-   copies; removing a member never removes the original. Verify identity on
-   Haiku across rename, same-volume move, restart, unmount and path reuse.
-   A stored path or node_ref alone is not proof that a rediscovered file is
-   the same entry. Show missing or ambiguous members and allow explicit relink.
-5. **Faster selection and paired navigation.** Add wildcard selection with a
+1. **Faster selection and paired navigation.** Add wildcard selection with a
    visible match count, separate from the literal filter. In Tvískipt, offer
    linked browsing relative to two independently chosen roots. If the peer
    subfolder is missing, show that and leave the other panel in place; never
    create or synchronise files just because someone navigates. Follow with
    independent panel tabs and named paired sets that restore locations and
    view state, never file jobs.
-6. **Quick view and reusable buttons.** Reuse the Smiðja preview from every
+2. **Quick view and reusable buttons.** Reuse the Smiðja preview from every
    workspace, temporarily in the opposite panel when available. Closing it
    restores the panel, focus and selection; Space still selects. Let the
    workspace editor save presets for existing commands, starting with rename
