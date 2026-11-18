@@ -170,7 +170,8 @@ and files with mixed or classic CR endings cannot be edited here. Archive editin
 [save-back workflow](#editing-an-archive-member).
 
 The editor colours recognised code, markup and Markdown without changing the
-file. Use **Search > Find and replace…** (Command+F) for literal text,
+file. Above 128 KiB or 4,096 colour runs it uses plain text to keep editing
+responsive. Use **Search > Find and replace…** (Command+F) for literal text,
 **Find next** (Command+G), or **Go to line…** (Command+L). **View > Wrap lines**
 changes the display only. Undo and redo are available in the Edit menu.
 An asterisk in the window title marks unsaved changes. **Save** (Command+S)

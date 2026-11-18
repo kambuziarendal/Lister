@@ -58,6 +58,42 @@ setup. They are not all run by `make test`. Diagnostic probes under
 [`tests/probes`](../tests/probes/) have historical reproduction exit meanings and
 must not be mistaken for normal passing regressions.
 
+### Inspector, Quick view and native source editing
+
+After building on Haiku, run the inspector tests against the linked native
+objects. PDF page tests require `pdftoppm`; media support depends on the codecs
+and audio output present on the test machine.
+
+```sh
+python3 tests/run-native-audit.py inspector-content inspector-document inspector-editor inspector-photo
+```
+
+Also test the installed app with disposable files:
+
+1. In each workspace select a source and use **Listi > Quick view**. In a
+   two-panel workspace try both active panels. Change the selection, then
+   toggle Quick view off. Both original paths and selections should survive;
+   Space must still select. A permanent Inspector and a temporary Quick view
+   should not change one another's saved settings.
+2. Preview a script, HTML and Markdown. None should execute. Choose **Edit**,
+   change the draft, then select another file in the main window. Try both the
+   main window's Quit and app-level Quit: an unsaved draft must stay open.
+   Exercise Find/Replace, undo/redo, go to line, wrap, Save and Cancel. Check
+   the original bytes, line endings and a typed BFS attribute after saving.
+   Try a read-only file, random bytes, a truncated preview and an unknown
+   extension. A rejected edit must not change the source.
+3. While a draft is open, change the source externally or replace the entry
+   with a different file at the same path. A failed save must preserve the
+   other file and the draft. The document tests also inject sync failures and
+   check restoration or retention of the original-byte recovery file.
+4. Inspect an image at fit and at actual size, then zoom and drag. Try a JPEG
+   with known camera and GPS attributes. Coordinates must not appear until
+   requested. Switch quickly between an image, a PDF and text; late replies
+   must not replace the current preview.
+5. Select audio/video without starting playback, play and stop an inline sample,
+   and open a local clip in **MediaPlayer**. Try an unavailable codec or audio
+   device separately. Seeing a frame is not evidence of audible output.
+
 ### Tvískipt function buttons
 
 With both panes open, select files and click **Buttons** beside the menu bar.
