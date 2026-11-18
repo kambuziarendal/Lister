@@ -106,7 +106,18 @@ struct Runner {
       Outcome(parent).status = "partial";
     }
   }
+  using DirectoryStack = std::vector<std::pair<std::string, struct stat>>;
+  DirectoryStack copyDirectories;
+  void GuardDirectories() const {
+    for (const auto &[path, expected] : copyDirectories) {
+      struct stat now;
+      if (lstat(path.c_str(), &now) || !S_ISDIR(now.st_mode) ||
+          now.st_dev != expected.st_dev || now.st_ino != expected.st_ino)
+        throw std::runtime_error(path + ": destination folder changed during copy");
+    }
+  }
   void Guard() {
+    GuardDirectories();
     if (!guardedJob)
       return;
     struct stat st;
@@ -136,13 +147,18 @@ struct Runner {
     struct stat committed;
   };
   std::map<std::string, CopiedEntry> copied;
-  void Done(const std::string &src, const std::string &dst) {
+  void Done(const std::string &src, const std::string &dst,
+            const struct stat &expected) {
     ++mutations;
+    struct stat committed;
+    if (lstat(dst.c_str(), &committed) || expected.st_dev != committed.st_dev ||
+        expected.st_ino != committed.st_ino || expected.st_mode != committed.st_mode ||
+        expected.st_size != committed.st_size ||
+        expected.st_mtim.tv_sec != committed.st_mtim.tv_sec ||
+        expected.st_mtim.tv_nsec != committed.st_mtim.tv_nsec)
+      throw std::runtime_error(dst + ": committed destination moved or changed");
     Outcome(src, dst).status = deferCompletion ? "source-retained" : "copied";
     if (deferCompletion) {
-      struct stat committed;
-      if (lstat(dst.c_str(), &committed))
-        Fail(dst);
       copied.emplace(src, CopiedEntry{dst, committed});
     } else if (h.fileDone)
       h.fileDone(src, dst);
@@ -150,6 +166,7 @@ struct Runner {
   void Check() {
     if (h.proceed && !h.proceed())
       throw Cancelled();
+    GuardDirectories();
   }
   void Tick(const std::string &p, uint64_t n = 0) {
     Check();
@@ -268,7 +285,10 @@ struct Runner {
   void VerifyCopy(const std::string &source) {
     if (!deferCompletion)
       return;
-    const auto &copy = copied.at(source);
+    const auto recorded = copied.find(source);
+    if (recorded == copied.end())
+      throw std::runtime_error(source + ": no committed copy; source retained");
+    const auto &copy = recorded->second;
     struct stat now;
     if (lstat(copy.destination.c_str(), &now) || !SameEntry(copy.committed, now)) {
       auto &row = Outcome(source);
@@ -386,7 +406,14 @@ struct Runner {
         if (mkdir(dst.c_str(), 0700) != 0)
           Fail(dst);
         ++mutations;
+        if (lstat(dst.c_str(), &before) || !S_ISDIR(before.st_mode))
+          throw std::runtime_error(dst + ": new destination folder changed");
       }
+      copyDirectories.emplace_back(dst, before);
+      struct DirectoryScope {
+        DirectoryStack &stack;
+        ~DirectoryScope() { stack.pop_back(); }
+      } scope{copyDirectories};
       bool complete = true;
       Dir dir(opendir(src.c_str()), closedir);
       if (!dir)
@@ -397,6 +424,7 @@ struct Runner {
         if (!Copy(Join(src, e->d_name), Join(dst, e->d_name), depth + 1))
           complete = false;
       }
+      Guard();
       if (!existed) {
         Attributes(src, dst);
         if (chmod(dst.c_str(), st.st_mode & 07777))
@@ -405,9 +433,13 @@ struct Runner {
         if (utimensat(AT_FDCWD, dst.c_str(), times, 0))
           Fail(dst);
       }
+      struct stat expected;
+      if (lstat(dst.c_str(), &expected))
+        Fail(dst);
       Tick(src);
+      Guard();
       if (complete)
-        Done(src, dst);
+        Done(src, dst, expected);
       return complete;
     }
     if (!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode))
@@ -427,6 +459,9 @@ struct Runner {
     if (out.n < 0)
       Fail(dst);
     std::string tmp = name.data();
+    struct stat stagingIdentity;
+    if (fstat(out.n, &stagingIdentity))
+      Fail(tmp);
     try {
       if (S_ISLNK(st.st_mode)) {
         char link[PATH_MAX];
@@ -434,7 +469,8 @@ struct Runner {
         if (n < 0)
           Fail(src);
         link[n] = 0;
-        if (unlink(tmp.c_str()) || symlink(link, tmp.c_str()))
+        if (unlink(tmp.c_str()) || symlink(link, tmp.c_str()) ||
+            lstat(tmp.c_str(), &stagingIdentity))
           Fail(tmp);
       } else {
         FD in(open(src.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK));
@@ -480,10 +516,17 @@ struct Runner {
       struct stat current;
       if (lstat(src.c_str(), &current) || !SameEntry(current, st))
         throw std::runtime_error(src + ": source changed before commit");
+      struct stat staged;
+      if (lstat(tmp.c_str(), &staged) || staged.st_dev != stagingIdentity.st_dev ||
+          staged.st_ino != stagingIdentity.st_ino)
+        throw std::runtime_error(tmp + ": staging file changed");
       Commit(tmp, dst, existed, before);
-      Done(src, dst);
+      Done(src, dst, staged);
     } catch (...) {
-      unlink(tmp.c_str());
+      struct stat current;
+      if (lstat(tmp.c_str(), &current) == 0 &&
+          current.st_dev == stagingIdentity.st_dev && current.st_ino == stagingIdentity.st_ino)
+        unlink(tmp.c_str());
       throw;
     }
     return true;

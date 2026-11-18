@@ -141,6 +141,22 @@ int main() {
             Read(source) == payload && Read(target) == "changed after commit",
         "changed destination stops move cleanup and preserves the source");
 
+  // Even an empty merged folder must stay bound to its original target.
+  const auto dir = root / "empty", mapped = out / "empty", saved = out / "saved";
+  fs::create_directory(dir);
+  fs::create_directory(mapped);
+  Hooks swapFolder;
+  swapFolder.progress = [&](const std::string &path, uint64_t) {
+    if (path == dir && !fs::exists(saved)) {
+      fs::rename(mapped, saved);
+      fs::create_directory(mapped);
+    }
+  };
+  result = Run({Action::Move, {dir.string()}, out.string()}, swapFolder);
+  Check(!result.errors.empty() && !result.completed && fs::exists(dir) &&
+            fs::exists(saved) && fs::exists(mapped),
+        "replacement of empty destination at final progress keeps the source directory");
+
   const auto longName = std::string(250, 'a');
   std::ofstream(root / longName) << "long name";
   result = Run({Action::Copy, {(root / longName).string()}, out.string()}, {});
