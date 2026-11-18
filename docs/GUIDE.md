@@ -182,15 +182,16 @@ original folders and status. You can also drop local entries onto the list.
 Removing a row removes only the reference. Closing and reopening the Shelf
 keeps its contents; quitting Listi clears it.
 
-**Move all...** acts on the whole Shelf, not just highlighted rows. Choose a
-destination, review the confirmation and follow progress in Operations.
-Remove unavailable or replaced references before submitting another move.
+**Copy all...** and **Move all...** act on the whole Shelf, not just
+highlighted rows. Choose a destination folder and follow progress in
+Operations. Copy leaves the originals and the Shelf references in place.
+Remove unavailable or replaced references before submitting another job.
 
-**Create ZIP...** packs the whole Shelf into one archive. Choose a new name
-and location in the save panel, then follow progress in Operations. Each
-collected entry appears at the top level under its original name. If two
-entries have the same name, remove one reference before packing. Creating
-a ZIP leaves the originals and the Shelf unchanged.
+**Create archive...** opens the archive dialog for the whole Shelf. Choose
+the destination, archive name and format. Use **Change format...** if the
+format options are hidden. Each entry appears at the top level under its
+original name. If two entries have the same name, remove one reference
+before packing. Creating an archive leaves the originals and Shelf unchanged.
 
 Local drag-and-drop asks Copy here, Move here or Cancel for the receiving
 panel's current folder, not the row under the pointer. Duplicate and symbolic

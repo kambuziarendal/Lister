@@ -161,8 +161,8 @@ ordinary Paste.
 
 Listi has a separate Shelf window for local
 references, with original-folder and availability columns, drop support,
-Command+Shift+Y and a confirmed Move all action using the normal queue.
-Create ZIP packs references from different folders through the same queue
+Command+Shift+Y, and queued copy and move actions.
+Create archive packs references from different folders in a chosen format
 without moving the originals. The collection is session-only. Sharing is
 still planned. Verify Stack & Tile ergonomics during hands-on testing.
 

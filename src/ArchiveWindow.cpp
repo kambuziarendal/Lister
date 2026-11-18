@@ -21,6 +21,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <strings.h>
 #include <thread>
 namespace {
 constexpr uint32 kReady = 'arld', kGo = 'argo', kBrowse = 'arbr',
@@ -41,6 +42,7 @@ std::string SettingsPath() {
 class ArchiveWindow : public BWindow {
   Listi::Job job;
   BMessenger target;
+  ArchiveWindowOptions launchOptions;
   BTextControl *folder, *name, *password = nullptr, *confirm = nullptr;
   BStringView *status, *formatSummary;
   BMenuField *format, *level;
@@ -151,7 +153,7 @@ class ArchiveWindow : public BWindow {
 
 public:
   ArchiveWindow(const Listi::Job &frozen, const std::string &initial,
-                BMessenger owner)
+                BMessenger owner, ArchiveWindowOptions launch)
       : BWindow(
             BRect(160, 140, 790,
                   frozen.action == Listi::Action::ExtractArchive ? 410 : 600),
@@ -159,11 +161,13 @@ public:
                 ? "Listi: Extract archive"
                 : "Listi: Create archive",
             B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS),
-        job(frozen), target(owner) {
+        job(frozen), target(owner), launchOptions(std::move(launch)) {
     const auto first = Listi::LocationLeaf(job.sources[0]);
     folder = new BTextControl("archive folder",
                               "Destination folder:", initial.c_str(), nullptr);
-    std::string proposed = job.sources.size() == 1 ? first : "Archive";
+    auto proposed = launchOptions.suggestedName.empty()
+                        ? (job.sources.size() == 1 ? first : "Archive")
+                        : launchOptions.suggestedName;
     if (Extract()) {
       auto loc = Listi::ParseLocation(job.sources[0]);
       proposed = Listi::Leaf(loc.Archive() ? loc.archive : job.sources[0]);
@@ -381,13 +385,23 @@ public:
       case kGo: {
         if (!ready)
           break;
+        if (launchOptions.validate)
+          launchOptions.validate();
         Listi::ArchiveSecretPtr secret;
         if (!Extract() && protect->Value() == B_CONTROL_ON) {
           if (strcmp(password->Text(), confirm->Text()))
             throw std::runtime_error("Passwords do not match.");
           secret = std::make_shared<Listi::ArchiveSecret>(password->Text());
         }
-        Listi::SetArchiveDestination(job, folder->Text(), name->Text());
+        std::string outputName = name->Text();
+        if (!Extract() && launchOptions.appendExtension &&
+            !outputName.empty() &&
+            (outputName.size() < extension.size() ||
+             strcasecmp(outputName.c_str() + outputName.size() -
+                            extension.size(),
+                        extension.c_str()) != 0))
+          outputName += extension;
+        Listi::SetArchiveDestination(job, folder->Text(), outputName);
         if (!Extract()) {
           job.archiveFormat = formatID;
           auto marked = level->Menu()->FindMarked();
@@ -426,6 +440,6 @@ public:
 };
 }
 BMessenger OpenArchiveWindow(const Listi::Job &job, const std::string &folder,
-                             BMessenger target) {
-  return BMessenger(new ArchiveWindow(job, folder, target));
+                             BMessenger target, ArchiveWindowOptions options) {
+  return BMessenger(new ArchiveWindow(job, folder, target, std::move(options)));
 }

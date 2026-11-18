@@ -1403,12 +1403,9 @@ public:
     case Listi::kAddToShelf:
       AddToShelf();
       break;
-    case Listi::kSubmitShelfMove:
-    case Listi::kSubmitShelfZip: {
-      const auto expected = m->what == Listi::kSubmitShelfMove
-                                ? Listi::Action::Move
-                                : Listi::Action::CreateArchive;
-      auto job = Listi::DecodeSubmittedJob(*m, {expected});
+    case Listi::kSubmitShelfTransfer: {
+      auto job = Listi::DecodeSubmittedJob(
+          *m, {Listi::Action::Copy, Listi::Action::Move});
       if (job && !job->sources.empty() &&
           job->expectedSources.size() == job->sources.size() &&
           job->expectedDestination.device >= 0)
