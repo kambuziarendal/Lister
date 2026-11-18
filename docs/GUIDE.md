@@ -146,8 +146,8 @@ file in the receiving folder and won't replace the original or an existing
 output file.
 
 **Bulk rename (development build):** Select two or more entries in one local
-folder and choose **Files > Bulk rename...**. Compare current and proposed names
-as you enter a prefix, suffix, case-sensitive replacement or sequence number.
+folder and choose **Files > Bulk rename...**. Enter a prefix, suffix, case-sensitive replacement or sequence number, then
+choose **Update preview** to compare current and proposed names.
 File extensions are kept. Occupied or duplicate names block the batch. Choose
 **Apply rename** to queue the displayed changes. If interrupted, completed
 renames stay in place; check operation history before retrying.
