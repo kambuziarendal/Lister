@@ -119,8 +119,9 @@ public:
           const char *key;
           for (int32 i = 0;
                i < 4 && m->FindString("attribute", i, &key) == B_OK; ++i) {
+            type_code type = 0;
             auto cell =
-                same ? Listi::AttributeCell(node, key) : "(unavailable)";
+                same ? Listi::AttributeCell(node, key, &type) : "(unavailable)";
             // Bound the BMessage batch even for large string attributes.
             if (cell.size() > 160) {
               size_t end = 160;
@@ -131,6 +132,7 @@ public:
               cell += "…";
             }
             item.AddString("cell", cell.c_str());
+            item.AddUInt32("cellType", type);
           }
         }
         // Tracker icon lookup may open the node. Never open a device, FIFO,

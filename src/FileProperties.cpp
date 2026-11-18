@@ -15,6 +15,7 @@
 #include <cstring>
 #include <iomanip>
 #include <limits>
+#include <locale>
 #include <sstream>
 #include <stdexcept>
 #include <unistd.h>
@@ -53,6 +54,7 @@ bool Decode(const std::vector<uint8> &bytes, std::string &out) {
     if (!std::isfinite(value))
       return false;
     std::ostringstream s;
+    s.imbue(std::locale::classic());
     s << std::setprecision(std::numeric_limits<T>::max_digits10) << value;
     out = s.str();
   } else
@@ -284,7 +286,9 @@ FileAttribute PropertySession::Attribute(const std::string &name) {
   }
   return a;
 }
-std::string AttributeCell(BNode &node, const char *name) {
+std::string AttributeCell(BNode &node, const char *name, type_code *type) {
+  if (type)
+    *type = 0;
   attr_info info;
   auto status = node.GetAttrInfo(name, &info);
   if (status == B_ENTRY_NOT_FOUND)
@@ -303,6 +307,8 @@ std::string AttributeCell(BNode &node, const char *name) {
   if (!Text(value))
     return AttributeTypeName(info.type) + " (" + std::to_string(info.size) +
            " bytes)";
+  if (type)
+    *type = info.type;
   if (value.text.empty())
     return "(empty)";
   std::replace_if(

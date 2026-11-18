@@ -39,6 +39,7 @@ template <class F> bool Await(F condition) {
 
 struct Fixture {
   std::string root, first, second, third;
+  std::vector<std::string> extra;
   Fixture() {
     char pattern[] = "/boot/home/listi-column-ui-XXXXXX";
     if (!mkdtemp(pattern))
@@ -49,10 +50,18 @@ struct Fixture {
     third = root + "/third";
   }
   ~Fixture() {
+    for (const auto &path : extra)
+      unlink(path.c_str());
     unlink(first.c_str());
     unlink(second.c_str());
     unlink(third.c_str());
     rmdir(root.c_str());
+  }
+  void Extra(const char *name, type_code type, const char *value) {
+    extra.push_back(root + "/" + name);
+    std::ofstream(extra.back()) << "sort fixture";
+    Listi::PropertySession file(extra.back());
+    file.Save(nullptr, kNumber, type, value);
   }
 };
 
@@ -245,20 +254,61 @@ int main() {
                                      {"(missing)", "(missing)"}};
         }),
         "both columns show the matching typed attributes for each native row");
+    second.Save(nullptr, kNumber, B_INT32_TYPE, "2");
+    Listi::PropertySession(f.third).Save(nullptr, kNumber, B_INT32_TYPE, "10");
+    f.Extra("string-negative", B_STRING_TYPE, "-14");
+    f.Extra("string-ten", B_STRING_TYPE, "10");
+    f.Extra("string-two", B_STRING_TYPE, "2");
+    f.Extra("wide-first", B_UINT64_TYPE, "18446744073709551615");
+    f.Extra("wide-second", B_UINT64_TYPE, "18446744073709551614");
+    {
+      WindowLock lock(browser);
+      left->Reload();
+    }
+    Check(
+        Await([&] {
+          WindowLock lock(browser);
+          auto &list = List(*left, "files");
+          return !left->IsScanning() && list.CountRows() == 9;
+        }),
+        "refreshed Details contains both numeric and numeric-looking string cells");
     {
       WindowLock lock(browser);
       auto &list = List(*left, "files");
       auto attribute = list.ColumnAt(4);
-      list.SetSortColumn(attribute, false, false);
+      list.SetSortColumn(attribute, false, true);
       BMessage state;
       list.SaveState(&state);
       Check(state.GetInt32("sortID", -1) == 4,
             "the native Details list is sorted by an attribute column");
+    }
+    Check(
+        Await([&] {
+          WindowLock lock(browser);
+          auto &list = List(*left, "files");
+          std::vector<std::string> ordered;
+          for (int32 i = 0; i < list.CountRows(); ++i) {
+            auto cell = Cell(*list.RowAt(i), 4);
+            if (!cell.empty())
+              ordered.push_back(std::move(cell));
+          }
+          return ordered == std::vector<std::string>{"-14",
+                                                     "2",
+                                                     "10",
+                                                     "18446744073709551614",
+                                                     "18446744073709551615",
+                                                     "-14",
+                                                     "10",
+                                                     "2"};
+        }),
+        "numbers sort by value including exact uint64, while strings sort as text");
+    {
+      WindowLock lock(browser);
       auto display = dynamic_cast<BMenuField *>(left->FindView("display mode"));
       auto clear = display
                        ? display->Menu()->FindItem("Clear attribute columns")
                        : nullptr;
-      Check(clear && clear->Invoke() == B_OK,
+      Check(clear && static_cast<BInvoker *>(clear)->Invoke() == B_OK,
             "clear via the actual pane menu item");
     }
     Check(

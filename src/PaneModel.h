@@ -6,9 +6,13 @@
 #include <string>
 #include <vector>
 class BBitmap;
+struct AttributeCellPreview {
+  std::string text;
+  uint32_t type = 0;
+};
 struct PaneEntry {
   std::string name, path;
-  std::vector<std::string> attributeCells;
+  std::vector<AttributeCellPreview> attributeCells;
   bool directory = false, parent = false, sizeKnown = true;
   int kind = 0, transferState = 0;
   int64_t device = -1, node = -1;

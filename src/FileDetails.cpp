@@ -17,8 +17,10 @@
 #include <LayoutBuilder.h>
 #include <Window.h>
 #include <algorithm>
+#include <locale>
 #include <map>
 #include <set>
+#include <sstream>
 #include <strings.h>
 namespace {
 struct NameField : BStringField {
@@ -29,6 +31,64 @@ struct FileRow : BRow {
   PaneEntry *entry;
   FileRow(PaneEntry *e, float height) : BRow(height), entry(e) {}
 };
+struct AttributeField : BStringField {
+  enum Kind { Unavailable, Number, Text };
+  Kind kind = Unavailable;
+  long double number = 0;
+
+  template <class T> void ReadNumber(const std::string &text) {
+    T value{};
+    std::istringstream input(text);
+    input.imbue(std::locale::classic());
+    if (input >> value) {
+      number = value;
+      kind = Number;
+    }
+  }
+
+  explicit AttributeField(const AttributeCellPreview &cell)
+      : BStringField(cell.text.c_str()) {
+    // Parse once in the stored precision, not during sorting. Haiku x86_64's
+    // long double can compare finite doubles and exact 64-bit integers.
+    switch (cell.type) {
+    case B_INT32_TYPE:
+    case B_INT64_TYPE:
+      ReadNumber<int64>(cell.text);
+      break;
+    case B_UINT32_TYPE:
+    case B_UINT64_TYPE:
+      ReadNumber<uint64>(cell.text);
+      break;
+    case B_FLOAT_TYPE:
+      ReadNumber<float>(cell.text);
+      break;
+    case B_DOUBLE_TYPE:
+      ReadNumber<double>(cell.text);
+      break;
+    case B_STRING_TYPE:
+    case B_BOOL_TYPE:
+      kind = Text;
+      break;
+    }
+  }
+};
+
+class AttributeColumn : public BStringColumn {
+public:
+  explicit AttributeColumn(const char *name)
+      : BStringColumn(name, 150, 55, 800, B_TRUNCATE_END) {}
+
+  int CompareFields(BField *a, BField *b) override {
+    const auto &left = *static_cast<AttributeField *>(a);
+    const auto &right = *static_cast<AttributeField *>(b);
+    if (left.kind != right.kind)
+      return left.kind < right.kind ? -1 : 1;
+    if (left.kind == AttributeField::Number)
+      return (left.number > right.number) - (left.number < right.number);
+    return BStringColumn::CompareFields(a, b);
+  }
+};
+
 class NameColumn : public BStringColumn {
 public:
   Preferences prefs;
@@ -483,8 +543,7 @@ public:
       attributes.pop_back();
     }
     for (auto &name : names) {
-      auto column =
-          new BStringColumn(name.c_str(), 150, 55, 800, B_TRUNCATE_END);
+      auto column = new AttributeColumn(name.c_str());
       list->AddColumn(column, 3 + attributes.size());
       attributes.push_back(column);
     }
@@ -514,9 +573,9 @@ public:
       time_t date = entry->modified;
       row->SetField(new DateField(&date), 2);
       for (size_t i = 0; i < attributes.size(); ++i)
-        row->SetField(new BStringField(i < entry->attributeCells.size()
-                                           ? entry->attributeCells[i].c_str()
-                                           : ""),
+        row->SetField(new AttributeField(i < entry->attributeCells.size()
+                                            ? entry->attributeCells[i]
+                                            : AttributeCellPreview{}),
                       3 + i);
       rows.emplace(entry->path, row);
       list->AddRow(row);

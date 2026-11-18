@@ -1200,8 +1200,11 @@ void Pane::MessageReceived(BMessage *m) {
       row->directory = e.GetBool("directory", false);
       row->parent = e.GetBool("parent", false);
       const char *cell;
-      for (int32 i = 0; e.FindString("cell", i, &cell) == B_OK; ++i)
-        row->attributeCells.emplace_back(cell);
+      for (int32 i = 0; e.FindString("cell", i, &cell) == B_OK; ++i) {
+        uint32 type = 0;
+        e.FindUInt32("cellType", i, &type);
+        row->attributeCells.push_back({cell, type});
+      }
       row->kind = e.GetInt32("kind", 0);
       row->device = e.GetInt64("device", -1);
       row->node = e.GetInt64("node", -1);

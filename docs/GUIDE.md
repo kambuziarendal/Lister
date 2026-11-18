@@ -378,8 +378,10 @@ pane switches to Details and displays that attribute for each ordinary local
 file or directory. Choose up to four columns per pane for the session. This
 does not change remembered folder views or the other pane. **Clear attribute
 columns** in the pane's view selector removes them and restores the regular
-view. Missing and empty values have distinct labels. Long values are previews,
-not editors.
+view. Missing and empty values have distinct labels. In ascending order,
+unavailable values sort before numbers, which sort before text. Numbers sort
+by value; numeric-looking strings remain text. Long values are previews, not
+editors.
 
 **Make searchable…** names the volume before creating an index there. This is a
 volume-wide action, not a change to the current folder. Listi supports the BFS

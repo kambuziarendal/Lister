@@ -20,7 +20,7 @@ struct PropertySnapshot {
   bool limited = false, writableKind = false;
 };
 // Worker-side bounded preview for an optional Details column.
-std::string AttributeCell(BNode &, const char *name);
+std::string AttributeCell(BNode &, const char *name, type_code *type = nullptr);
 bool IndexableAttribute(type_code);
 std::string AttributeTypeName(type_code);
 std::vector<uint8> EncodeAttribute(type_code, const std::string &);
