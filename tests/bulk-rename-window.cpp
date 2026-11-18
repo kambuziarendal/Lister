@@ -123,8 +123,7 @@ int main() {
            PreviewName(*list, 0) == "beta" && PreviewName(*list, 1) == "alpha";
   };
   auto check = [](bool ok, const char *label) {
-    printf("%s %s
-", ok ? "PASS" : "FAIL", label);
+    printf("%s %s\n", ok ? "PASS" : "FAIL", label);
     return ok;
   };
   auto noSubmission = [&] {
