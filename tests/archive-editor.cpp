@@ -251,6 +251,17 @@ int main() {
     check(session->Save() && bytes(m) == "retained after process restart",
           "unsaved disk copy survives session recreation and saves on explicit "
           "resume");
+    const auto broken = sessions + "/edit-broken";
+    mkdir(broken.c_str(), 0700);
+    writeFile(broken + "/session", "not a recovery record");
+    const auto records = ListArchiveEdits(sessions);
+    bool brokenReported = false;
+    for (const auto &record : records)
+      if (record.directory == broken && !record.error.empty())
+        brokenReported = true;
+    check(brokenReported && ArchiveEditSession::Open(m, sessions)->Directory() == directory &&
+              bytes(broken + "/session") == "not a recovery record",
+          "a damaged independent journal remains visible without blocking a healthy edit");
     // Two independently prepared operations on one archive must not both
     // publish.
     auto one = root + "/one", two = root + "/two";

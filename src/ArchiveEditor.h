@@ -7,7 +7,7 @@
 #include <vector>
 namespace Listi {
 struct ArchiveEditRecord {
-  std::string directory, member;
+  std::string directory, member, error;
 };
 std::vector<ArchiveEditRecord> ListArchiveEdits(const std::string &root);
 // Persistent private working copies. Passwords are never written to the

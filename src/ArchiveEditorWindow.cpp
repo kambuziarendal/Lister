@@ -289,7 +289,8 @@ public:
 struct EditRow : BRow {
   Listi::ArchiveEditRecord record;
   explicit EditRow(const Listi::ArchiveEditRecord &r) : record(r) {
-    SetField(new BStringField(r.member.c_str()), 0);
+    const auto label = r.error.empty() ? r.member : "Unavailable: " + r.directory;
+    SetField(new BStringField(label.c_str()), 0);
   }
 };
 class RecoveryWindow : public BWindow {
@@ -364,12 +365,19 @@ public:
       return;
     }
     if (m->what == kTick) {
-      open->SetEnabled(list->CurrentSelection());
+      auto row = static_cast<EditRow *>(list->CurrentSelection());
+      open->SetEnabled(row && row->record.error.empty());
+      if (row) {
+        const auto text = row->record.error.empty() ? std::string("Ready to resume.")
+            : row->record.error + " Working files retained at " + row->record.directory;
+        status->SetText(text.c_str());
+        status->SetToolTip(text.c_str());
+      }
       return;
     }
     if (m->what == kOpen) {
       auto row = static_cast<EditRow *>(list->CurrentSelection());
-      if (row)
+      if (row && row->record.error.empty())
         OpenArchiveEditor(row->record.member, editor);
       return;
     }

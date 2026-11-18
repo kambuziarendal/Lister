@@ -158,21 +158,22 @@ std::vector<ArchiveEditRecord> ListArchiveEdits(const std::string &root) {
     if (strncmp(e->d_name, "edit-", 5))
       continue;
     const auto path = Join(root, e->d_name);
-    PrivateDirectory(path);
-    struct stat record;
-    if (lstat(Join(path, "session").c_str(), &record) && errno == ENOENT)
-      continue;
-    Regular(Join(path, "session"));
-    auto m = LoadMessageStore(Join(path, "session"));
-    Require(m.GetInt32("version", 0) == 1,
-            "Unsupported archive edit recovery record. Working files were "
-            "retained.");
-    const std::string member = m.GetString("member", "");
-    Require(ParseLocation(member).Archive(),
-            "Invalid archive edit recovery record.");
-    records.push_back({path, member});
-    Require(records.size() <= 256, "Too many retained archive edits. Keep "
-                                   "needed files and remove old edit folders.");
+    try {
+      PrivateDirectory(path);
+      struct stat record;
+      if (lstat(Join(path, "session").c_str(), &record) && errno == ENOENT)
+        continue; // Unpublished or explicitly retired session.
+      Regular(Join(path, "session"));
+      auto m = LoadMessageStore(Join(path, "session"));
+      Require(m.GetInt32("version", 0) == 1,
+              "Unsupported archive edit recovery record.");
+      const std::string member = m.GetString("member", "");
+      Require(ParseLocation(member).Archive(), "Invalid archive edit recovery record.");
+      records.push_back({path, member, {}});
+    } catch (const std::runtime_error &e) {
+      // Preserve this copy and report its location without hiding other edits.
+      records.push_back({path, {}, e.what()});
+    }
   }
   std::sort(records.begin(), records.end(),
             [](const auto &a, const auto &b) { return a.member < b.member; });
@@ -245,9 +246,11 @@ ArchiveEditSession::Open(const std::string &member, const std::string &root,
   if (mkdir(root.c_str(), 0700))
     Require(errno == EEXIST, "Cannot create private archive editing folder.");
   PrivateDirectory(root);
-  for (const auto &record : ListArchiveEdits(root))
+  const auto records = ListArchiveEdits(root);
+  for (const auto &record : records)
     if (record.member == member)
       return Resume(record.directory);
+  Require(records.size() < 256, "Too many retained archive edits. Keep needed files and remove old edit folders.");
   auto s = std::shared_ptr<ArchiveEditSession>(new ArchiveEditSession);
   s->member = member;
   s->target = PrepareArchiveEditTarget(
