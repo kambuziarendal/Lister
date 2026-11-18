@@ -111,7 +111,9 @@ bool TerminalDock::Float(int64 requested) {
     return false;
   auto *window = new FloatingTerminal(FloatingFrame(split->Window(), *panel),
                                       owner, placement + 1);
-  if (!panel->RemoveSelf()) {
+  // Remove through the layout; BView::RemoveSelf can report failure after
+  // removal of the last layout item has already detached the view.
+  if (!slot->GroupLayout()->RemoveView(panel)) {
     window->Quit();
     return false;
   }
@@ -136,7 +138,7 @@ bool TerminalDock::ReturnPanel() {
   detached.Target(&looper);
   auto *window = static_cast<FloatingTerminal *>(looper);
   auto *returning = window->Panel();
-  if (!returning || !returning->RemoveSelf()) {
+  if (!returning || !window->GetLayout()->RemoveView(returning)) {
     window->Unlock();
     return false;
   }
