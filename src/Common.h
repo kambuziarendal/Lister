@@ -100,6 +100,14 @@ enum : uint32 {
 struct Preferences : WorkspaceLayout {
   BFont font = *be_plain_font;
   bool icons = true, size = true, date = true;
+  // -1 inherits the workspace layout setting. The quick toggle only
+  // overrides Tvískipt and is not part of a saved layout profile.
+  int32 tviskiptButtons = -1;
+  bool ActionButtonsVisible() const {
+    return workspace == Workspace::tviskipt && tviskiptButtons >= 0
+               ? tviskiptButtons == 1
+               : buttons;
+  }
   WorkspaceProfiles profiles;
   WorkspaceLayout CaptureLayout() const { return *this; }
   void ApplyLayout(const WorkspaceLayout &layout) {

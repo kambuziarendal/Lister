@@ -24,6 +24,28 @@ int main() {
   Preferences restored;restored.Load(live.Save());
   check(restored.IsEinn() && restored.singlePane==1,"workspace and chosen panel survive restart");
   check(restored.buttons && restored.paneTree[1] && restored.preview,"hidden Tviskipt options remain stored");
+  Preferences buttons;
+  check(buttons.ActionButtonsVisible(), "older preferences inherit visible function buttons");
+  buttons.tviskiptButtons = 0;
+  Preferences resumed;
+  resumed.Load(buttons.Save());
+  check(!resumed.ActionButtonsVisible() && resumed.buttons,
+        "Tviskipt-only hide survives restart without changing the layout default");
+  resumed.workspace = Workspace::smidja;
+  check(resumed.ActionButtonsVisible(), "Smidja still uses the layout default");
+  resumed.workspace = Workspace::tviskipt;
+  resumed.ApplyDialog(stale);
+  check(!resumed.ActionButtonsVisible(), "stale appearance dialog preserves the quick toggle");
+  resumed.ApplyLayout(WorkspaceLayout{});
+  check(!resumed.ActionButtonsVisible(), "loading a profile does not adopt another quick toggle");
+  resumed.buttons = false;
+  resumed.tviskiptButtons = 1;
+  check(resumed.ActionButtonsVisible(), "quick toggle can show the bank against a hidden default");
+  auto invalidBank = resumed.Save();
+  invalidBank.ReplaceInt32("tviskiptButtons", 99);
+  resumed.Load(invalidBank);
+  check(!resumed.ActionButtonsVisible() && resumed.tviskiptButtons == -1,
+        "invalid quick toggle falls back to the layout default");
   BMessage legacy;restored.Load(legacy);
   check(!restored.IsEinn() && restored.singlePane==0,"older settings default to Tviskipt");
   legacy.AddBool("simpleWorkspace",true);legacy.AddInt32("singlePane",42);restored.Load(legacy);

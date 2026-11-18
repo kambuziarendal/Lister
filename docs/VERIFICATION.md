@@ -58,6 +58,16 @@ setup. They are not all run by `make test`. Diagnostic probes under
 [`tests/probes`](../tests/probes/) have historical reproduction exit meanings and
 must not be mistaken for normal passing regressions.
 
+### Tvískipt function buttons
+
+With both panes open, select files and click **Buttons** beside the menu bar.
+Check that the bank hides and returns without changing the window frame, active
+pane, selection, or command field, with the bank at the top and at the bottom.
+Hide the bank, make the window too small for it, and click **Buttons** again.
+Check that configured actions remain available in the menu without enlarging
+the frame. Restart Listi to check that the toggle is remembered independently
+of Smiðja. Run the `preferences-state` native test for settings compatibility.
+
 ### Flat View
 
 Run `python3 tests/run-native-audit.py flat-view file-search live-search shelf`.

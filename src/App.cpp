@@ -51,6 +51,7 @@
 #include <MenuItem.h>
 #include <MessageFilter.h>
 #include <Path.h>
+#include <PopUpMenu.h>
 #include <PropertyInfo.h>
 #include <Roster.h>
 #include <SplitView.h>
@@ -438,6 +439,7 @@ class MainWindow : public BWindow {
   ImagePreview *preview;
   BMenuItem *previewMenu, *einnMenu, *askrMenu, *tviskiptMenu, *smidjaMenu;
   BMenuBar *menu;
+  BButton *bankToggle;
   BMenu *fileView;
   BMenuItem *saveClipboardTextItem, *saveClipboardImageItem, *undoBulkRenameItem;
   BSplitView *split;
@@ -475,7 +477,7 @@ class MainWindow : public BWindow {
       clipboardPaste = {};
       archiveClipboardPending = false;
     }
-    ShowBank(prefs.buttons);
+    RefreshBank();
     panes[source]->FocusList();
   }
   void AskInline(const char *text, const char *button, const BMessage &result,
@@ -739,6 +741,7 @@ class MainWindow : public BWindow {
     }
   }
   OperationQueue *queue;
+  static constexpr uint32 kToggleBank = 'atbk', kHideBank = 'ahbk';
   BGroupView *bank = nullptr;
   BGridView *bankGrid = nullptr;
   std::vector<int32> renderedButtons;
@@ -746,6 +749,7 @@ class MainWindow : public BWindow {
   BTextControl *command;
   BMessenger service;
   bool bankVisible = true, commandVisible = true;
+  bool bankOverflow = false;
   void UpdateToolZones() {
     const bool topVisible = (bankVisible && bankOnTop) ||
                             (commandVisible && commandOnTop);
@@ -760,8 +764,7 @@ class MainWindow : public BWindow {
         zone->Hide();
     }
   }
-  void ShowBank(bool visible) {
-    visible = visible && !prefs.SinglePane() && !prefs.actionButtons.empty();
+  void SetBankVisible(bool visible) {
     if (bankVisible == visible)
       return;
     bankVisible = visible;
@@ -771,8 +774,61 @@ class MainWindow : public BWindow {
       bank->Hide();
     UpdateToolZones();
   }
-  void UpdateBank(float width) {
-    const int columns = prefs.adaptive && width < 850 ? 3 : 6;
+  void ShowBank(bool visible) {
+    const bool dual = !prefs.SinglePane() && !prefs.actionButtons.empty();
+    const bool tviskipt = prefs.workspace == Workspace::tviskipt;
+    if (tviskipt && bankToggle->IsHidden(bankToggle))
+      bankToggle->Show();
+    else if (!tviskipt && !bankToggle->IsHidden(bankToggle))
+      bankToggle->Hide();
+    visible = visible && dual;
+    bankOverflow = false;
+    SetBankVisible(visible);
+    if (visible && tviskipt) {
+      // Showing a layout item invalidates layout but does not run it inline.
+      // Measure before the window's auto-size pass can impose a larger frame.
+      auto minimum = GetLayout()->MinSize();
+      if (minimum.width > Bounds().Width() && bankColumns == 6) {
+        UpdateBank(Bounds().Width(), true);
+        minimum = GetLayout()->MinSize();
+      }
+      bankOverflow = minimum.width > Bounds().Width() ||
+                     minimum.height > Bounds().Height();
+      if (bankOverflow)
+        SetBankVisible(false);
+    }
+    bankToggle->SetEnabled(dual);
+    bankToggle->SetValue(prefs.ActionButtonsVisible() ? B_CONTROL_ON
+                                                     : B_CONTROL_OFF);
+    bankToggle->SetToolTip(
+        !dual ? "Add buttons in Customize workspace."
+        : bankOverflow ? "Open function buttons as a menu at this window size."
+        : prefs.ActionButtonsVisible() ? "Hide function buttons"
+                                       : "Show function buttons");
+  }
+  void RefreshBank() {
+    ShowBank(prefs.ActionButtonsVisible() && !actionArea->Pending());
+  }
+  void OpenCompactBank() {
+    auto popup = new BPopUpMenu("Function buttons", false, false);
+    for (auto id : prefs.actionButtons) {
+      if (id < 0 || id >= WorkspaceLayout::ActionButtonCount)
+        continue;
+      const auto &action = kWorkspaceActions[id];
+      popup->AddItem(
+          new BMenuItem(action.description, new BMessage(action.message)));
+    }
+    popup->AddSeparatorItem();
+    popup->AddItem(
+        new BMenuItem("Hide function buttons", new BMessage(kHideBank)));
+    popup->SetTargetForItems(this);
+    popup->SetAsyncAutoDestruct(true);
+    const auto where =
+        bankToggle->ConvertToScreen(BPoint(0, bankToggle->Bounds().bottom + 1));
+    popup->Go(where, true, true, true);
+  }
+  void UpdateBank(float width, bool forceCompact = false) {
+    const int columns = forceCompact || (prefs.adaptive && width < 850) ? 3 : 6;
     if (columns == bankColumns && renderedButtons == prefs.actionButtons)
       return;
     bankColumns = columns;
@@ -893,7 +949,6 @@ class MainWindow : public BWindow {
     askrMenu->SetMarked(prefs.workspace == Workspace::askr);
     tviskiptMenu->SetMarked(prefs.workspace == Workspace::tviskipt);
     smidjaMenu->SetMarked(prefs.IsSmidja());
-    ShowBank(prefs.buttons && !actionArea->Pending());
     const bool showCommand = prefs.command && !prefs.SinglePane();
     if (commandVisible != showCommand) {
       commandVisible = showCommand;
@@ -903,6 +958,7 @@ class MainWindow : public BWindow {
         command->Hide();
     }
     UpdateToolZones();
+    RefreshBank();
   }
   void SetWorkspace(Workspace value) {
     if (prefs.workspace == value)
@@ -1076,6 +1132,9 @@ public:
         places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
     menu = new BMenuBar("menu");
+    bankToggle = new BButton("toggle action buttons", "Buttons",
+                             new BMessage(kToggleBank));
+    bankToggle->SetBehavior(BButton::B_TOGGLE_BEHAVIOR);
     auto files = new BMenu("Files");
     struct Item {
       const char *label;
@@ -1242,6 +1301,7 @@ public:
     terminalSplit->SetCollapsible(0, false);
     terminalSplit->SetItemCollapsed(1, true);
     bank = new BGroupView(B_VERTICAL, 5);
+    bank->SetName("workspace action buttons");
     auto shortcuts = new BStringView(
         "shortcuts",
         "Command + letter (normally Alt). Tab: other panel. Command+F: filter. "
@@ -1270,7 +1330,10 @@ public:
     bottomTools->AddChild(bank);
     bottomTools->AddChild(command);
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
-        .Add(menu)
+        .AddGroup(B_HORIZONTAL, 4, 0)
+        .Add(menu, 1)
+        .Add(bankToggle, 0)
+        .End()
         .Add(topTools, 0)
         .Add(terminalSplit)
         .Add(actionArea, 0)
@@ -1289,8 +1352,10 @@ public:
   }
   void FrameResized(float width, float height) override {
     BWindow::FrameResized(width, height);
-    if (bank)
+    if (bank) {
       UpdateBank(width);
+      RefreshBank();
+    }
   }
 
   status_t GetSupportedSuites(BMessage *m) override {
@@ -1574,7 +1639,7 @@ public:
         pendingClipboardFile.reset();
       if (!actionArea->Pending() && archiveClipboardPending)
         CloseAction();
-      ShowBank(prefs.buttons && !actionArea->Pending());
+      RefreshBank();
       if (!actionArea->Pending() && !terminalPanel->HasFocus())
         panes[source]->FocusList();
       break;
@@ -2247,6 +2312,22 @@ public:
       RememberSplitWeights();
       Save();
       break;
+    case kToggleBank:
+    case kHideBank:
+      if (prefs.workspace != Workspace::tviskipt || prefs.actionButtons.empty())
+        break;
+      if (m->what == kHideBank || !bankOverflow) {
+        prefs.tviskiptButtons = m->what == kHideBank
+                                    ? 0
+                                    : !prefs.ActionButtonsVisible();
+        RefreshBank();
+        Save();
+      } else {
+        bankToggle->SetValue(B_CONTROL_ON);
+      }
+      if (m->what == kToggleBank && bankOverflow)
+        OpenCompactBank();
+      break;
     case kEditWorkspace:
       if (actionArea->Pending())
         queue->ErrorInfo("Finish or cancel the open question first.");
@@ -2265,6 +2346,8 @@ public:
       WorkspaceLayout layout;
       layout.Load(layoutMessage);
       prefs.profiles.Load(profilesMessage);
+      if (layout.buttons != prefs.buttons)
+        prefs.tviskiptButtons = -1;
       prefs.ApplyLayout(layout);
       if (prefs.SinglePane())
         source = prefs.singlePane;

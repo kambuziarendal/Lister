@@ -25,6 +25,9 @@ rgb_color Preferences::Color(const BString &text) const {
 }
 void Preferences::Load(const BMessage &m) {
   WorkspaceLayout::Load(m);
+  tviskiptButtons = m.GetInt32("tviskiptButtons", -1);
+  if (tviskiptButtons < -1 || tviskiptButtons > 1)
+    tviskiptButtons = -1;
   profiles.Load(m);
   folderModes.clear();
   BMessage folder;
@@ -59,13 +62,17 @@ void Preferences::ApplyDialog(const BMessage &message) {
   auto layout = CaptureLayout();
   BMessage changes;
   const bool hasChanges = message.FindMessage("layoutChanges", &changes) == B_OK;
+  updated.tviskiptButtons = tviskiptButtons;
   for (auto w : {Workspace::tviskipt, Workspace::einn, Workspace::askr,
                  Workspace::smidja}) {
     if (!hasChanges || changes.GetBool(WorkspaceId(w), false))
       layout.SetDefaultMode(w, updated.DefaultMode(w));
   }
-  if (!hasChanges || changes.GetBool("buttons", false))
+  if ((!hasChanges && layout.buttons != updated.buttons) ||
+      (hasChanges && changes.GetBool("buttons", false))) {
     layout.buttons = updated.buttons;
+    updated.tviskiptButtons = -1;
+  }
   if (!hasChanges || changes.GetBool("command", false))
     layout.command = updated.command;
   updated.ApplyLayout(layout);
@@ -76,6 +83,7 @@ void Preferences::ApplyDialog(const BMessage &message) {
 BMessage Preferences::Save() const {
   BMessage m;
   WorkspaceLayout::Archive(m);
+  m.AddInt32("tviskiptButtons", tviskiptButtons);
   profiles.Archive(m);
   for (auto &entry : folderModes) {
     BMessage folder;

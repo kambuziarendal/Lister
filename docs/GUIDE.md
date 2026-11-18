@@ -66,6 +66,12 @@ in this alpha.
 
 ### Tools and preferences
 
+- **Buttons:** In Tvískipt, use the compact button beside the menu bar to
+  hide or show all configured function buttons without changing the frame.
+  This choice is remembered separately from layout profiles and other
+  workspaces. If the bank cannot fit, **Buttons** opens the same actions as
+  a menu. The full bank returns when there is room. Menu commands and keyboard
+  shortcuts remain available when the bank is hidden.
 - **Terminal here:** start an interactive shell in the active local folder.
   Choose **Below file panels** or **Beside file panels** to keep the shell in
   the Listi window, or **Separate window** to launch the configured terminal.
