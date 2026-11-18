@@ -246,13 +246,17 @@ public:
         BString application =
             m->GetString("application", "/boot/system/apps/Terminal");
         entry_ref ref;
-        get_ref_for_path(application, &ref);
-        std::string script = "cd -- " + Quote(path.String()) + " && ";
-        script += mode == "command" ? std::string(m->GetString("command", "")) +
-                                          "; exec /bin/bash"
-                                    : "exec /bin/bash";
-        const char *args[] = {"-t", "Listi", "/bin/bash", "-c", script.c_str()};
-        s = be_roster->Launch(&ref, 5, args);
+        s = get_ref_for_path(application, &ref);
+        if (s == B_OK) {
+          std::string script = "cd -- " + Quote(path.String()) + " || exit 1\n";
+          if (mode == "command") {
+            script += m->GetString("command", "");
+            script += '\n';
+          }
+          script += "exec /bin/bash";
+          const char *args[] = {"-t", "Listi", "/bin/bash", "-c", script.c_str()};
+          s = be_roster->Launch(&ref, 5, args);
+        }
       } else {
         entry_ref ref;
         s = get_ref_for_path(path, &ref);
@@ -1350,6 +1354,9 @@ public:
             }
           }
           reply.AddString("result", pane->Path());
+        } else if (m->what == B_SET_PROPERTY) {
+          BWindow::MessageReceived(m);
+          return;
         } else if (!strcmp(property, "Workspace"))
           reply.AddString("result", WorkspaceName(prefs.workspace));
         else if (!strcmp(property, "PathReady"))
