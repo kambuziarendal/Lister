@@ -6,13 +6,16 @@
 #include "ExplicitSubmit.h"
 #include <Button.h>
 #include <LayoutBuilder.h>
+#include <MenuField.h>
+#include <MenuItem.h>
+#include <PopUpMenu.h>
 #include <TextControl.h>
 #include <TextView.h>
 #include "ThemeTextView.h"
 #include <string>
 namespace {
 constexpr uint32 kAccept = 'iacc', kAlternate = 'ialt', kCancel = 'iccl',
-                 kClosed = 'ican';
+                 kClosed = 'ican', kThird = 'i3rd';
 }
 InlineAction::InlineAction(BMessenger receiver)
     : BGroupView(B_VERTICAL, 5), target(receiver) {}
@@ -29,6 +32,7 @@ void InlineAction::Close() {
   Hide();
   name = nullptr;
   nameHint = nullptr;
+  options = nullptr;
   result.MakeEmpty();
   // Destroy connection password controls immediately, not on the next prompt.
   while (auto child = ChildAt(0)) {
@@ -38,7 +42,8 @@ void InlineAction::Close() {
 }
 bool InlineAction::Ask(const char *text, const char *button,
                        const BMessage &accepted, const char *initial,
-                       const char *alternative) {
+                       const char *alternative, const char *third,
+                       const std::vector<std::string> &choices) {
   if (pending)
     return false;
   ++serial;
@@ -70,6 +75,13 @@ bool InlineAction::Ask(const char *text, const char *button,
     nameHint->SetTruncation(B_TRUNCATE_END);
     AddChild(nameHint);
   }
+  if (!choices.empty()) {
+    options = new BPopUpMenu("Output formats");
+    for (const auto &choice : choices)
+      options->AddItem(new BMenuItem(choice.c_str(), nullptr));
+    options->ItemAt(0)->SetMarked(true);
+    AddChild(new BMenuField("output format", "Format:", options));
+  }
   auto cancel = new BButton("Cancel", new BMessage(Event(kCancel)));
   auto accept = new BButton(button, new BMessage(Event(kAccept)));
   auto buttons = new BGroupView(B_HORIZONTAL, 8);
@@ -82,6 +94,11 @@ bool InlineAction::Ask(const char *text, const char *button,
     buttons->AddChild(alternate);
     alternate->SetTarget(this);
   }
+  if (third) {
+    auto extra = new BButton(third, new BMessage(Event(kThird)));
+    buttons->AddChild(extra);
+    extra->SetTarget(this);
+  }
   AddChild(buttons);
   cancel->SetTarget(this);
   accept->SetTarget(this);
@@ -90,7 +107,7 @@ bool InlineAction::Ask(const char *text, const char *button,
   if (name) {
     name->MakeFocus(true);
     name->TextView()->SelectAll();
-  } else if (alternative) {
+  } else if (alternative || third || options) {
     cancel->MakeFocus(true);
   }
   return true;
@@ -106,14 +123,14 @@ bool InlineAction::Connect(BMessenger pane) {
 }
 void InlineAction::MessageReceived(BMessage *message) {
   if (message->what != kAccept && message->what != kAlternate &&
-      message->what != kCancel) {
+      message->what != kThird && message->what != kCancel) {
     BGroupView::MessageReceived(message);
     return;
   }
   if (!pending || message->GetInt64("question", -1) != serial)
     return;
   BMessage accepted(result);
-  if (message->what == kAccept || message->what == kAlternate) {
+  if (message->what != kCancel) {
     if (name) {
       std::string value = name->Text();
       if (nameHint) {
@@ -135,12 +152,15 @@ void InlineAction::MessageReceived(BMessage *message) {
       }
       accepted.AddString("name", value.c_str());
     }
-    accepted.AddInt32("which", message->what == kAlternate ? 2 : 1);
+    if (options)
+      accepted.AddInt32("option", options->IndexOf(options->FindMarked()));
+    accepted.AddInt32("which", message->what == kThird       ? 3
+                               : message->what == kAlternate ? 2
+                                                            : 1);
   }
   Close();
   // No queued close event may cancel an unrelated later question.
-  if ((message->what == kAccept || message->what == kAlternate) &&
-      accepted.what != kClosed)
+  if (message->what != kCancel && accepted.what != kClosed)
     target.SendMessage(&accepted);
   target.SendMessage(kInlineClosed);
 }

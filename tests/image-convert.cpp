@@ -1,0 +1,154 @@
+// SPDX-License-Identifier: MIT
+#include "FileDrop.h"
+#include "ImageConvert.h"
+#include <Application.h>
+#include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <stdexcept>
+#include <sys/stat.h>
+#include <unistd.h>
+
+namespace {
+const unsigned char kPng[] = {
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00,
+    0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x02,
+    0x00, 0x00, 0x00, 0x02, 0x08, 0x02, 0x00, 0x00, 0x00, 0xfd,
+    0xd4, 0x9a, 0x73, 0x00, 0x00, 0x00, 0x12, 0x49, 0x44, 0x41,
+    0x54, 0x78, 0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0xc0, 0x00, 0xc2,
+    0x0c, 0xff, 0x81, 0x00, 0x00, 0x1f, 0xee, 0x05, 0xfb, 0x0b,
+    0xd9, 0x68, 0x8b, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e,
+    0x44, 0xae, 0x42, 0x60, 0x82,
+};
+
+std::string Read(const std::string &path) {
+  std::ifstream stream(path, std::ios::binary);
+  return {std::istreambuf_iterator<char>(stream), {}};
+}
+
+void Write(const std::string &path, const std::string &contents) {
+  std::ofstream stream(path, std::ios::binary);
+  stream << contents;
+}
+
+bool Exists(const std::string &path) {
+  struct stat st;
+  return lstat(path.c_str(), &st) == 0;
+}
+
+void Check(bool passed, const char *description) {
+  std::cout << (passed ? "PASS " : "FAIL ") << description << std::endl;
+  if (!passed)
+    throw std::runtime_error(description);
+}
+}
+
+int main() {
+  BApplication app("application/x-vnd.Kambuzi-Listi-ImageConvertTest");
+  char scratch[] = "/boot/home/Listi-convert-XXXXXX";
+  if (!mkdtemp(scratch))
+    return 2;
+  int status = 0;
+  try {
+    using namespace Listi;
+    const std::string root(scratch);
+    const auto source = Join(root, "original misleading.txt");
+    const auto destination = Join(root, "destination");
+    const auto png = std::string(reinterpret_cast<const char *>(kPng),
+                                 sizeof(kPng));
+    Write(source, png);
+    mkdir(destination.c_str(), 0700);
+
+    auto drag = MakeFileDrag({source});
+    auto job = PrepareFileDrop(drag, destination);
+    Check(CanProbeImageDrop(job), "single guarded regular file is eligible");
+    auto outputs = ImageOutputs(job);
+    auto jpeg = std::find_if(outputs.begin(), outputs.end(), [](const auto &out) {
+      return out.mime == "image/jpeg" && out.extension == "jpg";
+    });
+    Check(jpeg != outputs.end(),
+          "native JPEG encoder offered for PNG with misleading suffix");
+    Check(std::none_of(outputs.begin(), outputs.end(), [](const auto &out) {
+            return out.mime == "image/png" || out.mime == "image/x-be-bitmap";
+          }), "source format and intermediate Be bitmap are not offered");
+    Check(ImageOutputName("/tmp/.hidden", "jpg") == ".hidden.jpg",
+          "hidden filename stem is preserved");
+
+    job.action = Action::ConvertImage;
+    job.imageFormat = jpeg->type;
+    job.imageMime = jpeg->mime;
+    const auto target = Join(destination, "original misleading.jpg");
+    auto converted = Run(job, {});
+    Check(converted.completed == 1 && Read(target).compare(0, 2, "\xff\xd8") == 0 &&
+              Read(source) == png,
+          "queue operation creates genuine JPEG and leaves source unchanged");
+
+    Write(target, "existing target");
+    auto collision = Run(job, {});
+    Check(collision.completed == 0 && !collision.errors.empty() &&
+              Read(target) == "existing target" && Read(source) == png,
+          "existing file is never overwritten");
+    unlink(target.c_str());
+    symlink("missing", target.c_str());
+    struct stat link;
+    auto linkCollision = Run(job, {});
+    Check(linkCollision.completed == 0 && !linkCollision.errors.empty() &&
+              lstat(target.c_str(), &link) == 0 && S_ISLNK(link.st_mode),
+          "existing dangling symlink is never overwritten");
+    unlink(target.c_str());
+
+    Hooks cancel;
+    cancel.proceed = [&] { return !Exists(target); };
+    auto cancelled = Run(job, cancel);
+    Check(cancelled.cancelled && !Exists(target) && Read(source) == png,
+          "cancellation after exclusive creation removes partial output");
+
+    auto sameFolder = PrepareFileDrop(drag, root, true);
+    sameFolder.action = job.action;
+    sameFolder.imageFormat = job.imageFormat;
+    sameFolder.imageMime = job.imageMime;
+    Check(Run(sameFolder, {}).completed == 1 &&
+              Read(Join(root, "original misleading.jpg")).compare(0, 2, "\xff\xd8") == 0 &&
+              Read(source) == png,
+          "same-folder conversion creates a differently named sibling");
+
+    const auto text = Join(root, "plain.png");
+    Write(text, "not an image");
+    bool unsupported = false;
+    try {
+      unsupported = ImageOutputs(PrepareFileDrop(MakeFileDrag({text}), destination)).empty();
+    } catch (const std::runtime_error &) {
+      unsupported = true;
+    }
+    Check(unsupported, "unsupported contents do not offer output formats");
+
+    auto virtualTarget = PrepareFileDrop(drag, "sftp://example.invalid/target");
+    Check(!CanProbeImageDrop(virtualTarget),
+          "virtual destinations do not offer local conversion");
+
+    rename(destination.c_str(), Join(root, "previous destination").c_str());
+    mkdir(destination.c_str(), 0700);
+    auto staleFolder = Run(job, {});
+    Check(staleFolder.completed == 0 && !staleFolder.errors.empty() &&
+              !Exists(target),
+          "replacement destination is not written");
+
+    auto staleSource = PrepareFileDrop(drag, destination);
+    staleSource.action = job.action;
+    staleSource.imageFormat = job.imageFormat;
+    staleSource.imageMime = job.imageMime;
+    rename(source.c_str(), Join(root, "previous source").c_str());
+    Write(source, png);
+    auto changed = Run(staleSource, {});
+    Check(changed.completed == 0 && !changed.errors.empty() && !Exists(target),
+          "replacement source with identical content is not converted");
+  } catch (const std::exception &error) {
+    std::cerr << error.what() << std::endl;
+    status = 1;
+  }
+  std::error_code cleanup;
+  std::filesystem::remove_all(scratch, cleanup);
+  return status;
+}

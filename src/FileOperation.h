@@ -23,7 +23,8 @@ enum class Action {
   ExtractArchive,
   EditArchive,
   MoveArchive,
-  BulkRename
+  BulkRename,
+  ConvertImage
 };
 enum class Decision { Replace, ReplaceAll, Skip, SkipAll, Abort };
 struct NodeIdentity {
@@ -43,6 +44,9 @@ struct Job {
   // Only Duplicate/Link use an explicit leaf name, always without replacement.
   std::string entryName;
   bool relativeLink = true;
+  // Selected Translation Kit output for ConvertImage.
+  uint32_t imageFormat = 0;
+  std::string imageMime;
   std::string archiveFormat = "zip";
   int archiveLevel = 6;
   // A process-local handle, never the password itself. Jobs cannot survive an

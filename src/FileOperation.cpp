@@ -3,6 +3,7 @@
 #include "BulkRename.h"
 #include "ArchiveVolumes.h"
 #include "ArchiveJobs.h"
+#include "ImageConvert.h"
 #include "NamedEntry.h"
 #include "Trash.h"
 #include <Directory.h>
@@ -564,6 +565,8 @@ struct Runner {
 Result Run(const Job &j, const Hooks &h) {
   if (j.action == Action::BulkRename)
     return RunBulkRename(j, h);
+  if (j.action == Action::ConvertImage)
+    return RunImageConversion(j, h);
   if (j.action == Action::CreateArchive || j.action == Action::ExtractArchive ||
       j.action == Action::EditArchive || j.action == Action::MoveArchive)
     return RunArchiveJob(j, h);

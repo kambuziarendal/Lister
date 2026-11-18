@@ -6,5 +6,6 @@ namespace Listi {
 // Local refs for Tracker interoperability, with a private identity snapshot.
 BMessage MakeFileDrag(const std::vector<std::string> &paths);
 // Captures identities at drop time for external refs, at drag time for Listi.
-Job PrepareFileDrop(const BMessage &, const std::string &destination);
+Job PrepareFileDrop(const BMessage &, const std::string &destination,
+                    bool allowSameFolder = false);
 }

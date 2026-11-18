@@ -41,7 +41,8 @@ BMessage MakeFileDrag(const std::vector<std::string> &paths) {
   Require(drag.AddMessage(kSelection, &selection));
   return drag;
 }
-Job PrepareFileDrop(const BMessage &message, const std::string &destination) {
+Job PrepareFileDrop(const BMessage &message, const std::string &destination,
+                    bool allowSameFolder) {
   if (message.FlattenedSize() > 2 * 1024 * 1024)
     throw std::runtime_error("The dragged selection is too large.");
   // Preserve existing provider copy support, but never imply remote move safety.
@@ -127,7 +128,7 @@ Job PrepareFileDrop(const BMessage &message, const std::string &destination) {
     if (!remaining.erase(item.path))
       throw std::runtime_error(
           "The dragged file selection changed. Select it again.");
-    if (Join(job.destination, Leaf(item.path)) == item.path)
+    if (!allowSameFolder && Join(job.destination, Leaf(item.path)) == item.path)
       throw std::runtime_error(
           "Drop into a different folder, not the source folder.");
     // realpath on directories detects aliases into the source tree as well.

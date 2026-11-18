@@ -22,12 +22,14 @@
 #include "Shelf.h"
 #include "ShelfWindow.h"
 #include "ImagePreview.h"
+#include "ImageConvert.h"
 #include "InlineAction.h"
 #include "OperationQueue.h"
 #include "Pane.h"
 #include "VirtualFile.h"
 #include <Alert.h>
 #include <Application.h>
+#include <algorithm>
 #include <exception>
 #include <Button.h>
 #include <Entry.h>
@@ -60,6 +62,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 constexpr uint32 kResumeArchiveEdits = 'ared';
+constexpr uint32 kImageDropProbe = 'dimg', kImageDropOutputs = 'dfmt',
+                 kImageDropConvert = 'dcvi';
 constexpr uint32 kNamedEntryAccepted = 'nacc', kDropAccepted = 'dacc',
                  kConfirm = 'cfir', kViewLoaded = 'vloa',
                  kServiceError = 'serr', kSavePreferences = 'save',
@@ -89,6 +93,31 @@ class Services : public BLooper {
 public:
   Services(BMessenger a) : BLooper("file viewer and launcher"), app(a) {}
   void MessageReceived(BMessage *m) override {
+    if (m->what == kImageDropProbe) {
+      BMessenger target;
+      if (m->FindMessenger("replyTo", &target) != B_OK)
+        return;
+      BMessage reply(*m);
+      reply.what = kImageDropOutputs;
+      try {
+        auto outputs = Listi::ImageOutputs(Listi::DecodeJob(*m));
+        for (const auto &output : outputs) {
+          BMessage choice;
+          choice.AddInt32("type", output.type);
+          choice.AddString("mime", output.mime.c_str());
+          choice.AddString("name", output.name.c_str());
+          choice.AddString("extension", output.extension.c_str());
+          reply.AddMessage("output", &choice);
+        }
+        if (outputs.empty())
+          reply.AddString(
+              "error", "No installed translator can encode another image format.");
+      } catch (const std::exception &e) {
+        reply.AddString("error", e.what());
+      }
+      target.SendMessage(&reply, (BHandler *)nullptr, 500000);
+      return;
+    }
     if (m->what == kSaveSearches) {
       BMessage reply(kSearchesSaved);
       reply.AddInt64("revision", m->GetInt64("revision", -1));
@@ -395,7 +424,6 @@ class MainWindow : public BWindow {
   InlineAction *actionArea;
   void CloseAction() {
     actionArea->Close();
-    pendingDrop = {};
     pendingNamedEntry = {};
     pendingArchiveEdit = {};
     if (archiveClipboardPending) {
@@ -419,7 +447,8 @@ class MainWindow : public BWindow {
   }
   int source = 0;
   int64 clipboardSerial = 0;
-  Listi::Job pendingDrop, pendingNamedEntry;
+  Listi::Job pendingNamedEntry;
+  int64 dropSerial = 0;
   Listi::Job pendingArchiveEdit;
   std::unique_ptr<BFilePanel> archiveAddPicker;
   std::string archiveAddTarget, archiveAddFolder;
@@ -1733,41 +1762,118 @@ public:
         break;
       }
       try {
-        pendingDrop =
-            Listi::PrepareFileDrop(*m, m->GetString("destination", ""));
-        if (pendingDrop.action == Listi::Action::EditArchive) {
-          ConfirmArchiveAddition(pendingDrop);
-          pendingDrop = {};
+        ++dropSerial;
+        auto job = Listi::PrepareFileDrop(
+            *m, m->GetString("destination", ""), true);
+        if (job.action == Listi::Action::EditArchive) {
+          ConfirmArchiveAddition(job);
           break;
         }
-        const bool canMove =
-            !Listi::IsVirtual(pendingDrop.destination) &&
-            pendingDrop.expectedSources.size() == pendingDrop.sources.size();
+        const bool canConvert = Listi::CanProbeImageDrop(job);
+        const bool sameFolder =
+            std::any_of(job.sources.begin(), job.sources.end(),
+                        [&](const auto &path) {
+                          return Listi::Join(job.destination,
+                                             Listi::Leaf(path)) == path;
+                        });
+        auto accepted = Listi::EncodeJob(job, kDropAccepted);
+        accepted.AddInt64("request", dropSerial);
+        if (sameFolder) {
+          if (!canConvert)
+            throw std::runtime_error(
+                "Drop into a different folder, not the source folder.");
+          accepted.AddBool("convertOnly", true);
+          AskInline(
+              "Convert an image in its current folder. The original is kept.",
+              "Convert here", accepted);
+          break;
+        }
+        const bool canMove = !Listi::IsVirtual(job.destination) &&
+                             job.expectedSources.size() == job.sources.size();
         std::string text =
-            "Drop " + std::to_string(pendingDrop.sources.size()) +
-            " item(s) into:\n" + pendingDrop.destination +
+            "Drop " + std::to_string(job.sources.size()) +
+            " item(s) into:\n" + job.destination +
             (!canMove
                  ? "\nCopy only for network/archive transfers. Originals are kept."
                  : "\nCopy keeps originals. Move removes originals after transfer.");
         ShowBank(false);
-        actionArea->Ask(text.c_str(), "Copy here", BMessage(kDropAccepted),
-                        nullptr, canMove ? "Move here" : nullptr);
+        actionArea->Ask(text.c_str(), "Copy here", accepted, nullptr,
+                        canMove ? "Move here" : nullptr,
+                        canConvert ? "Convert here" : nullptr);
       } catch (const std::exception &e) {
         Notice(e.what());
       }
       break;
     }
-    case kDropAccepted:
-      if (!pendingDrop.sources.empty()) {
+    case kDropAccepted: {
+      if (m->GetInt64("request", -1) != dropSerial)
+        break;
+      const auto which = m->GetInt32("which", 0);
+      if (which == 3 || m->GetBool("convertOnly", false)) {
+        BMessage probe(*m);
+        probe.what = kImageDropProbe;
+        probe.AddMessenger("replyTo", BMessenger(this));
+        if (service.SendMessage(&probe, (BHandler *)nullptr, 500000) != B_OK)
+          Notice("Could not check installed image translators.");
+      } else if (which == 1 || which == 2) {
+        auto job = Listi::DecodeJob(*m);
         const bool move =
-            m->GetInt32("which", 0) == 2 &&
-            !Listi::IsVirtual(pendingDrop.destination) &&
-            pendingDrop.expectedSources.size() == pendingDrop.sources.size();
-        pendingDrop.action = move ? Listi::Action::Move : Listi::Action::Copy;
-        queue->Enqueue(pendingDrop);
-        pendingDrop = {};
+            which == 2 && !Listi::IsVirtual(job.destination) &&
+            job.expectedSources.size() == job.sources.size();
+        job.action = move ? Listi::Action::Move : Listi::Action::Copy;
+        queue->Enqueue(job);
       }
       break;
+    }
+    case kImageDropOutputs: {
+      if (m->GetInt64("request", -1) != dropSerial)
+        break;
+      if (actionArea->Pending()) {
+        queue->ErrorInfo("Finish the open question and drop the image again.");
+        break;
+      }
+      if (m->HasString("error")) {
+        Notice(m->GetString("error", ""));
+        break;
+      }
+      auto job = Listi::DecodeJob(*m);
+      if (job.sources.size() != 1)
+        break;
+      std::vector<std::string> labels;
+      BMessage output;
+      for (int32 i = 0; m->FindMessage("output", i, &output) == B_OK; ++i) {
+        labels.push_back(
+            std::string(output.GetString("name", "")) + " (." +
+            output.GetString("extension", "") + ")");
+      }
+      if (labels.empty())
+        break;
+      BMessage accepted(*m);
+      accepted.what = kImageDropConvert;
+      accepted.RemoveName("replyTo");
+      accepted.RemoveName("which");
+      std::string text =
+          "Convert " + Listi::Leaf(job.sources.front()) + " into:\n" +
+          job.destination + "\nThe original and existing files are kept.";
+      ShowBank(false);
+      actionArea->Ask(text.c_str(), "Convert", accepted, nullptr, nullptr,
+                      nullptr, labels);
+      break;
+    }
+    case kImageDropConvert: {
+      if (m->GetInt64("request", -1) != dropSerial)
+        break;
+      BMessage output;
+      const auto option = m->GetInt32("option", -1);
+      if (option < 0 || m->FindMessage("output", option, &output) != B_OK)
+        break;
+      auto job = Listi::DecodeJob(*m);
+      job.action = Listi::Action::ConvertImage;
+      job.imageFormat = output.GetInt32("type", 0);
+      job.imageMime = output.GetString("mime", "");
+      queue->Enqueue(job);
+      break;
+    }
     case kFileProgress:
       for (auto p : panes) {
         p->MessageReceived(m);

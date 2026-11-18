@@ -75,6 +75,8 @@ const char *Verb(Listi::Action a) {
     return "Move archive entries";
   case Listi::Action::Copy:
     return "Copy";
+  case Listi::Action::ConvertImage:
+    return "Convert image";
   case Listi::Action::Move:
     return "Move";
   case Listi::Action::Duplicate:
