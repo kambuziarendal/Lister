@@ -136,6 +136,26 @@ void Test() {
     rejected = true;
   }
   Require(rejected, "RAR5 writer ignored cancellation during a file");
+
+  FD changed{open(Join(scratch.path, "changed.rar").c_str(),
+                  O_RDWR | O_CREAT | O_EXCL, 0600)};
+  Require(changed.value >= 0, "Cannot create RAR5 mutation test archive");
+  bool mutated = false;
+  hooks.proceed = {};
+  hooks.progress = [&](const std::string &path, uint64_t) {
+    if (!mutated) {
+      Require(path == file && !truncate(file.c_str(), 1),
+              "Cannot mutate RAR5 source while writing");
+      mutated = true;
+    }
+  };
+  rejected = false;
+  try {
+    RarStoreWrite(changed.value, {source}, hooks);
+  } catch (const std::runtime_error &) {
+    rejected = true;
+  }
+  Require(mutated && rejected, "RAR5 writer accepted a truncated source");
 }
 } // namespace
 
