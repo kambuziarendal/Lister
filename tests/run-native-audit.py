@@ -15,7 +15,7 @@ for name in names:
  cmd=['g++','-std=c++17','-O2','-Wno-multichar','-Isrc','-I/boot/system/develop/headers/private/interface','-I/boot/system/develop/headers/private/shared',str(src/'tests'/f'{name}.cpp'),*testObjects,'-lbe','-lshared','-ltranslation','-lcolumnlistview','-ltracker','-o',str(out/name)]
  if name in ['archive-move-faults','archive-editor-faults']: cmd += ['-Wl,--wrap=rename']
  if name=='archive-local-move-faults': cmd += ['-Wl,--wrap=rename','-Wl,--wrap=unlink']
- if name=='file-operation-faults': cmd += ['-Wl,--wrap=mkstemp','-Wl,--wrap=write','-Wl,--wrap=unlink']
+ if name=='file-operation-faults': cmd += ['-Wl,--wrap=mkstemp','-Wl,--wrap=write','-Wl,--wrap=unlink','-Wl,--wrap=_ZN5BNode10RemoveAttrEPKc']
  if name=='clipboard-text-file': cmd += ['-Wl,--wrap=write']
  if name=='archive-move-scaling': cmd += ['-Wl,--wrap=lstat']
  if name in ['directory-delivery','operation-queue']: cmd += ['-Wl,--wrap=_ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl']

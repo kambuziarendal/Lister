@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Deterministic native syscall faults, including when the test user is root.
 #include "FileOperation.h"
+#include "Trash.h"
+#include <Node.h>
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
@@ -14,7 +16,7 @@ namespace fs = std::filesystem;
 namespace {
 std::string deniedStage, watchedStage, deniedRemoval;
 int watchedFd = -1, writes = 0;
-bool failWrite = false;
+bool failWrite = false, denyTrashCleanup = false;
 int failures = 0;
 
 void Check(bool ok, const char *label) {
@@ -74,8 +76,15 @@ extern "C" int __wrap_unlink(const char *path) {
   return __real_unlink(path);
 }
 
+extern "C" status_t __real__ZN5BNode10RemoveAttrEPKc(BNode *, const char *);
+extern "C" status_t __wrap__ZN5BNode10RemoveAttrEPKc(BNode *node, const char *name) {
+  if (denyTrashCleanup && strcmp(name, "_trk/original_path") == 0)
+    return B_PERMISSION_DENIED;
+  return __real__ZN5BNode10RemoveAttrEPKc(node, name);
+}
+
 int main() {
-  char temp[] = "/tmp/Listi-operation-faults-XXXXXX";
+  char temp[] = "/boot/home/Listi-operation-faults-XXXXXX";
   if (!mkdtemp(temp))
     return 2;
   const auto root = fs::canonical(temp);
@@ -132,6 +141,16 @@ int main() {
             Has(result, untouched, out / "third", "unprocessed") &&
             Read(out / "second") == "existing" && fs::exists(untouched),
         "skipped, aborted and unstarted roots have individually identifiable outcomes");
+  const auto trashed = MoveToTrash(source.string());
+  denyTrashCleanup = true;
+  result = Run({Action::Restore, {trashed}, {}}, {});
+  denyTrashCleanup = false;
+  Check(result.errors.size() == 1 && result.completed == 1 &&
+            Has(result, trashed, source, "moved", "could not clear Trash metadata") &&
+            !fs::exists(trashed) && Read(source) == payload,
+        "post-restore metadata warning does not hide a committed move");
+  if (fs::exists(trashed))
+    fs::remove(trashed);
   fs::remove_all(root);
   return failures ? 1 : 0;
 }

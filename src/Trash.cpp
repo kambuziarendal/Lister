@@ -63,9 +63,10 @@ std::string MoveToTrash(const std::string &path) {
   // MoveTo(false) never overwrites, including a name created after our check.
   node_ref identity;
   Require(node.GetNodeRef(&identity), original);
+  std::string name;
   status_t status = B_FILE_EXISTS;
   for (unsigned n = 0; n < 10000 && status == B_FILE_EXISTS; n++) {
-    std::string name = n == 0 ? Leaf(original)
+    name = n == 0 ? Leaf(original)
                               : Leaf(original) + " (" + std::to_string(n) + ")";
     if (name.size() >= B_FILE_NAME_LENGTH)
       name =
@@ -79,9 +80,9 @@ std::string MoveToTrash(const std::string &path) {
       node.RemoveAttr(kOriginalPath);
     Require(status, original);
   }
-  return EntryPath(entry);
+  return Join(trash, name);
 }
-std::string RestoreFromTrash(const std::string &path) {
+std::string RestoreFromTrash(const std::string &path, std::string *warning) {
   BEntry entry(path.c_str(), false);
   std::string current = EntryPath(entry);
   std::string trash = TrashDirectory(current, false);
@@ -107,8 +108,14 @@ std::string RestoreFromTrash(const std::string &path) {
   // No replacement or recursive merge during restore. A conflicting file is
   // safe.
   Require(entry.MoveTo(&destination, Leaf(target).c_str(), false), target);
-  Require(node.RemoveAttr(kOriginalPath),
-          target + " (restored, but could not clear Trash metadata)");
-  return EntryPath(entry);
+  const auto status = node.RemoveAttr(kOriginalPath);
+  if (status != B_OK) {
+    const auto message = target + " (restored, but could not clear Trash metadata)";
+    if (!warning)
+      Require(status, message);
+    else
+      *warning = message + ": " + strerror(status);
+  }
+  return target;
 }
 } // namespace Listi

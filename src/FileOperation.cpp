@@ -548,10 +548,16 @@ struct Runner {
                 ": mounted volumes cannot be deleted, moved or renamed");
         }
         if (job.action == Action::Trash || job.action == Action::Restore) {
+          std::string warning;
           const std::string destination = job.action == Action::Trash
                                               ? MoveToTrash(source)
-                                              : RestoreFromTrash(source);
-          Outcome(source, destination).status = "moved";
+                                              : RestoreFromTrash(source, &warning);
+          auto &row = Outcome(source, destination);
+          row.status = "moved";
+          if (!warning.empty()) {
+            row.detail = warning;
+            result.errors.push_back(warning);
+          }
           result.completed++;
           if (h.fileDone)
             h.fileDone(source, destination);
