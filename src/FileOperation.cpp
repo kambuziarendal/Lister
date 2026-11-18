@@ -545,7 +545,9 @@ struct Runner {
     }
     if (named) {
       if (job.sources.size() != 1 || job.expectedSources.size() != 1 ||
-          job.expectedDestination.device < 0)
+          job.expectedDestination.device < 0 ||
+          (!job.destinationFolder.empty() &&
+           job.destinationFolder != job.destination))
         throw std::runtime_error(
             "Named entry operations require one guarded local source and destination.");
       ValidateNewEntryName(job.destination, job.entryName);

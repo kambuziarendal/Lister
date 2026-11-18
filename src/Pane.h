@@ -124,7 +124,7 @@ private:
   std::shared_ptr<std::atomic<int64>> generation;
   int64 serial = 0;
   bool scanning = false, refreshPending = false;
-  std::vector<std::string> savedSelection;
+  std::map<std::string, std::pair<int64_t, int64_t>> savedSelection;
   BMessage columnAction;
   Listi::SearchHit reveal;
   void ApplyFilter();

@@ -5,6 +5,7 @@
 #include "VirtualFile.h"
 #include <cstdlib>
 #include <limits.h>
+#include <set>
 #include <sys/stat.h>
 
 namespace Listi {
@@ -51,7 +52,12 @@ Job PrepareTransfer(Job job, bool allowSameFolder) {
 
   const std::string resolved =
       target.Local() ? ResolveFolder(job.destination) : "";
+  std::set<std::string> outputNames;
   for (const auto &source : job.sources) {
+    const auto name = LocationLeaf(source);
+    if (!outputNames.insert(name).second)
+      throw std::runtime_error(
+          "Two entries would use the same destination name: " + name);
     const auto from = ParseLocation(source);
     if (job.action == Action::Move && from.Authority() != target.Authority())
       throw std::runtime_error(

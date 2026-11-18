@@ -18,6 +18,7 @@ using namespace Listi;
 
 namespace {
 int failWrite = 0;
+std::string swapOutput, movedOutput;
 struct Fixture {
   char folder[64] = "/boot/home/Listi-clipboard-text-test-XXXXXX";
   Fixture() {
@@ -27,7 +28,8 @@ struct Fixture {
   ~Fixture() {
     std::string root(folder);
     for (const char *name :
-         {"Clipboard.txt", "note.txt", "link", "partial.txt", "image.png"})
+         {"Clipboard.txt", "note.txt", "link", "partial.txt", "image.png",
+          "replaced.txt", "moved.txt"})
       unlink((root + "/" + name).c_str());
     rmdir((root + "/destination").c_str());
     rmdir((root + "/old-destination").c_str());
@@ -71,6 +73,13 @@ BMessage Text(const std::string &bytes) {
 
 extern "C" ssize_t __real_write(int, const void *, size_t);
 extern "C" ssize_t __wrap_write(int fd, const void *buffer, size_t size) {
+  if (!swapOutput.empty()) {
+    auto original = std::move(swapOutput);
+    swapOutput.clear();
+    if (rename(original.c_str(), movedOutput.c_str()) != 0)
+      return -1;
+    std::ofstream(original) << "replacement";
+  }
   if (failWrite == 0)
     return __real_write(fd, buffer, size);
   if (failWrite++ == 1)
@@ -149,6 +158,12 @@ int main(int argc, char **argv) {
     Check(rejected && lstat((folder + "/partial.txt").c_str(), &partial) < 0 &&
               errno == ENOENT,
           "failed partial write leaves no output");
+    swapOutput = folder + "/replaced.txt";
+    movedOutput = folder + "/moved.txt";
+    Check(Rejected([&] { SaveClipboardFile(frozen, "replaced.txt"); }) &&
+              Read(folder + "/replaced.txt") == "replacement" &&
+              Read(movedOutput) == original,
+          "output replaced during writing is preserved, not reported as a successful save");
     BMessage refs = MakeFileSelection({folder + "/Clipboard.txt"});
     Set(clipboard, refs);
     Check(Rejected([&] {

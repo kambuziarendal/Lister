@@ -3,6 +3,7 @@
 #include "FileOperation.h"
 #include "Trash.h"
 #include <Node.h>
+#include <fs_attr.h>
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
@@ -180,6 +181,35 @@ int main() {
             Has(result, untouched, out / "third", "unprocessed") &&
             Read(out / "second") == "existing" && fs::exists(untouched),
         "skipped, aborted and unstarted roots have individually identifiable outcomes");
+  const auto oldParent = root / "old-parent";
+  fs::create_directory(oldParent);
+  const auto redirected = oldParent / ("redirected-" + root.filename().string());
+  std::ofstream(redirected) << payload;
+  const fs::path inTrash = MoveToTrash(redirected.string());
+  fs::remove(oldParent);
+  const auto redirectedParent = inTrash.parent_path() / ("parent-" + root.filename().string());
+  fs::create_directory(redirectedParent);
+  fs::create_directory_symlink(redirectedParent, oldParent);
+  result = Run({Action::Restore, {inTrash.string()}, {}}, {});
+  BNode retained(inTrash.c_str());
+  attr_info info;
+  Check(!result.errors.empty() && !result.completed && fs::exists(inTrash) &&
+            retained.GetAttrInfo("_trk/original_path", &info) == B_OK,
+        "redirected original parent cannot restore back into Trash or strip metadata");
+  fs::remove(oldParent);
+  fs::remove_all(redirectedParent);
+  fs::create_directory(oldParent);
+  std::ofstream(redirected) << "replacement";
+  result = Run({Action::Restore, {inTrash.string()}, {}}, {});
+  Check(!result.errors.empty() && Read(redirected) == "replacement" && Read(inTrash) == payload,
+        "restore collision keeps both entries");
+  fs::remove(redirected);
+  result = Run({Action::Restore, {inTrash.string()}, {}}, {});
+  Check(result.completed == 1 && Read(redirected) == payload && !fs::exists(inTrash),
+        "restore retries successfully after original parent and name become available");
+  if (fs::exists(inTrash))
+    fs::remove(inTrash);
+
   const auto trashed = MoveToTrash(source.string());
   denyTrashCleanup = true;
   result = Run({Action::Restore, {trashed}, {}}, {});

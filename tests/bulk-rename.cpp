@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -81,6 +82,15 @@ int main() {
     Check(Exists(a) && Exists(b) && Exists(c),
           "preview does not modify files, folders or symlinks");
 
+    BulkRenameOptions wideNumber;
+    wideNumber.number = true;
+    wideNumber.start = std::numeric_limits<unsigned>::max();
+    const auto wide = PreviewBulkRename(batch, wideNumber);
+    const auto next = uint64_t(wideNumber.start) + 1;
+    Check(wide.CanApply() &&
+              wide.rows[1].after == "find find " + std::to_string(next) + ".txt",
+          "numbering continues past the largest starting number without wrapping");
+
     options.prefix = "/";
     Check(!PreviewBulkRename(batch, options).CanApply(),
           "invalid new name blocks the full batch");
@@ -128,8 +138,12 @@ int main() {
     const auto stale = PreviewBulkRename(batch, {});
     result = Run(job, {});
     Check(stale.blocked == 1 && result.completed == 0 &&
-              !result.errors.empty() && Read(a) == "different entry" && Exists(b),
-          "one replaced source blocks the full batch, including unchanged output");
+              result.errors.size() == 1 && result.skipped == 2 &&
+              result.outcomes[0].status == "unprocessed" &&
+              result.outcomes[1].status == "failed" &&
+              result.outcomes[2].status == "unprocessed" &&
+              Read(a) == "different entry" && Exists(b),
+          "one replaced source blocks the batch and is reported on its row");
     if (unlink(a.c_str()) || rename(oldA.c_str(), a.c_str()))
       throw std::runtime_error("Cannot restore original source");
 

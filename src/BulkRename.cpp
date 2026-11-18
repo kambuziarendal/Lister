@@ -55,7 +55,7 @@ std::string NewName(const std::string &leaf, bool folder,
   }
   std::string number;
   if (options.number) {
-    number = std::to_string(options.start + index);
+    number = std::to_string(uint64_t(options.start) + index);
     if (number.size() < options.digits)
       number.insert(0, options.digits - number.size(), '0');
     number.insert(0, " ");
@@ -164,8 +164,13 @@ Result RunBulkRename(const Job &job, const Hooks &hooks) {
       const auto name = job.bulkNames.find(source);
       if (name == job.bulkNames.end() || !unique.insert(source).second)
         throw std::runtime_error("The selected batch is incomplete.");
-      InspectSource(job, source);
-      confirmed.rows.push_back({Leaf(source), name->second, ""});
+      BulkRenameRow row{Leaf(source), name->second, ""};
+      try {
+        InspectSource(job, source);
+      } catch (const std::runtime_error &error) {
+        row.error = error.what();
+      }
+      confirmed.rows.push_back(std::move(row));
     }
     CheckTargets(confirmed);
     if (!confirmed.CanApply()) {
@@ -175,9 +180,10 @@ Result RunBulkRename(const Job &job, const Hooks &hooks) {
           result.outcomes[i].status = "failed";
           result.outcomes[i].detail = row.error;
           result.errors.push_back(row.before + ": " + row.error);
+        } else if (row.before != row.after) {
+          ++result.skipped;
         }
       }
-      result.skipped = confirmed.changed - result.errors.size();
       if (result.errors.empty())
         result.errors.push_back("There are no changed names to apply.");
       return result;

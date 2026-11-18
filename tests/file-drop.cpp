@@ -33,6 +33,12 @@ try{
  Check(Reject([&]{MakeFileDrag({a+"/folder",a+"/folder/sub/data"});}),"overlapping selections rejected");
  auto folder=MakeFileDrag({a+"/folder"});Check(Reject([&]{PrepareFileDrop(folder,a+"/folder/sub");}),"folder into descendant rejected");
  symlink((a+"/folder/sub").c_str(),(root+"/alias").c_str());Check(Reject([&]{PrepareFileDrop(folder,root+"/alias");}),"destination alias into source rejected");
+ auto outside = root + "/two";
+ Write(outside, "different");
+ auto ambiguous = MakeFileDrag({a+"/two", outside});
+ Check(Reject([&]{PrepareFileDrop(ambiguous,b);}) && Read(outside)=="different" &&
+       Read(a+"/two")=="second" && Read(b+"/two")=="second",
+       "drop refuses colliding output names before touching sources or destination");
  for (auto action : {Action::Copy, Action::Move}) {
    Check(Reject([&] { PrepareTransfer(Job{action, {a+"/folder"}, root+"/alias"}); }),
          "panel commands share the descendant/alias checks used for drops");

@@ -552,9 +552,13 @@ void Pane::StartNavigation(const std::string &request, int target, bool trash) {
   stop_watching(this);
   reveal = {};
   columnAction.MakeEmpty();
-  savedSelection = (target < 0 && !trash && path == request.c_str())
-                       ? Selected()
-                       : std::vector<std::string>{};
+  savedSelection.clear();
+  if (target < 0 && !trash && path == request.c_str()) {
+    for (auto entry : entries.Visible())
+      if (entries.IsSelected(entry->path))
+        savedSelection.emplace(entry->path,
+                               std::make_pair(entry->device, entry->node));
+  }
   if (trash || path != request.c_str()) {
     filter->SetText("");
     clearFilter->SetEnabled(false);
@@ -985,6 +989,7 @@ void Pane::MessageReceived(BMessage *m) {
     if (!scanning || m->GetInt64("serial", -1) != serial)
       break;
     BMessage e;
+    std::vector<std::string> restore;
     for (int i = 0; m->FindMessage("entry", i, &e) == B_OK; i++) {
       auto row = std::make_unique<PaneEntry>();
       row->name = e.GetString("name", "");
@@ -992,6 +997,14 @@ void Pane::MessageReceived(BMessage *m) {
       row->directory = e.GetBool("directory", false);
       row->parent = e.GetBool("parent", false);
       row->kind = e.GetInt32("kind", 0);
+      row->device = e.GetInt64("device", -1);
+      row->node = e.GetInt64("node", -1);
+      // Virtual listings have no local node identity; retain their path-based
+      // behavior. A replacement local entry must not inherit selection.
+      auto saved = savedSelection.find(row->path);
+      if (saved != savedSelection.end() &&
+          saved->second == std::make_pair(row->device, row->node))
+        restore.push_back(row->path);
       row->size = e.GetInt64("size", 0);
       row->sizeKnown = e.GetBool("sizeKnown", true);
       row->modified = e.GetInt64("date", 0);
@@ -1011,7 +1024,7 @@ void Pane::MessageReceived(BMessage *m) {
       entries.Add(std::move(row));
     }
     entries.Filter(einn ? "" : filter->Text());
-    entries.RestoreSelection(savedSelection);
+    entries.RestoreSelection(restore);
     list->Refresh();
     grid->Update();
     columns->Refresh();
@@ -1021,6 +1034,7 @@ void Pane::MessageReceived(BMessage *m) {
     if (!scanning || m->GetInt64("serial", -1) != serial)
       break;
     scanning = false;
+    savedSelection.clear();
     scanTimer.reset();
     path = m->GetString("path", path);
     locationValid = !m->HasString("error");

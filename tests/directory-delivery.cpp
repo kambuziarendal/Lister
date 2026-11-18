@@ -9,6 +9,7 @@
 #include <Directory.h>
 #include <Entry.h>
 #include <Path.h>
+#include <algorithm>
 #include <atomic>
 #include <fstream>
 #include <iostream>
@@ -97,6 +98,19 @@ int main() {
    check(ready(),"native pane reload recovers");
    window->Lock();pane->Select(1);check(pane->Selected().size()==160,"recovered pane selects all 160 files");window->Unlock();
  }
- window->Lock();window->Quit();
+ window->Lock();
+ auto replaced = folder + "/file-0";
+ auto retired = root + "/retired";
+ bool swapped = rename(replaced.c_str(), retired.c_str()) == 0 &&
+                bool(std::ofstream(replaced) << "replacement");
+ pane->Reload();
+ window->Unlock();
+ check(swapped && ready(),"same-name replacement and reload settle");
+ window->Lock();
+ auto selected = pane->Selected();
+ check(selected.size() == 159 &&
+       std::find(selected.begin(), selected.end(), replaced) == selected.end(),
+       "reload keeps untouched selections, not a replacement at the same path");
+ window->Quit();
  clean(root);std::cout<<checks<<" checks, "<<failures<<" failures"<<std::endl;return failures?1:0;
 }

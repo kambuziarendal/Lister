@@ -331,7 +331,13 @@ ClipboardPaste PrepareFilePaste(const std::string &destination,
   move.action = Action::Move;
   copy.destination = move.destination = canonical;
   copy.expectedDestination = move.expectedDestination = destinationNode;
+  // Check the entire Tracker selection before splitting mixed copy/cut modes.
+  // Two source names must never compete for one output in separate jobs.
+  std::set<std::string> names;
   for (auto &item : paste.items) {
+    if (!names.insert(Leaf(item.path)).second)
+      throw std::runtime_error(
+          "Two clipboard entries have the same name. Paste them separately.");
     Job &job = item.cut ? move : copy;
     job.sources.push_back(item.path);
     job.expectedSources.emplace(item.path, item.node);

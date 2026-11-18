@@ -21,6 +21,20 @@ bool Within(const std::string &path, const std::string &root) {
   return path == root || (root == "/" && path[0] == '/') ||
          path.compare(0, root.size() + 1, root + "/") == 0;
 }
+// BFS queries enumerate the entire volume rather than walking directories.
+// Apply the same private-subtree exclusion as the recursive name search.
+bool InPrivateSubtree(const std::string &path, const std::string &root) {
+  size_t start = root == "/" ? 1 : root.size() + 1;
+  while (start < path.size()) {
+    size_t end = path.find('/', start);
+    if (IsListiPrivateEntry(path.substr(start, end - start).c_str()))
+      return true;
+    if (end == std::string::npos)
+      break;
+    start = end + 1;
+  }
+  return false;
+}
 std::u32string Fold(const char *text) {
   std::u32string result;
   while (*text)
@@ -150,7 +164,8 @@ SearchSummary SearchFiles(const SearchRequest &request,
         continue;
       }
       if (st.st_dev != rootStat.st_dev || !Within(path.Path(), root) ||
-          path.Path() == root || excluded(path.Path()))
+          path.Path() == root || excluded(path.Path()) ||
+          InPrivateSubtree(path.Path(), root))
         continue;
       if (!accept(path.Path(), st))
         break;

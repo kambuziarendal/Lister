@@ -98,6 +98,8 @@ public:
         dir = S_ISDIR(resolved.st_mode);
       item.AddInt32("kind", link ? 2 : dir ? 1 : 0);
       item.AddBool("directory", dir);
+      item.AddInt64("device", st.st_dev);
+      item.AddInt64("node", st.st_ino);
       item.AddInt64("size", st.st_size);
       item.AddInt64("date", st.st_mtime);
       entry_ref ref;

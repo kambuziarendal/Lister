@@ -64,10 +64,23 @@ int main() {
   rename(old.path.c_str(), (old.path + ".old").c_str()); file(old.path);
   check(!SameSearchEntry(old), "replacement at same path is not original result");
   unlink(old.path.c_str()); rename((old.path + ".old").c_str(), old.path.c_str());
+  std::string stage = root + "/.Listi-archive-stage-search-test";
+  mkdir(stage.c_str(), 0700);
+  file(stage + "/same.txt");
+  check(run().matched == 2, "name search excludes archive staging contents");
   request.predicate = true; request.expression = "name==\"same.txt\"";
   result = run(); check(result.error.empty() && result.matched == 2, "native BFS name predicate restricted to selected folder");
   outside = false; for (const auto &h : hits) outside |= h.path.find(sibling) == 0;
   check(!outside, "BFS folder boundary excludes sibling sharing root prefix");
+  bool privateHit = false;
+  for (const auto &h : hits) privateHit |= h.path.find(stage) == 0;
+  check(!privateHit, "BFS results exclude staged files matching the query");
+  request.expression = "name==\".Listi-archive-stage-search-test\"";
+  result = run();
+  check(result.error.empty() && !result.matched,
+        "BFS results exclude the staging directory itself");
+  unlink((stage + "/same.txt").c_str());
+  rmdir(stage.c_str());
   request.expression = "(name==\"same.txt\")&&(size>0)";
   result = run(); check(result.error.empty() && result.matched == 2, "native BFS typed size and AND predicate");
   request.expression = "(name==\"same.txt\")||(name==\"literal[1].txt\")";

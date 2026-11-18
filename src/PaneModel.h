@@ -10,6 +10,7 @@ struct PaneEntry {
   std::string name, path;
   bool directory = false, parent = false, sizeKnown = true;
   int kind = 0, transferState = 0;
+  int64_t device = -1, node = -1;
   int64_t size = 0, modified = 0;
   float fraction = 0;
   std::shared_ptr<BBitmap> icon;

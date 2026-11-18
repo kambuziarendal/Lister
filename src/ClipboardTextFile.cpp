@@ -123,5 +123,13 @@ void SaveClipboardFile(const ClipboardFile &file, const std::string &name) {
       Fail("Could not remove incomplete clipboard file");
     throw;
   }
+  // A descriptor remains valid after a rename. Keep completed bytes, but do
+  // not report success at a path that no longer names the saved file.
+  struct stat namedFolder, namedFile;
+  if (stat(file.folder.c_str(), &namedFolder) ||
+      namedFolder.st_dev != folder.st_dev || namedFolder.st_ino != folder.st_ino ||
+      fstatat(dir, leaf, &namedFile, AT_SYMLINK_NOFOLLOW) ||
+      namedFile.st_dev != identity.st_dev || namedFile.st_ino != identity.st_ino)
+    throw std::runtime_error("The clipboard file or its folder moved during the save.");
 }
 }

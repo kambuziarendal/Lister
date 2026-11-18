@@ -105,6 +105,13 @@ std::string RestoreFromTrash(const std::string &path, std::string *warning) {
   BDirectory destination(parentPath.c_str());
   Require(destination.InitCheck(),
           parentPath + " (original folder must exist)");
+  // A former parent may now be a symlink into Trash. Check the opened
+  // directory, not just the spelling saved by Tracker.
+  BEntry resolvedParent;
+  Require(destination.GetEntry(&resolvedParent), parentPath);
+  if (Within(EntryPath(resolvedParent), trash))
+    throw std::runtime_error(
+        path + ": original folder now points into Trash; entry retained.");
   // No replacement or recursive merge during restore. A conflicting file is
   // safe.
   Require(entry.MoveTo(&destination, Leaf(target).c_str(), false), target);

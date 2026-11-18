@@ -100,6 +100,21 @@ int main(int argc, char **argv) {
     change.conflict=[&](const auto &){rename(c.c_str(),(root+"/old-c").c_str());mkdir(c.c_str(),0755);return Decision::Replace;};
     r=Run(paste.jobs[0],change);FinishFilePaste(paste,Moved(r),&clip);
     Check(r.completed==0 && Exists(a+"/one") && !Exists(c+"/one"),"destination replacement during conflict is rejected");
+    Write(a+"/shared","first source");Write(c+"/shared","second source");
+    PutFileClipboard({a+"/shared",c+"/shared"},true,&clip);
+    auto collisions=Data(clip);
+    Check(Rejected([&]{PrepareFilePaste(b,&clip);}) &&
+              !Data(clip).HasString("listi:paste-lease") && !Exists(b+"/shared") &&
+              Read(a+"/shared")=="first source" && Read(c+"/shared")=="second source",
+          "same-name cuts from different folders are refused before reservation");
+    auto conflictingItems=ReadFileClipboard(collisions);
+    auto copyMode=conflictingItems.front().key; copyMode[0]='m';
+    collisions.ReplaceInt32(copyMode.c_str(),'Tcsl');Set(clip,collisions);
+    Check(Rejected([&]{PrepareFilePaste(b,&clip);}) &&
+              !Data(clip).HasString("listi:paste-lease") &&
+              ReadFileClipboard(Data(clip)).size()==2,
+          "mixed copy and cut cannot queue two jobs for the same output");
+
     // Mixed Tracker clipboard, success and failure must be independent.
     PutFileClipboard({a+"/one",a+"/two"},true,&clip);data=Data(clip);items=ReadFileClipboard(data);
     std::string mode=items[1].key;mode[0]='m';data.ReplaceInt32(mode.c_str(),'Tcsl');Set(clip,data);

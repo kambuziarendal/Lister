@@ -93,6 +93,13 @@ int main() {
     rename(file.c_str(),(a+"/old-original").c_str()); Write(file,"replacement");
     result = Run(stale,{});
     Check(result.completed == 0 && !result.errors.empty() && !Exists(Join(a,stale.entryName)), "source replaced while naming cannot be duplicated");
+    auto wrongDestination = PrepareNamedEntry(Action::Duplicate,{file});
+    wrongDestination.destinationFolder = wrongDestination.destination;
+    wrongDestination.destination = b;
+    result = Run(wrongDestination,{});
+    Check(result.completed == 0 && !result.errors.empty() &&
+              !Exists(Join(b,wrongDestination.entryName)),
+          "an unrelated guarded folder cannot authorize a duplicate destination");
     stale = PrepareNamedEntry(Action::Link,{file},b);
     rename(b.c_str(),(root+"/old-b").c_str()); mkdir(b.c_str(),0755);
     result = Run(stale,{});
