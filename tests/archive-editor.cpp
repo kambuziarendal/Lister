@@ -56,7 +56,8 @@ template <class F> bool rejects(F f) {
   }
 }
 std::string archive(const std::string &format, bool encrypted = false) {
-  auto job = PrepareArchiveJob(false, {root + "/in/folder", root + "/in/keep"});
+  const auto source = root + (format == "ar" ? "/in/folder/edit.txt" : "/in/folder");
+  auto job = PrepareArchiveJob(false, {source, root + "/in/keep"});
   job.archiveFormat = format;
   if (encrypted) {
     job.archiveEncryptNames = format == "7z";
@@ -92,7 +93,13 @@ int main() {
   const auto sessions = root + "/sessions";
   try {
     for (const auto &format : WritableArchiveFormats()) {
-      auto a = archive(format.id), m = member(a);
+      const auto a = archive(format.id);
+      const auto m = format.id == "ar" ? ChildLocation(a, "edit.txt") : member(a);
+      FileEntry initial;
+      check(StatFile(m, initial), format.id + " original member exists");
+      const bool dosMode = format.id == "cab" || format.id == "arj";
+      check(dosMode || (initial.permissions & 0777) == 0640,
+            format.id + " source permissions represented");
       auto before = fingerprint(a);
       auto session = ArchiveEditSession::Open(m, sessions);
       struct stat dir, file;
@@ -113,7 +120,7 @@ int main() {
       StatFile(m, info);
       check(saved && bytes(m) == "Edited snapshot " + format.id &&
                 bytes(ChildLocation(a, "keep")) == "keep" &&
-                (info.permissions & 0777) == 0640,
+                info.permissions == initial.permissions,
             format.id + " verified save preserves unrelated member and "
                         "original permissions");
       check(PrepareArchiveEditTarget(physical(a)).archiveFormat == format.id,
