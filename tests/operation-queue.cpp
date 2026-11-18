@@ -153,7 +153,7 @@ int main(){
    for (int32 i = 0; i < picker->Menu()->CountItems(); ++i) {
      auto item = picker->Menu()->ItemAt(i);
      if (item->Message() && item->Message()->GetInt64("operation", 0) == id)
-       return item->Invoke() == B_OK;
+       return item->Messenger().SendMessage(item->Message()) == B_OK;
    }
    return false;
  };
