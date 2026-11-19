@@ -212,6 +212,17 @@ activity** is the combined log; a specific job shows its source and destination
 paths where available. Large reports have multiple pages. Job results are for
 this session, not saved to disk. **Clear finished** frees completed reports without cancelling any jobs.
 
+**Moving between local volumes:** Listi refuses a Move when the local source
+and destination are on different filesystem devices. This applies to two
+mounted volumes even on the same physical disk. For an archive member, it
+is the volume holding the archive file that counts.
+
+Use **Copy** and keep the source until you have verified the destination.
+For folders, **Compare folders** in SHA-256 mode checks file contents, not
+permissions or BFS attributes; check any metadata you need separately.
+Remove originals as a separate action only after verification. Ordinary
+moves within one local volume remain available.
+
 For a local move, **Moved** means Listi committed the move. **Copied; source
 retained** means the destination copy was made but Listi did not remove that
 source entry. **Partially completed** means some changes were made inside the
@@ -422,7 +433,7 @@ capabilities. A successful listing does not establish member-data integrity.
 - Selected local multipart 7z and RAR naming families are supported for reading.
   All parts must remain together and unchanged. This does not imply split ZIP,
   split creation or repair support.
-- Supported local archive-to-archive and archive/local moves verify destination
+- Supported local archive-to-archive and archive/local moves within the same volume verify destination
   contents before source cleanup. They are not an atomic two-location
   transaction and have no automatic crash-resume journal.
 - Archive/local moves refuse unsupported metadata and file types rather than

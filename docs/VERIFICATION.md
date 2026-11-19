@@ -175,21 +175,20 @@ application is renaming entries in the same folder.
 
 ### Moving between volumes
 
-The opt-in `cross-volume-move` audit needs a writable directory on a different
-mounted volume from `/tmp`. It creates unique test folders and checks both
-volumes after cancellation during copying, before source removal, after the
-last removal and between two selected files.
+A local Move across filesystem devices must refuse the transfer without
+removing the source. Test a regular file, a directory and an archive member
+against a separately mounted disposable volume. Compare both source and
+destination contents before and after the refused job. Also exercise Copy
+between the same two volumes and Move within one volume.
+
+The opt-in native test uses a writable volume distinct from `/tmp`:
 
 ```sh
 LISTI_TEST_VOLUME=/path/to/test-volume python3 tests/run-native-audit.py cross-volume-move
 ```
 
-To also test running out of space during replacement, use a **dedicated,
-disposable** test volume (for example, a freshly mounted 32 MiB BFS RAM disk)
-and set `LISTI_TEST_DISK_FULL=1` in the same command. This case deliberately
-exhausts the volume during staging. It verifies the original file, the existing
-destination and removal of the temporary file. Do not use a shared volume.
-The audit does not format or mount disks itself.
+Use a dedicated disposable volume for disk-full checks. Never fill an
+ordinary working volume to exercise a failure path.
 
 ## UI and package checks
 

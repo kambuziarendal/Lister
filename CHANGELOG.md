@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.36.1 (unreleased)
+
+- Move refuses transfers between different local filesystem devices, including
+  moves between a local archive and another volume. Use Copy and verify the
+  destination before removing the original. Same-volume moves remain available.
+
 ## 0.36.0 (unreleased)
 
 - Smiðja can keep search results and previews in temporary panel tabs without navigating away from a file list.
