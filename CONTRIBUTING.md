@@ -36,8 +36,9 @@ openly licensed example without personal GPS tags. See the
 
 - Write documentation, issue summaries and release notes in English. Product
   names and third-party credits retain their original spelling.
-- Describe the product and its behaviour, not private conversations, personal
-  requests, internal approvals or tool/agent activity.
+- Say how a result was obtained: distinguish hands-on hardware testing from
+  automated VM runs, and identify LLM assistance where relevant. Keep private
+  conversations, internal approvals and raw tool logs out of public reports.
 - Keep local machine paths, private service addresses and internal acceptance
   logs out of public documentation and release assets.
 - Distinguish what is in the source tree from what is in the downloadable

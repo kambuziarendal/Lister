@@ -4,13 +4,44 @@ Listi is alpha software that works directly on files. Tests provide evidence for
 specific cases, not proof that every filesystem, server or archive variant is
 safe. Use disposable fixtures and independent backups.
 
-## 0.36.1-3 package results
+## Hands-on testing on physical hardware
 
-The [candidate HPKG](https://github.com/kambuziarendal/listi/releases/tag/v0.36.1-3) was installed on Haiku R1/beta6 x86_64 in a VM. The installed executable matched the tested build. All 71 native test cases and 58 built-in checks passed. Additional checks covered a full destination disk, folder changes during copy, rename and undo, and restoring files with colliding names from Trash.
+The developer tests Listi on a ThinkPad X1 Carbon (6th Gen) running Haiku R1/beta6 directly on the hardware, not in a VM. Add one row per hands-on test. No individual result has been supplied yet. Use **Passed**, **Failed** or **Not tested** once the status is known; an unreported test is not necessarily untested.
 
-The installed app refused a move between disks. During an explicit copy, disconnecting the virtual USB device late in the write left the job pending for over 100 seconds, even after cancellation was requested. It did not report success. After cold restart, the original, an unrelated destination file and an earlier completed copy matched their expected bytes. Physical USB hardware has not been tested.
+| Listi version | Haiku version / hrev | What was done | Outcome |
+| --- | --- | --- | --- |
+| TODO: ask developer | R1/beta6 / TODO: ask developer | TODO: ask developer | TODO: ask developer |
 
-## 0.35.0 package results
+### Physical USB disconnect during copy
+
+**Disconnecting a physical USB disk during a copy has not been tested.** The steps below are a plan, not a result.
+
+| Listi version | Haiku version / hrev | Planned action | Outcome |
+| --- | --- | --- | --- |
+| TODO: ask developer | R1/beta6 / TODO: ask developer | Unplug the destination USB disk during a copy on the ThinkPad. | Not tested |
+
+1. Use disposable files and a spare USB disk. Record checksums for the source, a file already on the USB disk and an earlier completed copy.
+2. Start **Copy** in Listi. Unplug the USB disk while it is still being written to, then click **Cancel**. Record whether the window responds, the job's exact status and how long it stays in that state.
+3. After reconnecting and remounting the disk, record what is present at the destination and compare the three checksums. Note if a restart was necessary. Record the outcome here before changing roadmap priority 1.
+
+## Testing in Haiku VMs
+
+Much of the automated stress testing is LLM-assisted and runs in Haiku VMs. In the historical records below, “native” means the tests ran inside Haiku; it does not identify a bare-metal test. The commands later in this document are instructions, not additional results.
+
+### 0.36.1-3 package results
+
+The [candidate HPKG](https://github.com/kambuziarendal/listi/releases/tag/v0.36.1-3) was installed on Haiku R1/beta6 x86_64 in a VM (hrev: TODO: ask developer). The installed executable matched the tested build. All 71 native test cases and 58 built-in checks passed. The VM record also mentions the cases below. The record does not give separate outcomes for them.
+
+| Additional check (same package and VM) | Individual outcome |
+| --- | --- |
+| Full destination disk | TODO: ask developer |
+| Change folder contents during a copy | TODO: ask developer |
+| Rename and undo | TODO: ask developer |
+| Restore files with colliding names from Trash | TODO: ask developer |
+
+The installed app refused a move between disks. During an explicit copy, disconnecting the virtual USB device late in the write left the job pending for over 100 seconds, even after cancellation was requested. It did not report success. After cold restart, the original, an unrelated destination file and an earlier completed copy matched their expected bytes. This was a virtual USB disconnect, not the [physical USB test](#physical-usb-disconnect-during-copy).
+
+### 0.35.0 package results
 
 The [published HPKG](https://github.com/kambuziarendal/listi/releases/tag/v0.35.0) is the exact package tested on Haiku R1~beta6 hrev59866+79, x86_64, with GCC 13.3.0. Its tag identifies the source; the default branch includes newer documentation than the copy inside the package.
 

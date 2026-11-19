@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased documentation
+
+- Separate hands-on ThinkPad testing from recorded Haiku VM results. Add the physical USB disconnect test procedure; it has not been run.
+
 ## [0.37.0-1 alpha test candidate](https://github.com/kambuziarendal/listi/releases/tag/v0.37.0-1)
 
 - **Open with** can open a local file once or set Haiku's default application
@@ -15,8 +19,9 @@
   results can jump to the original file.
 - Close Quick view with **×** or **Esc** to return focus to the file list.
 
-This is an alpha, not a beta. A copy can still wait on the device after
-cancellation is requested if a disk is unplugged during a write.
+This is an alpha, not a beta. The known wait after **Cancel** was observed
+when a virtual USB disk was disconnected during a copy in 0.36.1-3.
+The corresponding physical USB test has not been run.
 
 ## [0.36.1-3 test candidate](https://github.com/kambuziarendal/listi/releases/tag/v0.36.1-3)
 
