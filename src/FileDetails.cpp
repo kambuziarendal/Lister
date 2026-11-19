@@ -4,6 +4,7 @@
 #include "FileDetails.h"
 #include "PanelAppearance.h"
 #include "RubberBand.h"
+#include "TypeToSelect.h"
 #include <Region.h>
 #include <StringForSize.h>
 #include "Pane.h"
@@ -204,11 +205,14 @@ public:
 class ContextClick : public BMessageFilter {
   BColumnListView *list;
   Pane *pane;
+  Listi::TypeToSelect &typeSelect;
 
 public:
-  ContextClick(BColumnListView *view, Pane *owner)
-      : BMessageFilter(B_MOUSE_DOWN), list(view), pane(owner) {}
+  ContextClick(BColumnListView *view, Pane *owner, Listi::TypeToSelect &typing)
+      : BMessageFilter(B_MOUSE_DOWN), list(view), pane(owner),
+        typeSelect(typing) {}
   filter_result Filter(BMessage *message, BHandler **) override {
+    typeSelect.Reset();
     if (!(message->GetInt32("buttons", 0) & B_SECONDARY_MOUSE_BUTTON))
       return B_DISPATCH_MESSAGE;
     BPoint point;
@@ -239,6 +243,8 @@ public:
   }
 };
 class DetailsList : public BColumnListView {
+  Listi::TypeToSelect typeSelect;
+
 public:
   Pane *pane;
   PaneModel *model;
@@ -262,7 +268,7 @@ public:
     SetSelectionMode(B_MULTIPLE_SELECTION_LIST);
     SetSortColumn(name, false, true);
     SetInvocationMessage(new BMessage(kInvoke));
-    ScrollView()->AddFilter(new ContextClick(this, pane));
+    ScrollView()->AddFilter(new ContextClick(this, pane, typeSelect));
     band = new RubberBand(ScrollView());
     band->ready = [this] { return !pane->IsScanning(); };
     band->path = [this] { return std::string(pane->Path()); };
@@ -402,6 +408,8 @@ public:
     BColumnListView::MessageReceived(message);
   }
   void MakeFocus(bool focus = true) override {
+    if (!focus)
+      typeSelect.Reset();
     BColumnListView::MakeFocus(focus);
     if (focus)
       pane->Activate();
@@ -424,6 +432,24 @@ public:
     }
   }
   void KeyDown(const char *bytes, int32 length) override {
+    int match;
+    if (length > 0 && !pane->IsScanning() &&
+        typeSelect.KeyDown(
+            {bytes, size_t(length)}, Listi::TypeSelectModifiers(*this),
+            system_time(), pane->Path(), CountRows(), model->Focused(),
+            [this](int index) {
+              const auto row = static_cast<FileRow *>(RowAt(index));
+              return row ? row->entry : nullptr;
+            },
+            match)) {
+      if (match >= 0) {
+        auto row = static_cast<FileRow *>(RowAt(match));
+        model->SetSelection({row->entry->path}, row->entry->path);
+        pane->SendSelection();
+        ScrollTo(row);
+      }
+      return;
+    }
     if (length == 1 && bytes[0] == B_TAB) {
       Window()->PostMessage(kSwitch);
       return;

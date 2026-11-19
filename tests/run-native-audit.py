@@ -20,7 +20,7 @@ archive-editor-faults archive-editor archive-move-faults archive-move
 archive-folder-operations transfer-races archive-ambiguity archive-volumes
 sevenzip-backend archive-passwords archive-jobs ar-writer arj-writer rar-store
 cab-writer lha-writer preferences-state message-store-faults main-window-routing application-services settings-window
-workspace-layout workspace-editor miller-columns navigation-history selection-model
+workspace-layout workspace-editor miller-columns navigation-history selection-model type-to-select
 pane-filter selection-summary selection-sort saved-places saved-searches file-search
 live-search flat-view file-clipboard clipboard-text-file file-drop image-convert
 inspector-content inspector-document inspector-editor inspector-photo

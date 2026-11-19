@@ -3,6 +3,7 @@
 #include "FileGrid.h"
 #include "PanelAppearance.h"
 #include "RubberBand.h"
+#include "TypeToSelect.h"
 #include "Pane.h"
 #include "PaneModel.h"
 #include "ImagePreview.h"
@@ -62,6 +63,7 @@ class GridView : public FileGrid {
   std::map<std::string, std::unique_ptr<BBitmap>> thumbnails;
   std::set<std::string> pending;
   RubberBand *band;
+  Listi::TypeToSelect typeSelect;
   std::set<std::string> paintedSelection;
   std::string paintedFocus;
   BPoint pressed;
@@ -172,6 +174,7 @@ public:
   bool CancelSelectionGesture() override { return band->Escape(); }
   void Reset() {
     band->Cancel();
+    typeSelect.Reset();
     paintedSelection.clear();
     paintedFocus.clear();
     pressedIndex = -1;
@@ -239,12 +242,15 @@ public:
     Update();
   }
   void MakeFocus(bool focus = true) override {
+    if (!focus)
+      typeSelect.Reset();
     BView::MakeFocus(focus);
     if (focus)
       pane->Activate();
     Invalidate();
   }
   void MouseDown(BPoint point) override {
+    typeSelect.Reset();
     MakeFocus();
     int index = int(point.y / cellHeight) * Columns() +
                 std::min(Columns() - 1,
@@ -306,6 +312,16 @@ public:
     dragging = deferredPick = false;
   }
   void KeyDown(const char *bytes, int32 length) override {
+    const auto &visible = model->Visible();
+    int match;
+    if (length > 0 && !pane->IsScanning() &&
+        typeSelect.KeyDown({bytes, size_t(length)},
+                           Listi::TypeSelectModifiers(*this), system_time(),
+                           pane->Path(), visible.size(), model->Focused(),
+                           [&](int index) { return visible[index]; }, match)) {
+      Pick(match, false);
+      return;
+    }
     if (length == 1) {
       int index = 0;
       auto focused = model->Focused();

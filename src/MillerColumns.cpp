@@ -4,6 +4,7 @@
 #include "FileDrop.h"
 #include "Pane.h"
 #include "PanelAppearance.h"
+#include "TypeToSelect.h"
 #include "VirtualFile.h"
 
 #include <Bitmap.h>
@@ -97,6 +98,8 @@ public:
   }
 
   void MakeFocus(bool focused = true) override {
+    if (!focused)
+      typeSelect.Reset();
     const bool changed = IsFocus() != focused;
     BView::MakeFocus(focused);
     if (changed && focused && Current())
@@ -175,6 +178,7 @@ public:
   }
 
   void MouseDown(BPoint point) override {
+    typeSelect.Reset();
     pane->Activate();
     const auto row = At(int(point.y / height));
     const auto message = Window()->CurrentMessage();
@@ -252,6 +256,15 @@ public:
   }
 
   void KeyDown(const char *bytes, int32 length) override {
+    int match;
+    if (length > 0 && Current() && !pane->IsScanning() &&
+        typeSelect.KeyDown({bytes, size_t(length)},
+                           Listi::TypeSelectModifiers(*this), system_time(),
+                           location.c_str(), Visible().size(), model->Focused(),
+                           [this](int index) { return At(index); }, match)) {
+      Pick(match, false);
+      return;
+    }
     if (length != 1 || !Current()) {
       BView::KeyDown(bytes, length);
       return;
@@ -322,6 +335,7 @@ public:
 private:
   Pane *pane;
   PaneModel *model;
+  Listi::TypeToSelect typeSelect;
   float height = 24;
   BPoint pressed;
   std::string pressedPath;
