@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstring>
 #include <set>
+#include <strings.h>
 #include <stdexcept>
 namespace Listi {
 namespace {
@@ -85,8 +86,13 @@ void OpenWithSession::Validate() {
     throw std::runtime_error(
         "The selected location changed. Select the file again.");
 }
-OpenTypeInfo OpenWithSession::Inspect() {
-  Validate();
+bool OpenTypeInfo::CanSetTypeDefault() const {
+  return BMimeType::IsValid(mime.c_str()) && mime.find('/') != std::string::npos &&
+         mime.find('*') == std::string::npos &&
+         strcasecmp(mime.c_str(), "application/octet-stream") != 0;
+}
+namespace {
+OpenTypeInfo ReadType(BFile &file, const entry_ref &ref) {
   OpenTypeInfo result;
   char type[B_MIME_TYPE_LENGTH] = {}, preferred[B_MIME_TYPE_LENGTH] = {};
   BNodeInfo info(&file);
@@ -105,9 +111,23 @@ OpenTypeInfo OpenWithSession::Inspect() {
   if (mime.GetShortDescription(description) == B_OK)
     result.description = description;
   if (info.GetPreferredApp(preferred) == B_OK)
-    result.preferred = preferred;
-  else if (mime.GetPreferredApp(preferred) == B_OK)
-    result.preferred = preferred;
+    result.filePreferred = preferred;
+  if (mime.GetPreferredApp(preferred) == B_OK)
+    result.typePreferred = preferred;
+  result.preferred = result.filePreferred.empty() ? result.typePreferred : result.filePreferred;
+  return result;
+}
+void ValidateApplication(const OpenApplication &app) {
+  const auto current = InspectApplication(app.path);
+  if (!Same(app.identity, current.identity) || app.signature != current.signature)
+    throw std::runtime_error(
+        "The application changed. Close this dialog and choose it again.");
+}
+}
+OpenTypeInfo OpenWithSession::Inspect() {
+  Validate();
+  OpenTypeInfo result = ReadType(file, ref);
+  BMimeType mime(result.mime.c_str());
   BMessage supporting;
   mime.GetSupportingApps(&supporting);
   std::set<std::string> paths;
@@ -129,6 +149,7 @@ OpenTypeInfo OpenWithSession::Inspect() {
     }
   };
   add(result.preferred.c_str());
+  add(result.typePreferred.c_str());
   const char *signature = nullptr;
   for (int32 i = 0;
        i < 512 && supporting.FindString("applications", i, &signature) == B_OK;
@@ -144,18 +165,32 @@ OpenTypeInfo OpenWithSession::Inspect() {
   return result;
 }
 void OpenWithSession::Launch(const OpenApplication &application) {
-  auto current = InspectApplication(application.path);
-  if (!Same(application.identity, current.identity) ||
-      application.signature != current.signature)
-    throw std::runtime_error(
-        "The application changed. Close this dialog and choose it again.");
+  ValidateApplication(application);
   entry_ref appRef;
-  Require(get_ref_for_path(current.path.c_str(), &appRef), "Find application");
+  Require(get_ref_for_path(application.path.c_str(), &appRef), "Find application");
   BMessage refs(B_REFS_RECEIVED);
   Require(refs.AddRef("refs", &ref), "Prepare file reference");
   Validate();
   status_t status = be_roster->Launch(&appRef, &refs);
   if (status != B_OK && status != B_ALREADY_RUNNING)
     Require(status, "Open file with application");
+}
+void OpenWithSession::SetTypeDefault(const OpenApplication &application,
+                                     const std::string &displayedType) {
+  ValidateApplication(application);
+  Validate();
+  const auto type = ReadType(file, ref);
+  if (type.mime != displayedType || !type.CanSetTypeDefault())
+    throw std::runtime_error(
+        "No specific matching file type. Close and reopen the dialog, or use Open once.");
+  // Haiku records a signature, not an executable path. Do not promise to
+  // select a particular installation if the roster would open a different one.
+  entry_ref resolved, chosen;
+  Require(get_ref_for_path(application.path.c_str(), &chosen), "Find selected application");
+  if (be_roster->FindApp(application.signature.c_str(), &resolved) != B_OK || resolved != chosen)
+    throw std::runtime_error(
+        "Haiku cannot resolve this application as selected. Use Open once, or choose a registered installation.");
+  BMimeType mime(type.mime.c_str());
+  Require(mime.SetPreferredApp(application.signature.c_str()), "Set Haiku file type default");
 }
 }

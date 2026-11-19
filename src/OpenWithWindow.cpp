@@ -15,16 +15,24 @@
 #include <thread>
 namespace {
 constexpr uint32 kLoaded = 'owld', kOpen = 'owop', kOther = 'owot',
-                 kChosen = 'owch', kReady = 'owrd', kCanQuit = 'owcq';
+                 kChosen = 'owch', kReady = 'owrd', kCanQuit = 'owcq',
+                 kSetDefault = 'owdf', kDefaultSaved = 'owds';
 std::mutex windowsMutex;
 std::vector<BMessenger> windows;
 struct AppRow : BRow {
   Listi::OpenApplication app;
-  AppRow(const Listi::OpenApplication &value, bool preferred) : app(value) {
-    SetField(new BStringField(
-                 (app.name + (preferred ? " (preferred)" : "")).c_str()),
-             0);
+  AppRow(const Listi::OpenApplication &value, const Listi::OpenTypeInfo &info) : app(value) {
+    SetField(new BStringField(""), 0);
+    UpdateLabel(info);
     SetField(new BStringField(app.path.c_str()), 1);
+  }
+  void UpdateLabel(const Listi::OpenTypeInfo &info) {
+    std::string label = app.name;
+    if (app.signature == info.typePreferred)
+      label += " (type default)";
+    if (app.signature == info.filePreferred)
+      label += " (file preference)";
+    static_cast<BStringField *>(GetField(0))->SetString(label.c_str());
   }
 };
 struct Delivery {
@@ -38,8 +46,8 @@ class OpenWithWindow : public BWindow {
   std::shared_ptr<Delivery> delivery = std::make_shared<Delivery>();
   std::shared_ptr<Listi::OpenWithSession> session;
   BColumnListView *apps;
-  BStringView *type, *status;
-  BButton *open, *other;
+  BStringView *type, *scope, *status;
+  BButton *open, *other, *setDefault;
   std::unique_ptr<BFilePanel> picker;
   bool busy = true;
   static BStringView *Line(const char *name, const char *text) {
@@ -57,6 +65,8 @@ class OpenWithWindow : public BWindow {
   void Controls() {
     open->SetEnabled(!busy && session && apps->CurrentSelection());
     other->SetEnabled(!busy && session);
+    setDefault->SetEnabled(!busy && session && apps->CurrentSelection() &&
+                           delivery->info.CanSetTypeDefault());
   }
   void Colors() {
     apps->SetColor(B_COLOR_BACKGROUND, ui_color(B_DOCUMENT_BACKGROUND_COLOR));
@@ -105,6 +115,8 @@ public:
     apps->SetTarget(this);
     apps->SetExplicitMinSize(BSize(300, 130));
     open = new BButton("Open once", new BMessage(kOpen));
+    setDefault = new BButton("Set type default", new BMessage(kSetDefault));
+    scope = Line("open scope", "");
     other = new BButton("Choose application...", new BMessage(kOther));
     auto close = new BButton("Close", new BMessage(B_QUIT_REQUESTED));
     status =
@@ -114,12 +126,11 @@ public:
         .Add(location)
         .Add(type)
         .Add(apps)
-        .Add(Line(
-            "open scope",
-            "This opening only. File types and default applications are unchanged."))
+        .Add(scope)
         .AddGroup(B_HORIZONTAL, 8)
         .Add(other)
         .AddGlue()
+        .Add(setDefault)
         .Add(open)
         .Add(close)
         .End()
@@ -178,13 +189,19 @@ public:
         text += " | " + info.description;
       type->SetText(text.c_str());
       type->SetToolTip(text.c_str());
+      const std::string explanation = !info.CanSetTypeDefault()
+          ? "Unknown or generic file type. Use Open once."
+          : "Set type default changes the Haiku default for " + info.mime +
+              (info.filePreferred.empty() ? "." : ". This file has a separate preference.");
+      scope->SetText(explanation.c_str());
+      scope->SetToolTip(explanation.c_str());
       for (auto &app : info.applications)
-        apps->AddRow(new AppRow(app, app.signature == info.preferred));
+        apps->AddRow(new AppRow(app, info));
       if (apps->CountRows())
         apps->AddToSelection(apps->RowAt(0));
       Status(
           apps->CountRows()
-              ? "Choose an application, then Open once."
+              ? "Select an application."
               : "No registered application found. Choose an application explicitly.");
       Controls();
       break;
@@ -239,13 +256,44 @@ public:
             delete old;
           }
         }
-        auto row = new AppRow(*delivery->chosen, delivery->chosen->signature ==
-                                                     delivery->info.preferred);
+        auto row = new AppRow(*delivery->chosen, delivery->info);
         apps->AddRow(row);
         apps->DeselectAll();
         apps->AddToSelection(row);
         delivery->chosen.reset();
-        Status("Application selected. Click Open once to send the file.");
+        Status("Application selected.");
+      }
+      Controls();
+      break;
+    }
+    case kSetDefault: {
+      auto row = static_cast<AppRow *>(apps->CurrentSelection());
+      if (busy || !session || !row || !delivery->info.CanSetTypeDefault())
+        break;
+      auto selected = row->app;
+      auto displayedType = delivery->info.mime;
+      Status("Saving file type default...");
+      Work(kDefaultSaved, [selected, displayedType](auto &d) {
+        d.session->SetTypeDefault(selected, displayedType);
+        d.info.typePreferred = selected.signature;
+      });
+      break;
+    }
+    case kDefaultSaved: {
+      busy = false;
+      std::lock_guard<std::mutex> lock(delivery->mutex);
+      const auto &info = delivery->info;
+      if (!delivery->error.empty()) {
+        Status(delivery->error);
+      } else {
+        for (int32 i = 0; i < apps->CountRows(); ++i) {
+          auto row = static_cast<AppRow *>(apps->RowAt(i));
+          row->UpdateLabel(info);
+          apps->UpdateRow(row);
+        }
+        Status(!info.filePreferred.empty() && info.filePreferred != info.typePreferred
+            ? "Type default saved. This file still uses its own preferred application."
+            : "Type default saved. Open once to open the selected file now.");
       }
       Controls();
       break;
