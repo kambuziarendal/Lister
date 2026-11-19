@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "MainWindow.h"
+#include "MainWindowMenu.h"
 #include "ApplicationServices.h"
 #include "TransferCommand.h"
 #include "ArchivePasswords.h"
@@ -48,10 +49,7 @@
 #include <GroupView.h>
 #include <Invoker.h>
 #include <LayoutBuilder.h>
-#include <MenuBar.h>
-#include <MenuItem.h>
 #include <Path.h>
-#include <PopUpMenu.h>
 #include <PropertyInfo.h>
 #include <SplitView.h>
 #include <TextControl.h>
@@ -77,9 +75,8 @@ void PostMainWindowNotice(const char *text) {
 }
 
 namespace {
-constexpr uint32 kResumeArchiveEdits = 'ared';
 constexpr uint32 kPreviewPattern = 'sppv', kApplyPattern = 'spap';
-constexpr uint32 kSplitChanged = 'swgt', kEditExternally = 'edex';
+constexpr uint32 kSplitChanged = 'swgt';
 
 class WorkspaceSplit : public BSplitView {
 public:
@@ -106,16 +103,13 @@ private:
 };
 constexpr uint32 kImageDropConvert = 'dcvi';
 constexpr uint32 kClipboardFileAccepted = 'ctac';
-constexpr uint32 kClipboardSaveImage = 'cpsg';
 constexpr uint32 kNamedEntryAccepted = 'nacc', kDropAccepted = 'dacc',
                  kConfirm = 'cfir',
-                 kNetwork = 'netw', kOpenSystem = 'osys',
                  kArchiveAddChosen = 'aadc', kArchiveEditAccepted = 'aeda';
 class MainWindow : public BWindow {
   Preferences prefs;
   BMessenger searchWindow;
   std::map<std::string, BMessenger> flatViews;
-  BMenuItem *flatViewItem;
   BMessenger bulkRenameWindow;
   std::shared_ptr<Listi::Shelf> shelf = std::make_shared<Listi::Shelf>();
   BMessenger shelfWindow;
@@ -208,14 +202,8 @@ class MainWindow : public BWindow {
       if (auto *page = host->Page(PanelPage::Search))
         send(BMessenger(page));
   }
-  BMenuItem *previewMenu, *einnMenu, *askrMenu, *tviskiptMenu, *smidjaMenu;
-  BMenuItem *quickViewMenu;
   bool quickView = false;
-  BMenuBar *menu;
-  BMenuItem *bankToggle;
-  BMenu *compactActions;
-  BMenu *fileView;
-  BMenuItem *saveClipboardTextItem, *saveClipboardImageItem, *undoBulkRenameItem;
+  MainWindowMenu *menu;
   BSplitView *split;
   BSplitView *terminalSplit;
   std::unique_ptr<Listi::TerminalDock> terminalDock;
@@ -561,7 +549,6 @@ class MainWindow : public BWindow {
     }
   }
   OperationQueue *queue;
-  static constexpr uint32 kToggleBank = 'atbk';
   BGroupView *bank = nullptr;
   BGridView *bankGrid = nullptr;
   std::vector<int32> renderedButtons;
@@ -612,9 +599,7 @@ class MainWindow : public BWindow {
       if (bankOverflow)
         SetBankVisible(false);
     }
-    bankToggle->SetEnabled(dual);
-    bankToggle->SetMarked(dual && prefs.ActionButtonsVisible());
-    compactActions->Superitem()->SetEnabled(bankOverflow);
+    menu->SetFunctionButtonState(dual, prefs.ActionButtonsVisible(), bankOverflow);
   }
   void RefreshBank() {
     ShowBank(prefs.ActionButtonsVisible() && !actionArea->Pending());
@@ -625,8 +610,7 @@ class MainWindow : public BWindow {
       return;
     bankColumns = columns;
     renderedButtons = prefs.actionButtons;
-    while (auto *item = compactActions->RemoveItem(int32(0)))
-      delete item;
+    menu->ClearFunctionActions();
     if (bankGrid) {
       bank->GroupLayout()->RemoveView(bankGrid);
       delete bankGrid;
@@ -637,7 +621,7 @@ class MainWindow : public BWindow {
       if (id < 0 || id >= WorkspaceLayout::ActionButtonCount)
         continue;
       const auto &action = kWorkspaceActions[id];
-      compactActions->AddItem(new BMenuItem(action.description, new BMessage(action.message)));
+      menu->AddFunctionAction(action);
       BString label(action.label);
       if (columns == 6 && action.message != kNone)
         label << " [" << action.shortcut << "]";
@@ -704,9 +688,7 @@ class MainWindow : public BWindow {
       else if (!showPreview && !preview->IsHidden(preview))
         preview->Hide();
     }
-    quickViewMenu->SetMarked(quickView || PanelPreviewVisible());
-    previewMenu->SetMarked(prefs.Preview() && !prefs.SinglePane());
-    previewMenu->SetEnabled(!quickView && !PanelPreviewVisible() && !prefs.SinglePane());
+    menu->SetPreview(prefs, quickView || PanelPreviewVisible());
     UpdatePreview();
   }
   void OpenPanelPreview(int pane) {
@@ -779,21 +761,8 @@ class MainWindow : public BWindow {
     SetSplitWeights();
     if (quickView)
       split->SetItemWeight(SplitIndex(2), prefs.splitWeights[1 - source], true);
-    for (auto action : {kCopy, kMove, kSame})
-      if (auto item = menu->FindItem(action))
-        item->SetEnabled(!prefs.SinglePane());
-    if (auto item = menu->FindItem(kSwitch)) {
-      const bool treeFocus = prefs.workspace == Workspace::askr;
-      item->SetLabel(treeFocus ? "Switch tree/list focus" : "Switch panel");
-      item->SetEnabled(!quickView && (treeFocus || !prefs.SinglePane()));
-    }
-    if (auto item = menu->FindItem(kFilter))
-      item->SetEnabled(!prefs.IsEinn());
+    menu->SetWorkspace(prefs, quickView);
     queue->SetCompact(prefs.SinglePane());
-    einnMenu->SetMarked(prefs.IsEinn());
-    askrMenu->SetMarked(prefs.workspace == Workspace::askr);
-    tviskiptMenu->SetMarked(prefs.workspace == Workspace::tviskipt);
-    smidjaMenu->SetMarked(prefs.IsSmidja());
     const bool showCommand = prefs.command && !prefs.SinglePane();
     if (commandVisible != showCommand) {
       commandVisible = showCommand;
@@ -994,177 +963,7 @@ public:
         prefs(p), savedNavigation(svc, saved, writable, queries, queriesWritable),
         service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
-    menu = new BMenuBar("menu");
-    auto files = new BMenu("Files");
-    struct Item {
-      const char *label;
-      uint32 action;
-      char key;
-    };
-    files->AddItem(new BMenuItem("Copy", new BMessage(kClipboardCopy), 'C'));
-    files->AddItem(new BMenuItem("Cut", new BMessage(kClipboardCut), 'X'));
-    files->AddItem(new BMenuItem("Paste into active folder",
-                                 new BMessage(kClipboardPaste), 'V'));
-    auto clipboard = new BMenu("Save clipboard as");
-    saveClipboardTextItem = new BMenuItem("Save clipboard text as file...",
-                                          new BMessage(kClipboardSaveText));
-    clipboard->AddItem(saveClipboardTextItem);
-    saveClipboardImageItem = new BMenuItem("Save clipboard image as PNG...",
-                                           new BMessage(kClipboardSaveImage));
-    clipboard->AddItem(saveClipboardImageItem);
-    files->AddItem(clipboard);
-    files->AddSeparatorItem();
-    Item commands[] = {{"View", kView, 0},
-                       {"Edit", kEdit, 'E'},
-                       {"Edit in external editor", kEditExternally, 0},
-                       {"Copy to other panel", kCopy, 0},
-                       {"Move to other panel", kMove, 'M'},
-                       {"Rename", kRename, 'R'},
-                       {"Bulk rename...", kBulkRename, 0},
-                       {"New folder", kMkdir, 'N'},
-                       {"Move to Trash", kDelete, 'D'},
-                       {"Restore from Trash", kRestore, 0},
-                       {"Delete permanently...", kPermanentDelete, 0}};
-    for (auto c : commands) {
-      if (c.action == kCopy || c.action == kView)
-        files->AddItem(new BMenuItem(c.label, new BMessage(c.action),
-                                     c.action == kCopy ? 'C' : 'V',
-                                     B_SHIFT_KEY));
-      else
-        files->AddItem(new BMenuItem(c.label, new BMessage(c.action), c.key));
-    }
-    undoBulkRenameItem = new BMenuItem("Undo last bulk rename", new BMessage(kUndoBulkRename));
-    undoBulkRenameItem->SetEnabled(false);
-    files->AddItem(undoBulkRenameItem);
-    files->AddItem(new BMenuItem("Open with...", new BMessage(kOpenWith), 'O',
-                                 B_SHIFT_KEY));
-    files->AddItem(new BMenuItem("Open with system application",
-                                 new BMessage(kOpenSystem)));
-    files->AddItem(new BMenuItem(
-        "Add to Shelf", new BMessage(Listi::kAddToShelf), 'Y', B_SHIFT_KEY));
-    auto more = new BMenu("More file actions");
-    more->AddItem(new BMenuItem("Duplicate...", new BMessage(kDuplicate), 'D',
-                                B_SHIFT_KEY));
-    more->AddItem(new BMenuItem("Create symbolic link...",
-                                new BMessage(kCreateLink), 'L', B_SHIFT_KEY));
-    files->AddItem(more);
-    auto archives = new BMenu("Archives");
-    archives->AddItem(new BMenuItem(
-        "Create archive...", new BMessage(kCreateArchive), 'B', B_SHIFT_KEY));
-    archives->AddItem(new BMenuItem("Extract to folder...",
-                                    new BMessage(kExtractArchive), 'E',
-                                    B_SHIFT_KEY));
-    archives->AddItem(new BMenuItem("Resume archive edits...",
-                                    new BMessage(kResumeArchiveEdits)));
-    archives->AddItem(
-        new BMenuItem("Add or replace files...", new BMessage(kAddArchive)));
-    archives->AddItem(new BMenuItem("Remove selected entries...",
-                                    new BMessage(kRemoveArchive)));
-    archives->AddSeparatorItem();
-    archives->AddItem(
-        new BMenuItem("Forget archive passwords", new BMessage('apfg')));
-    files->AddItem(archives);
-    files->AddItem(new BMenuItem("Properties...", new BMessage(kProperties),
-                                 'I', B_SHIFT_KEY));
-    files->AddSeparatorItem();
-    files->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
-    menu->AddItem(files);
-    auto select = new BMenu("Select");
-    select->AddItem(new BMenuItem("All", new BMessage(kAll), 'A'));
-    select->AddItem(
-        new BMenuItem("None", new BMessage(kNone), 'A', B_SHIFT_KEY));
-    select->AddItem(new BMenuItem("Invert", new BMessage(kInvert), 'I'));
-    select->AddItem(new BMenuItem("Same file type", new BMessage(kSelectType)));
-    select->AddItem(new BMenuItem("By pattern…", new BMessage(kSelectPattern)));
-    menu->AddItem(select);
-    auto viewMenu = new BMenu("View");
-    auto workspace = new BMenu("Workspace");
-    auto einnMessage = new BMessage(kWorkspace);
-    einnMessage->AddInt32("workspace", int32(Workspace::einn));
-    auto askrMessage = new BMessage(kWorkspace);
-    askrMessage->AddInt32("workspace", int32(Workspace::askr));
-    auto smidjaMessage = new BMessage(kWorkspace);
-    smidjaMessage->AddInt32("workspace", int32(Workspace::smidja));
-    askrMenu = new BMenuItem(WorkspaceMenuLabel(Workspace::askr), askrMessage);
-    einnMenu = new BMenuItem(WorkspaceMenuLabel(Workspace::einn), einnMessage);
-    tviskiptMenu = new BMenuItem(WorkspaceMenuLabel(Workspace::tviskipt),
-                                 new BMessage(kWorkspace));
-    smidjaMenu =
-        new BMenuItem(WorkspaceMenuLabel(Workspace::smidja), smidjaMessage);
-    workspace->AddItem(einnMenu);
-    workspace->AddItem(askrMenu);
-    workspace->AddItem(tviskiptMenu);
-    workspace->AddItem(smidjaMenu);
-    workspace->AddSeparatorItem();
-    workspace->AddItem(new BMenuItem("Customize workspace…",
-                                      new BMessage(kOpenWorkspaceEditor)));
-    viewMenu->AddItem(workspace);
-    fileView = new BMenu("File view");
-    for (int32 i = 0; i < ViewModeCount; ++i) {
-      auto choice = new BMessage(kGridMode);
-      choice->AddInt32("mode", i);
-      fileView->AddItem(new BMenuItem(ViewModeLabel(i), choice));
-    }
-    auto resetView = new BMessage(kGridMode);
-    resetView->AddInt32("mode", -1);
-    fileView->AddSeparatorItem();
-    fileView->AddItem(new BMenuItem("Use workspace default", resetView));
-    fileView->AddSeparatorItem();
-    flatViewItem =
-        new BMenuItem("Flat View…", new BMessage(Listi::kFlatView));
-    fileView->AddItem(flatViewItem);
-    viewMenu->AddItem(fileView);
-    bankToggle = new BMenuItem("Show function buttons", new BMessage(kToggleBank));
-    viewMenu->AddItem(bankToggle);
-    compactActions = new BMenu("Function actions");
-    viewMenu->AddItem(compactActions);
-    menu->AddItem(viewMenu);
-    auto view = new BMenu("Listi");
-    view->AddItem(new BMenuItem("Switch panel", new BMessage(kSwitch), 'S'));
-    view->AddItem(new BMenuItem("Same folder in other panel",
-                                new BMessage(kSame), 'S', B_SHIFT_KEY));
-    previewMenu =
-        new BMenuItem("Inspector panel", new BMessage(kPreviewToggle), 'P');
-    view->AddItem(previewMenu);
-    quickViewMenu = new BMenuItem("Quick view", new BMessage(kQuickView), 'P', B_SHIFT_KEY);
-    view->AddItem(quickViewMenu);
-    view->AddItem(
-        new BMenuItem("Connect to server...", new BMessage(kNetwork), 'K'));
-    view->AddItem(new BMenuItem("Refresh", new BMessage(kRefresh), 'L'));
-    view->AddItem(new BMenuItem("Filter names", new BMessage(kFilter), 'F'));
-    view->AddItem(new BMenuItem("Find files...", new BMessage(kSearch), 'F',
-                                B_SHIFT_KEY));
-    view->AddItem(
-        new BMenuItem("Compare folders...", new BMessage(kCompareFolders)));
-    auto terminalMenu = new BMenu("Terminal here");
-    terminalMenu->AddItem(
-        new BMenuItem("Active lister", new BMessage(kTerminal), 'T'));
-    terminalMenu->AddItem(
-        new BMenuItem("Left CLI", new BMessage(Listi::kLeftCLI)));
-    terminalMenu->AddItem(
-        new BMenuItem("Right CLI", new BMessage(Listi::kRightCLI)));
-    terminalMenu->AddSeparatorItem();
-    auto dockMenu = new BMenu("Dock position");
-    dockMenu->AddItem(new BMenuItem(
-        "Below file panels", new BMessage(Listi::kTerminalBelow)));
-    dockMenu->AddItem(new BMenuItem(
-        "Right of file panels", new BMessage(Listi::kTerminalBeside)));
-    dockMenu->AddItem(new BMenuItem(
-        "Above file panels", new BMessage(Listi::kTerminalAbove)));
-    dockMenu->AddItem(new BMenuItem(
-        "Left of file panels", new BMessage(Listi::kTerminalLeft)));
-    terminalMenu->AddItem(dockMenu);
-    terminalMenu->AddItem(new BMenuItem(
-        "Detached Listi CLI", new BMessage(Listi::kShowFloatingTerminal),
-        'T', B_SHIFT_KEY));
-    terminalMenu->AddItem(new BMenuItem(
-        "External terminal window", new BMessage(Listi::kTerminalWindow)));
-    view->AddItem(terminalMenu);
-    view->AddItem(new BMenuItem("Operations", new BMessage(kShowJobs), 'O'));
-    view->AddItem(new BMenuItem("Show Shelf", new BMessage(Listi::kShowShelf)));
-    view->AddSeparatorItem();
-    view->AddItem(new BMenuItem("Settings…", new BMessage(kPreferences), ','));
-    menu->AddItem(view);
+    menu = new MainWindowMenu();
     panes[0] = new Pane(0, prefs, shelf);
     panes[1] = new Pane(1, prefs, shelf);
     split = new WorkspaceSplit();
@@ -1299,15 +1098,14 @@ public:
   }
   void MenusBeginning() override {
     BWindow::MenusBeginning();
-    for (int32 i = 0; i < ViewModeCount; ++i)
-      fileView->ItemAt(i)->SetMarked(i == panes[source]->CurrentView());
     const char *path = panes[source]->Path();
-    flatViewItem->SetEnabled(path[0] == '/' && !Listi::IsVirtual(path));
-    const bool canSave = !actionArea->Pending() &&
-                         Listi::CanSaveClipboardIn(panes[source]->Path());
-    saveClipboardTextItem->SetEnabled(canSave);
-    saveClipboardImageItem->SetEnabled(canSave);
-    undoBulkRenameItem->SetEnabled(!actionArea->Pending() && queue->CanUndoBulkRename());
+    const bool canOpenFlatView = path[0] == '/' && !Listi::IsVirtual(path);
+    const bool canSaveClipboard =
+        !actionArea->Pending() && Listi::CanSaveClipboardIn(path);
+    const bool canUndoBulkRename =
+        !actionArea->Pending() && queue->CanUndoBulkRename();
+    menu->SetFileActions(panes[source]->CurrentView(), canOpenFlatView,
+                         canSaveClipboard, canUndoBulkRename);
   }
 
   bool QuitRequested() override {

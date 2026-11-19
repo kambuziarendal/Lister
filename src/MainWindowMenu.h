@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: MIT
+#pragma once
+#include <MenuBar.h>
+
+struct WorkspaceAction;
+struct WorkspaceLayout;
+
+constexpr uint32 kResumeArchiveEdits = 'ared', kEditExternally = 'edex',
+                 kClipboardSaveImage = 'cpsg', kNetwork = 'netw',
+                 kOpenSystem = 'osys', kToggleBank = 'atbk';
+
+class MainWindowMenu : public BMenuBar {
+public:
+  MainWindowMenu();
+
+  void SetWorkspace(const WorkspaceLayout &layout, bool quickView);
+  void SetPreview(const WorkspaceLayout &layout, bool showingQuickView);
+  void SetFileActions(int32 viewMode, bool canOpenFlatView,
+                      bool canSaveClipboard, bool canUndoBulkRename);
+  void SetFunctionButtonState(bool available, bool requested, bool overflow);
+  void ClearFunctionActions();
+  void AddFunctionAction(const WorkspaceAction &action);
+
+private:
+  void AddFilesMenu();
+  void AddSelectMenu();
+  void AddViewMenu();
+  void AddListiMenu();
+
+  BMenuItem *saveClipboardTextItem, *saveClipboardImageItem, *undoBulkRenameItem;
+  BMenuItem *einnMenu, *askrMenu, *tviskiptMenu, *smidjaMenu;
+  BMenuItem *previewMenu, *quickViewMenu, *flatViewItem, *bankToggle;
+  BMenu *fileView, *compactActions;
+};
