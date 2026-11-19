@@ -50,6 +50,33 @@ int main() {
   merged=Listi::Run(move,replace);
   check(merged.errors.empty() && merged.completed==1 && access(source.c_str(),F_OK)!=0,
         "matching folder attributes allow a merged move");
+  // BFS can retain a zero-length typed attribute after truncating an
+  // inode-backed attribute. A zero-byte WriteAttr alone may do nothing.
+  const std::string tagged = base + "/empty-tagged";
+  const std::string original = dest + "/empty-tagged";
+  { std::ofstream(tagged) << "replacement"; }
+  { std::ofstream(original) << "original"; }
+  BNode taggedNode(tagged.c_str());
+  constexpr const char *emptyName = "Listi:empty";
+  check(taggedNode.WriteAttr(emptyName, B_RAW_TYPE, 0, large.data(),
+                            large.size()) == ssize_t(large.size()),
+        "create file-backed typed attribute");
+  int truncated = fs_open_attr(tagged.c_str(), emptyName, B_RAW_TYPE,
+                               O_WRONLY | O_TRUNC | O_CREAT);
+  check(truncated >= 0 && fs_close_attr(truncated) == 0 &&
+            taggedNode.GetAttrInfo(emptyName, &info) == B_OK &&
+            info.type == B_RAW_TYPE && info.size == 0,
+        "truncation leaves a present zero-byte typed BFS attribute");
+
+  Listi::Job overwrite{Listi::Action::Copy, {tagged}, dest};
+  auto refused = Listi::Run(overwrite, replace);
+  std::string stored;
+  std::ifstream(original) >> stored;
+  check(refused.completed == 0 && !refused.errors.empty() &&
+            refused.errors.front().find(emptyName) != std::string::npos &&
+            stored == "original" && taggedNode.GetAttrInfo(emptyName, &info) == B_OK &&
+            info.size == 0 && info.type == B_RAW_TYPE,
+        "refused empty attribute leaves original destination and source metadata intact");
   Listi::Job cleanup;cleanup.action=Listi::Action::Delete;cleanup.sources={base};
   auto removed=Listi::Run(cleanup,{});
   check(removed.errors.empty(),"owned fixture cleaned");

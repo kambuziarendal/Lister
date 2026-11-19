@@ -227,6 +227,14 @@ confirm the state of every file. Concurrent external edits are not prevented.
 waiting job, or choose **Cancel all** to stop the running job and discard waiting
 jobs. None of these actions undoes work already committed.
 
+If Listi stops unexpectedly during a local copy or move, compare the source
+and destination before retrying. A hidden `.listi-copy-*` sibling in the
+destination folder can be an unfinished file, not a backup. Other entries
+may already be at their final names. Do not delete a source, or restore or
+delete a staging file, based on its name alone. Verify the file contents and
+any BFS attributes you need. Local copies report a zero-length typed
+attribute as an error rather than silently omitting it.
+
 Trash and permanent deletion are separate actions. Trash restore does not
 overwrite an existing file and requires the original parent folder to exist.
 Reinstalling an older application package does not undo file operations.
