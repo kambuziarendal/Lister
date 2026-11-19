@@ -6,6 +6,8 @@
 #include <List.h>
 #include <cassert>
 #include <cctype>
+#include <fstream>
+#include <unistd.h>
 
 int main() {
   BApplication app("application/x-vnd.Listi-MainWindowRoutingTest");
@@ -122,6 +124,35 @@ int main() {
     window->MessageReceived(&close);
     assert(!left->Page(Page::Search));
   }
+  // The Inspector's Edit action must not point at a selection on a hidden Files tab.
+  char temp[] = "/tmp/Listi-inspector-routing-XXXXXX";
+  assert(mkdtemp(temp));
+  const std::string file = std::string(temp) + "/visible.txt";
+  assert(std::ofstream(file) << "visible selection");
+  auto *pane = static_cast<Pane *>(original);
+  pane->Navigate(temp);
+  window->Show();
+  assert(window->Lock());
+  auto waitFor = [&](auto condition) {
+    for (int i = 0; i < 200 && !condition(); ++i) {
+      window->Unlock();
+      snooze(25000);
+      assert(window->Lock());
+    }
+    assert(condition());
+  };
+  waitFor([&] { return !pane->IsScanning(); });
+  assert(pane->MatchPattern("visible.txt", true) == 1);
+  send(kQuickView);
+  auto *inspect = right->Page(Page::Preview);
+  auto *edit = inspect ? inspect->FindView("Edit") : nullptr;
+  assert(edit);
+  waitFor([&] { return !edit->IsHidden(); });
+  send(kSearch);
+  assert(left->Current() == Page::Search && edit->IsHidden());
+  select(Page::Files);
+  waitFor([&] { return !edit->IsHidden(); });
+  assert(unlink(file.c_str()) == 0 && rmdir(temp) == 0);
   window->Quit();
   puts("Main window: menu shortcuts and workspace routing OK");
 }

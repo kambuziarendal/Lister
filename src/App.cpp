@@ -241,19 +241,18 @@ class MainWindow : public BWindow {
     service.SendMessage(&saved);
   }
   void UpdatePreview() {
+    auto visibleFile = [&](int pane) -> std::string {
+      if (hosts[pane]->Current() != PanelPage::Files)
+        return {};
+      auto selection = panes[pane]->Selected();
+      return selection.size() == 1 ? selection.front() : "";
+    };
     for (int pane = 0; pane < 2; ++pane) {
-      if (auto *inspector = static_cast<ImagePreview *>(hosts[pane]->Page(PanelPage::Preview))) {
-        const auto selection = panes[1 - pane]->Selected();
-        inspector->ShowFile(hosts[pane]->Current() == PanelPage::Preview &&
-                            selection.size() == 1 ? selection.front() : "");
-      }
+      if (auto *inspector = static_cast<ImagePreview *>(hosts[pane]->Page(PanelPage::Preview)))
+        inspector->ShowFile(hosts[pane]->Current() == PanelPage::Preview
+                                ? visibleFile(1 - pane) : "");
     }
-    if (!previewVisible) {
-      preview->ShowFile("");
-      return;
-    }
-    auto selected = panes[source]->Selected();
-    preview->ShowFile(selected.size() == 1 ? selected[0] : "");
+    preview->ShowFile(previewVisible ? visibleFile(source) : "");
   }
   InlineAction *actionArea;
   void CloseAction() {
