@@ -729,6 +729,12 @@ class MainWindow : public BWindow {
     else
       hosts[pane]->Open(PanelPage::Preview, new ImagePreview());
   }
+  void ClosePanelPreview(int pane) {
+    hosts[pane]->Close(PanelPage::Preview);
+    ActivatePanel(1 - pane);
+    ApplyPreviewVisibility();
+    FocusPage(source);
+  }
   void SetQuickView(bool enabled) {
     if (quickView != enabled) {
       quickView = enabled;
@@ -1539,17 +1545,14 @@ public:
         break;
       if (actionArea->Pending())
         CloseAction();
+      else if (hosts[source]->Current() == PanelPage::Preview)
+        ClosePanelPreview(source);
       else if (hosts[source]->Current() != PanelPage::Files) {
-        if (hosts[source]->Current() == PanelPage::Preview)
-          hosts[source]->Close(PanelPage::Preview);
-        else
-          hosts[source]->Select(PanelPage::Files);
+        hosts[source]->Select(PanelPage::Files);
         ApplyPreviewVisibility();
         FocusPage(source);
       } else if (PanelPreviewVisible()) {
-        hosts[1 - source]->Close(PanelPage::Preview);
-        ApplyPreviewVisibility();
-        FocusPage(source);
+        ClosePanelPreview(1 - source);
       } else if (quickView) {
         SetQuickView(false);
       } else
@@ -1560,9 +1563,13 @@ public:
       const int32 pane = m->GetInt32("pane", -1);
       if (!prefs.IsSmidja() || pane < 0 || pane > 1)
         break;
-      if (m->what == Listi::kClosePanelPage)
+      if (m->what == Listi::kClosePanelPage) {
+        if (hosts[pane]->Current() == PanelPage::Preview) {
+          ClosePanelPreview(pane);
+          break;
+        }
         hosts[pane]->Close(hosts[pane]->Current());
-      else {
+      } else {
         const int32 page = m->GetInt32("page", -1);
         if (page < 0 || page > 2 || !hosts[pane]->Page(PanelPage(page)))
           break;
@@ -1578,12 +1585,13 @@ public:
         break;
       if (prefs.IsSmidja()) {
         int pane = hosts[source]->Current() == PanelPage::Preview ? source : 1 - source;
-        if (hosts[pane]->Current() == PanelPage::Preview)
-          hosts[pane]->Close(PanelPage::Preview);
-        else
+        if (hosts[pane]->Current() == PanelPage::Preview) {
+          ClosePanelPreview(pane);
+        } else {
           OpenPanelPreview(pane);
-        ApplyPreviewVisibility();
-        FocusPage(source);
+          ApplyPreviewVisibility();
+          FocusPage(source);
+        }
         break;
       }
       SetQuickView(!quickView);

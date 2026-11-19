@@ -143,6 +143,10 @@ int main() {
   };
   waitFor([&] { return !pane->IsScanning(); });
   assert(pane->MatchPattern("visible.txt", true) == 1);
+  // Haiku can resolve /tmp through an alias when loading the folder.
+  const auto selected = pane->Selected();
+  assert(selected == std::vector<std::string>{
+                         std::string(pane->Path()) + "/visible.txt"});
   select(Page::Files);
   send(kPreviewOtherPanel);
   auto *inspect = right->Page(Page::Preview);
@@ -160,10 +164,26 @@ int main() {
   BMessage focusPreview(Listi::kPanelPage);
   focusPreview.AddInt32("pane", 1);
   focusPreview.AddInt32("page", static_cast<int32>(Page::Preview));
+  auto verifyClose = [&] {
+    assert(!right->Page(Page::Preview) && right->Current() == Page::Files);
+    assert(pane->Selected() == selected);
+    auto *focus = window->CurrentFocus();
+    while (focus && focus != pane)
+      focus = focus->Parent();
+    assert(focus == pane);
+  };
+  for (uint32 closeCommand : {uint32(kInlineCancel), kQuickView}) {
+    window->MessageReceived(&focusPreview);
+    send(closeCommand);
+    verifyClose();
+    send(kPreviewOtherPanel);
+    assert(right->Current() == Page::Preview);
+  }
+  BMessage closePreview(Listi::kClosePanelPage);
+  closePreview.AddInt32("pane", 1);
   window->MessageReceived(&focusPreview);
-  send(kInlineCancel);
-  assert(!right->Page(Page::Preview) && right->Current() == Page::Files);
-  assert(pane->Selected() == std::vector<std::string>{file});
+  window->MessageReceived(&closePreview);
+  verifyClose();
 
   select(Page::Files);
   workspace(Workspace::einn);
@@ -176,7 +196,7 @@ int main() {
   send(kCloseQuickView);
   send(kCloseQuickView);
   assert(!item(kQuickView)->IsMarked());
-  assert(pane->Selected() == std::vector<std::string>{file});
+  assert(pane->Selected() == selected);
   assert(unlink(file.c_str()) == 0 && rmdir(temp) == 0);
   window->Quit();
   puts("Main window: menu shortcuts and workspace routing OK");
