@@ -327,7 +327,9 @@ public:
       if (m->FindInt64("total", &total) == B_OK)
         bar->SetMaxValue(float(std::max<int64>(1, total)));
       if (m->FindInt64("bytes", &bytes) == B_OK) {
-        bar->Update(float(bytes) - bar->CurrentValue());
+        // Bytes can reach the estimate before publication or source cleanup.
+        const float progress = std::min(float(bytes), 0.99f * bar->MaxValue());
+        bar->Update(progress - bar->CurrentValue());
         BString s;
         s << bytes << " bytes processed";
         bar->SetToolTip(s);

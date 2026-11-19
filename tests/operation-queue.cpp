@@ -8,6 +8,7 @@
 #include <Button.h>
 #include <Window.h>
 #include <StringView.h>
+#include <StatusBar.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <Menu.h>
@@ -229,6 +230,18 @@ int main(){
            !window->queue->Answer(Decision::Abort,
                                   oldConflict.GetInt64("request", 0)),
        "delayed controls, progress and choices cannot affect the newer job");
+ auto progress = dynamic_cast<BStatusBar *>(window->FindView("progress"));
+ BMessage estimate(kJobUpdate);
+ estimate.AddInt64("operation", batchActive);
+ estimate.AddInt64("total", 100);
+ window->queue->PresentEvent(estimate);
+ BMessage transferred(kJobUpdate);
+ transferred.AddInt64("operation", batchActive);
+ transferred.AddInt64("bytes", 110);
+ window->queue->PresentEvent(transferred);
+ check(progress && progress->CurrentValue() > 0 &&
+           progress->CurrentValue() < progress->MaxValue(),
+       "transferring all estimated bytes does not imply the job committed");
  BMessage pauseBatch(*pause->Message());
  BMessage cancelBatch(*cancelAll->Message());
  window->queue->View()->MessageReceived(&pauseBatch);
