@@ -1779,6 +1779,22 @@ public:
           panes[owner]->MessageReceived(&restore);
           break;
         }
+        if (action == kAddShortcut) {
+          if (!options.addShortcut)
+            break;
+          // A shortcut stores an address, not a clipboard reference. Volume
+          // roots and other browsable folders need no clipboard eligibility.
+          struct stat shortcut {};
+          if (local && (stat(selected.front().c_str(), &shortcut) ||
+                        !S_ISDIR(shortcut.st_mode)))
+            throw std::runtime_error("The selected folder is unavailable.");
+          BMessage request(kPlaceAction);
+          request.AddInt32("action", 0);
+          request.AddString("path", selected.front().c_str());
+          request.AddInt32("pane", owner);
+          MessageReceived(&request);
+          break;
+        }
         if (choice.folder) {
           struct stat folderAfter {};
           if (folderLocal && (stat(folder.c_str(), &folderAfter) ||
@@ -1808,16 +1824,6 @@ public:
           if (fileSnapshotError)
             std::rethrow_exception(fileSnapshotError);
           Listi::ReadFileClipboard(snapshot);
-        }
-        if (action == kAddShortcut) {
-          if (!options.addShortcut)
-            break;
-          BMessage request(kPlaceAction);
-          request.AddInt32("action", 0);
-          request.AddString("path", selected.front().c_str());
-          request.AddInt32("pane", owner);
-          MessageReceived(&request);
-          break;
         }
         if (action == kCopy || action == kMove || action == kCreateLink) {
           struct stat after {};
