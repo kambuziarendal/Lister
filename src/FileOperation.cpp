@@ -495,8 +495,12 @@ struct Runner {
         Fail(dst);
       Tick(src);
       Guard();
-      if (complete)
+      if (complete) {
+        struct stat current;
+        if (lstat(src.c_str(), &current) || !SameEntry(st, current))
+          throw std::runtime_error(src + ": source folder changed during copy");
         Done(src, dst, expected);
+      }
       return complete;
     }
     if (!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode))

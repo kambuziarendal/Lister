@@ -183,6 +183,21 @@ int main() {
             fs::exists(saved) && fs::exists(mapped),
         "replacement of empty destination at final progress keeps the source directory");
 
+  const auto growing = root / "download", copied = out / "download";
+  fs::create_directory(growing);
+  std::ofstream(growing / "first") << "first";
+  Hooks addAfterScan;
+  addAfterScan.progress = [&](const std::string &path, uint64_t) {
+    if (path == growing)
+      std::ofstream(growing / "second") << "just arrived";
+  };
+  result = Run({Action::Copy, {growing.string()}, out.string()}, addAfterScan);
+  Check(!result.errors.empty() && !result.completed &&
+            Has(result, growing, copied, "partial") &&
+            Read(growing / "second") == "just arrived" &&
+            Read(copied / "first") == "first" && !fs::exists(copied / "second"),
+        "folder changed after enumeration is not reported as completely copied");
+
   const auto longName = std::string(250, 'a');
   std::ofstream(root / longName) << "long name";
   result = Run({Action::Copy, {(root / longName).string()}, out.string()}, {});
