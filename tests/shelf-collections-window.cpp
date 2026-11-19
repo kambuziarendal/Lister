@@ -87,16 +87,47 @@ bool Click(BWindow *window, const char *label) {
   });
 }
 
-bool Menu(BWindow *window, const char *label, const char *named = nullptr) {
+BMenu *ShelfMenu(BWindow &window, const char *name) {
+  auto *bar = dynamic_cast<BMenuBar *>(window.FindView("shelf menu"));
+  auto *item = bar ? bar->FindItem(name) : nullptr;
+  return item ? item->Submenu() : nullptr;
+}
+
+bool Menu(BWindow *window, const char *label, const char *named = nullptr,
+          const char *menuName = "Collections") {
   return InWindow(window, [&](BWindow &locked) {
-    auto *bar = dynamic_cast<BMenuBar *>(locked.FindView("shelf menu"));
-    auto *menu = bar ? bar->SubmenuAt(0) : nullptr;
+    auto *menu = ShelfMenu(locked, menuName);
     auto *item = menu ? menu->FindItem(label) : nullptr;
     if (named) {
       menu = item ? item->Submenu() : nullptr;
       item = menu ? menu->FindItem(named) : nullptr;
     }
     return item && item->IsEnabled() && static_cast<BInvoker *>(item)->Invoke() == B_OK;
+  });
+}
+
+bool NarrowShelf(BWindow *window) {
+  return InWindow(window, [](BWindow &locked) {
+    if (locked.Bounds().Width() > 330)
+      return false;
+    for (const auto *label : {"Refresh", "Relink...", "Remove from Shelf"}) {
+      BButton *button = nullptr;
+      for (int32 i = 0; i < locked.CountChildren() && !button; ++i)
+        button = Button(*locked.ChildAt(i), label);
+      if (!button || button->IsHidden() || !button->Bounds().IsValid() ||
+          !locked.Frame().Contains(button->ConvertToScreen(button->Bounds())))
+        return false;
+    }
+    auto *actions = ShelfMenu(locked, "Actions");
+    if (!actions)
+      return false;
+    for (const auto *label : {"Copy all...", "Move all...", "Create archive...",
+                              "Clear Shelf"}) {
+      auto *item = actions->FindItem(label);
+      if (!item || !item->IsEnabled())
+        return false;
+    }
+    return true;
   });
 }
 
@@ -205,6 +236,12 @@ int main() {
     auto *window = app.WindowAt(0);
     Check(window && messenger.IsValid(), "open actual Shelf window");
 
+    Check(InWindow(window, [](BWindow &locked) {
+            locked.ResizeTo(280, locked.Bounds().Height());
+            return true;
+          }) && Until([&] { return NarrowShelf(window); }),
+          "narrow Shelf fits direct controls and keeps every action available");
+
     Check(Menu(window, "Save current Shelf...") &&
               Until([&] { return NamePrompt(window, "Cancelled", "Cancel"); }) &&
               Until([&] { return PromptClosed(window); }) && !fs::exists(store),
@@ -231,9 +268,9 @@ int main() {
               Until([&] { return NoAlerts(app); }) &&
               shelf->Snapshot().entries[0].path == selected.string(),
           "declining load leaves the working Shelf alone");
-    Check(Click(window, "Clear Shelf") &&
+    Check(Menu(window, "Clear Shelf", nullptr, "Actions") &&
               Until([&] { return shelf->Snapshot().entries.empty(); }),
-          "clear current Shelf through its button");
+          "clear current Shelf through its Actions menu");
     fs::create_directory(movedFolder);
     const auto moved = movedFolder / "renamed";
     fs::rename(original, moved);

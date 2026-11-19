@@ -134,11 +134,11 @@ class ShelfWindow : public BWindow {
   BMessenger owner;
   std::shared_ptr<Shelf> shelf;
   ShelfList *rows;
-  BButton *remove, *clear, *copy, *move, *archive, *relink;
+  BButton *remove, *relink;
   BStringView *status;
   InlineAction *question;
   BMenu *loadCollections, *deleteCollections;
-  BMenuItem *saveCollection;
+  BMenuItem *clear, *copy, *move, *archive, *saveCollection;
   const std::string collectionsFile;
   std::map<std::string, ShelfRow *> displayed;
   std::unique_ptr<BFilePanel> picker;
@@ -468,6 +468,19 @@ public:
         owner(receiver), shelf(std::move(collection)),
         collectionsFile(settingsFile.empty() ? CollectionsFile() : settingsFile) {
     auto menu = new BMenuBar("shelf menu");
+    auto actions = new BMenu("Actions");
+    copy = new BMenuItem("Copy all...", new BMessage(kPickCopy));
+    move = new BMenuItem("Move all...", new BMessage(kPickMove));
+    archive = new BMenuItem("Create archive...", new BMessage(kCreateArchive));
+    clear = new BMenuItem("Clear Shelf", new BMessage(kClear));
+    for (auto item : {copy, move, archive}) {
+      actions->AddItem(item);
+      item->SetTarget(this);
+    }
+    actions->AddSeparatorItem();
+    actions->AddItem(clear);
+    clear->SetTarget(this);
+    menu->AddItem(actions);
     auto collections = new BMenu("Collections");
     saveCollection = new BMenuItem("Save current Shelf...",
                                    new BMessage(kSaveCollection));
@@ -488,7 +501,7 @@ public:
         1);
     rows->AddColumn(new BStringColumn("Status", 96, 80, 200, B_TRUNCATE_END),
                     2);
-    rows->SetExplicitMinSize(BSize(365, 130));
+    rows->SetExplicitMinSize(BSize(300, 130));
     rows->SetSelectionMode(B_MULTIPLE_SELECTION_LIST);
     rows->SetSelectionMessage(new BMessage(kSelect));
     rows->SetTarget(this);
@@ -498,12 +511,6 @@ public:
     status->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     status->SetTruncation(B_TRUNCATE_END);
     remove = new BButton("Remove from Shelf", new BMessage(kRemove));
-    clear = new BButton("Clear Shelf", new BMessage(kClear));
-    clear->SetToolTip(
-        "Remove all references without changing the original files.");
-    copy = new BButton("Copy all...", new BMessage(kPickCopy));
-    move = new BButton("Move all...", new BMessage(kPickMove));
-    archive = new BButton("Create archive...", new BMessage(kCreateArchive));
     relink = new BButton("Relink...", new BMessage(kPickRelink));
     question = new InlineAction(BMessenger(this));
     question->SetName("shelf collection prompt");
@@ -521,9 +528,6 @@ public:
         .Add(remove)
         .Add(clear)
         .AddGlue()
-        .Add(copy)
-        .Add(move)
-        .Add(archive)
         .End()
         .End();
     AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
