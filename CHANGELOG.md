@@ -2,6 +2,14 @@
 
 ## 0.36.1 (unreleased)
 
+- In Smiðja, switching a file panel to Search no longer leaves a hidden
+  file available for editing in Inspector or Quick view.
+- Copy and merged moves preserve attributes and timestamps on symbolic links,
+  including links whose target no longer exists. Copy reports an incomplete
+  folder if its entries change during enumeration.
+- Restarting an archive edit keeps the previous draft recoverable until the
+  replacement session is ready, including after an interrupted restart.
+
 - Move refuses transfers between different local filesystem devices, including
   moves between a local archive and another volume. Use Copy and verify the
   destination before removing the original. Same-volume moves remain available,
