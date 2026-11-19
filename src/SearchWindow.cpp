@@ -22,6 +22,7 @@
 #include <TextControl.h>
 #include <TextView.h>
 #include <Window.h>
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 namespace {
@@ -30,10 +31,12 @@ constexpr uint32 kStart = 'ssrt', kStop = 'sstp', kHit = 'shit',
                  kFinished = 'sfin', kSave = 'sqsv', kForget = 'sqfg',
                  kLoad = 'sqld', kName = 'sqnm', kPicked = 'spik',
                  kShow = 'sshw', kMode = 'smod', kClearFilters = 'sclr',
-                 kDeliveryCheck = 'sdck', kSection = 'ssec';
+                 kDeliveryCheck = 'sdck', kSection = 'ssec', kOrder = 'sord';
 struct HitRow : BRow {
   Listi::SearchHit hit;
-  explicit HitRow(const Listi::SearchHit &value) : BRow(24), hit(value) {
+  int64 arrival;
+  HitRow(const Listi::SearchHit &value, int64 sequence)
+      : BRow(24), hit(value), arrival(sequence) {
     size_t slash = hit.path.find_last_of('/');
     SetField(new BStringField(hit.path.substr(slash + 1).c_str()), 0);
     SetField(new BStringField(hit.path.substr(0, slash ? slash : 1).c_str()),
@@ -41,18 +44,83 @@ struct HitRow : BRow {
   }
 };
 class Results : public BColumnListView {
+  int64 sequence = 0;
+  int32 order = 0;
+  BColumn *columns[2];
+
+  bool Before(HitRow *left, HitRow *right, int32 requestedOrder) const {
+    if (requestedOrder != 0) {
+      int32 key = requestedOrder <= 2 ? 0 : 1;
+      int cmp = columns[key]->CompareFields(left->GetField(key),
+                                            right->GetField(key));
+      if (cmp != 0)
+        return requestedOrder % 2 ? cmp < 0 : cmp > 0;
+    }
+    return left->arrival < right->arrival;
+  }
+
 public:
   BMessenger receiver;
   Results()
       : BColumnListView("search results", B_WILL_DRAW | B_NAVIGABLE,
                         B_FANCY_BORDER) {
-    AddColumn(new BStringColumn("Name", 220, 80, 1000, B_TRUNCATE_MIDDLE), 0);
-    AddColumn(
-        new BStringColumn("Original folder", 440, 120, 2000, B_TRUNCATE_MIDDLE),
-        1);
+    // Haiku starts an unjoined native sort thread even on initial attachment.
+    // It can outlive a rapidly closed window/tab. Sort only on our UI looper.
+    SetSortingEnabled(false);
+    columns[0] = new BStringColumn("Name", 220, 80, 1000, B_TRUNCATE_MIDDLE);
+    columns[1] = new BStringColumn("Original folder", 440, 120, 2000,
+                                   B_TRUNCATE_MIDDLE);
+    AddColumn(columns[0], 0);
+    AddColumn(columns[1], 1);
     SetSelectionMode(B_SINGLE_SELECTION_LIST);
     SetInvocationMessage(new BMessage(kShow));
   }
+  void Add(const SearchHit &hit) {
+    auto row = new HitRow(hit, sequence++);
+    if (!order) {
+      AddRow(row);
+      return;
+    }
+    int32 first = 0, last = CountRows();
+    while (first < last) {
+      int32 middle = first + (last - first) / 2;
+      if (Before(static_cast<HitRow *>(RowAt(middle)), row, order))
+        first = middle + 1;
+      else
+        last = middle;
+    }
+    AddRow(row, first);
+  }
+
+  void Order(int32 next) {
+    if (next == order || next < 0 || next > 4)
+      return;
+    BList current, ordered;
+    std::vector<HitRow *> rows;
+    rows.reserve(CountRows());
+    for (int32 i = 0; i < CountRows(); ++i) {
+      auto row = static_cast<HitRow *>(RowAt(i));
+      if (!current.AddItem(row))
+        return;
+      rows.push_back(row);
+    }
+    std::sort(rows.begin(), rows.end(), [this, next](HitRow *a, HitRow *b) {
+      return Before(a, b, next);
+    });
+    for (auto row : rows)
+      if (!ordered.AddItem(row))
+        return;
+    order = next;
+    auto selected = CurrentSelection();
+    auto focus = FocusRow();
+    RemoveRows(&current);
+    AddRows(&ordered, -1);
+    if (focus)
+      SetFocusRow(focus, false);
+    if (selected)
+      AddToSelection(selected);
+  }
+
   void SelectionChanged() override {
     BColumnListView::SelectionChanged();
     if (receiver.IsValid())
@@ -60,7 +128,7 @@ public:
   }
 };
 class SearchView : public BGroupView {
-  BPopUpMenu *sectionMenu = nullptr;
+  BPopUpMenu *sectionMenu = nullptr, *orderMenu;
   BGroupView *sections[3]{};
   int32 section = 0;
   bool initialized = false;
@@ -222,7 +290,7 @@ class SearchView : public BGroupView {
             found); // Preserve selection only for identical path AND identity.
     }
     for (const auto &item : next)
-      results->AddRow(new HitRow(item.second));
+      results->Add(item.second);
     pending.clear();
     BMessenger(this).SendMessage(kPicked);
   }
@@ -292,6 +360,15 @@ public:
                        compact ? "Show original" : "Show original in panel",
                        new BMessage(kShow));
     results = new Results;
+    orderMenu = new BPopUpMenu("result order");
+    const char *orders[] = {"As found", "Name ↑", "Name ↓", "Folder ↑", "Folder ↓"};
+    for (int32 i = 0; i < 5; ++i) {
+      auto message = new BMessage(kOrder);
+      message->AddInt32("order", i);
+      orderMenu->AddItem(new BMenuItem(orders[i], message));
+    }
+    orderMenu->ItemAt(0)->SetMarked(true);
+    auto orderField = new BMenuField("result order", "Sort:", orderMenu);
     savedMenu = new BPopUpMenu("saved searches");
     savedField = new BMenuField("saved searches", "Saved:", savedMenu);
     savedField->SetExplicitMinSize(BSize(130, B_SIZE_UNSET));
@@ -302,7 +379,7 @@ public:
     save = new BButton("save search", "Save", new BMessage(kSave));
     forget = new BButton("forget search", "Forget", new BMessage(kForget));
     if (compact)
-      BuildCompactLayout();
+      BuildCompactLayout(orderField);
     else {
       BLayoutBuilder::Group<>(this, B_VERTICAL, 8)
           .SetInsets(10)
@@ -332,6 +409,7 @@ public:
           .Add(predicate)
           .Add(trash)
           .Add(live)
+          .Add(orderField)
           .AddGlue()
           .Add(start)
           .Add(stop)
@@ -351,7 +429,7 @@ public:
     Colors();
   }
 
-  void BuildCompactLayout() {
+  void BuildCompactLayout(BMenuField *orderField) {
     // Keep the everyday name search short. Criteria and saved searches use
     // the same controls and worker as the standalone form, on demand.
     sectionMenu = new BPopUpMenu("search section");
@@ -401,7 +479,10 @@ public:
         .AddGlue();
     BLayoutBuilder::Group<>(this, B_VERTICAL, 4)
         .SetInsets(4)
+        .AddGroup(B_HORIZONTAL, 4)
         .Add(sectionField)
+        .Add(orderField)
+        .End()
         .Add(sections[0])
         .Add(sections[1])
         .Add(sections[2])
@@ -431,6 +512,7 @@ public:
     savedMenu->SetTargetForItems(this);
     if (sectionMenu)
       sectionMenu->SetTargetForItems(this);
+    orderMenu->SetTargetForItems(this);
     results->receiver = BMessenger(this);
     results->SetTarget(this);
     if (!initialized) {
@@ -527,6 +609,9 @@ public:
         Filters({});
         Status("File filters cleared. Name or BFS formula is unchanged.");
       }
+      break;
+    case kOrder:
+      results->Order(m->GetInt32("order", -1));
       break;
     case kSection:
       SelectSection(m->GetInt32("section", -1));
@@ -634,7 +719,7 @@ public:
             hit.node < 0)
           continue;
         if (initial)
-          results->AddRow(new HitRow(hit));
+          results->Add(hit);
         else
           pending.push_back(hit);
       }

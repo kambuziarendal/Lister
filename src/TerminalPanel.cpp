@@ -6,6 +6,7 @@
 #include <Button.h>
 #include <Clipboard.h>
 #include <Font.h>
+#include <GroupLayout.h>
 #include <LayoutBuilder.h>
 #include <MessageRunner.h>
 #include <StringView.h>
@@ -586,6 +587,7 @@ private:
 
 TerminalPanel::TerminalPanel(BMessenger owner)
     : BGroupView(B_VERTICAL, 0),
+      header(new BGroupLayout(B_HORIZONTAL, B_USE_HALF_ITEM_SPACING)),
       location(new BStringView("terminal location", "Listi CLI")),
       terminal(new TerminalView()),
       position(new BButton("terminal position", "Move right", nullptr)),
@@ -596,12 +598,16 @@ TerminalPanel::TerminalPanel(BMessenger owner)
   location->SetExplicitMinSize(BSize(0, B_SIZE_UNSET));
   location->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
   BLayoutBuilder::Group<>(this)
-      .AddGroup(B_HORIZONTAL, B_USE_HALF_ITEM_SPACING)
+      .AddGroup(header, 0)
       .SetInsets(B_USE_HALF_ITEM_SPACING, 0)
+      .AddGroup(B_HORIZONTAL, B_USE_HALF_ITEM_SPACING)
       .Add(location)
       .Add(position)
+      .End()
+      .AddGroup(B_HORIZONTAL, B_USE_HALF_ITEM_SPACING, 0)
       .Add(move)
       .Add(close)
+      .End()
       .End()
       .Add(terminal);
   SetDockSide(false);
@@ -614,6 +620,8 @@ TerminalPanel::TerminalPanel(BMessenger owner)
 }
 
 void TerminalPanel::SetDockSide(bool beside) {
+  dockedBeside = beside;
+  header->SetOrientation(dockedBeside && !floating ? B_VERTICAL : B_HORIZONTAL);
   position->SetLabel(beside ? "Move below" : "Move right");
   position->SetToolTip(beside ? "Move this shell below the file panels."
                               : "Move this shell to the right of the file panels.");
@@ -623,6 +631,7 @@ void TerminalPanel::SetPlacement(bool detached, int64 generation) {
   placement = generation;
   if (floating != detached) {
     floating = detached;
+    header->SetOrientation(dockedBeside && !floating ? B_VERTICAL : B_HORIZONTAL);
     if (floating)
       position->Hide();
     else

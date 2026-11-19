@@ -41,6 +41,8 @@ private:
   int64 sessionId = 0;
   int64 placement = 0;
   bool floating = false;
+  bool dockedBeside = false;
+  BGroupLayout *header;
   BStringView *location;
   TerminalView *terminal;
   BButton *position, *move, *close;

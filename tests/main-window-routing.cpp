@@ -89,10 +89,23 @@ int main() {
   send(kSearch);
   auto *search = left->Page(Page::Search);
   assert(search && left->Current() == Page::Search && !tabs->IsHidden(tabs));
+  auto *query = dynamic_cast<BTextControl *>(search->FindView("search expression"));
+  assert(query);
+  query->SetText("left-only");
   select(Page::Files);
   assert(left->Page(Page::Files) == original && left->Current() == Page::Files);
   send(kSearch);
   assert(left->Page(Page::Search) == search && left->Current() == Page::Search);
+  assert(std::string(query->Text()) == "left-only");
+  send(kSwitch);
+  send(kSearch);
+  auto *rightSearch = right->Page(Page::Search);
+  assert(rightSearch && rightSearch != search);
+  auto *rightQuery = dynamic_cast<BTextControl *>(rightSearch->FindView("search expression"));
+  assert(rightQuery && std::string(rightQuery->Text()).empty());
+  rightQuery->SetText("right-only");
+  assert(std::string(query->Text()) == "left-only");
+  send(kSwitch);
   BMessage close(Listi::kClosePanelPage);
   close.AddInt32("pane", 0);
   window->MessageReceived(&close);
@@ -101,7 +114,14 @@ int main() {
   send(kQuickView);
   assert(right->Current() == Page::Preview && left->Page(Page::Files) == original);
   send(kQuickView);
-  assert(right->Current() == Page::Files);
+  assert(right->Current() == Page::Files && right->Page(Page::Search) == rightSearch);
+  assert(std::string(rightQuery->Text()) == "right-only");
+  // A tool may close immediately, before the result list's first draw.
+  for (int i = 0; i < 12; ++i) {
+    send(kSearch);
+    window->MessageReceived(&close);
+    assert(!left->Page(Page::Search));
+  }
   window->Quit();
   puts("Main window: menu shortcuts and workspace routing OK");
 }
