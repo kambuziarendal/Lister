@@ -130,6 +130,16 @@ See the [workflow guide](GUIDE.md) for the controls and limitations.
 
 ### Other follow-ups, not prerequisites
 
+- **Jump to a visited folder.** From Go or a keyboard shortcut, type parts of
+  a path (for example, `lis src`). Rank visited folders by frequency and recency
+  and show their full paths. Enter opens the chosen folder in the active panel;
+  Esc leaves the panel and its history unchanged. This recalls places the user
+  has visited; it does not scan the disk or replace live BFS search.
+- **Checkbox selection.** While reviewing files, keep checked items separate
+  from the focused row so browsing and Quick view do not clear the set.
+  Start with an explicit **Add N checked items to Shelf** action. Ordinary
+  Copy and Move must not silently switch from selected rows to checked items.
+
 - Add an on-demand, cancellable folder-size scan. Distinguish logical bytes
   from allocated space, define hard-link counting and flag unreadable subtrees.
   Do not slow down ordinary selection summaries.
