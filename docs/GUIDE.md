@@ -231,6 +231,7 @@ mounted volumes even on the same physical disk. For an archive member, it
 is the volume holding the archive file that counts.
 
 Use **Copy** and keep the source until you have verified the destination.
+For a removable destination, remount it before verifying the copy.
 For folders, **Compare folders** in SHA-256 mode checks file contents, not
 permissions or BFS attributes; check any metadata you need separately.
 Remove originals as a separate action only after verification. Ordinary
@@ -244,9 +245,12 @@ over, **Failed** includes the problem, and **Not processed** is not a success.
 Other providers can give a job-level error or a recovery path rather than
 confirm the state of every file. Concurrent external edits are not prevented.
 
-**Cancel job** stops the running job only. In Details you can cancel a selected
-waiting job, or choose **Cancel all** to stop the running job and discard waiting
-jobs. None of these actions undoes work already committed.
+**Cancel job** requests cancellation of the running job only. In Details you
+can cancel a selected waiting job, or choose **Cancel all** to discard waiting
+jobs and request cancellation of the running one. A cancellation request does
+not mean an in-flight write has stopped, and it does not undo completed work.
+See the [virtual USB result](VERIFICATION.md#0361-3-package-results) and the
+[physical USB test, not yet run](VERIFICATION.md#physical-usb-disconnect-during-copy).
 
 If Listi stops unexpectedly during a local copy or move, compare the source
 and destination before retrying. A hidden `.listi-copy-*` sibling in the

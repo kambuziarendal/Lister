@@ -14,7 +14,7 @@ Download the **[0.37.0-1 alpha test candidate for Haiku x86_64](https://github.c
 pkgman install ./Listi-0.37.0-1-x86_64.hpkg
 ```
 
-This is alpha software. See the release notes for what was tested, and try it on copies of your files. To transfer files between disks, use **Copy**, remount the destination and check the copy before removing the original. Unplugging a disk during a write can leave the job waiting even after you click Cancel.
+This is alpha software. See the release notes for what was tested, and try it on copies of your files. To transfer files between disks, use **Copy**, remount the destination and check the copy before removing the original. In the virtual USB disconnect test, the copy job kept waiting after **Cancel**. The [physical USB test](docs/VERIFICATION.md#physical-usb-disconnect-during-copy) has not been run.
 
 ## Basic workflow
 
@@ -24,7 +24,7 @@ See the [feature tour](docs/FEATURES.md) for screenshots or the [workflow guide]
 
 ## Development and testing
 
-The developer uses large language models (LLMs) to help write code and design and run tests. Much of the hands-on testing takes place on a ThinkPad X1 Carbon (6th Gen) running Haiku R1/beta6 directly on the hardware, not in a VM. Much of the automated stress testing runs in Haiku VMs with LLM assistance. The [verification notes](docs/VERIFICATION.md) distinguish test environments: the USB disconnect test so far used a virtual device, not a physical drive.
+The developer uses large language models (LLMs) to help write code and design and run tests. Much of the hands-on testing takes place on a ThinkPad X1 Carbon (6th Gen) running Haiku R1/beta6 directly on the hardware, not in a VM. Much of the automated stress testing runs in Haiku VMs with LLM assistance. The [verification notes](docs/VERIFICATION.md) distinguish test environments: the mid-copy disconnect result is from a virtual USB device.
 
 ## Build from source
 

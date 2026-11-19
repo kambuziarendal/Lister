@@ -19,9 +19,10 @@ The current [test candidate](../README.md#install) is available for Haiku x86_64
 ## Current priorities
 
 1. **Before beta: interrupted file jobs.** Late removal of a virtual USB disk
-   left a copy waiting for over 100 seconds after cancellation. Physical USB
-   removal remains untested. The window must stay responsive and unrelated
-   jobs must be able to proceed. While a write can still return, report
+   left a copy waiting for over 100 seconds even after cancellation was requested.
+   Disconnecting a physical USB disk during a copy remains untested. Keep
+   this priority open pending the [physical USB test record](VERIFICATION.md#physical-usb-disconnect-during-copy).
+   The window must stay responsive and unrelated jobs must be able to proceed. While a write can still return, report
    “Cancellation requested; waiting for device”, not “Cancelled”. Prevent a
    second write to the same target until the first is resolved. Check the
    original, previously copied files and the reported outcome after remount.
