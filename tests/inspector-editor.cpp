@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include "ImagePreview.h"
 #include "InspectorEditor.h"
 #include <Alert.h>
 #include <Application.h>
@@ -34,6 +35,101 @@ void Send(BMessenger target, uint32 what) {
 std::string Read(const std::string &path) {
   std::ifstream input(path);
   return {std::istreambuf_iterator<char>(input), {}};
+}
+
+BButton *VisibleButton(BView *parent, const std::string &label) {
+  for (int32 i = 0; i < parent->CountChildren(); ++i) {
+    auto *child = parent->ChildAt(i);
+    if (child->IsHidden(child))
+      continue;
+    auto *button = dynamic_cast<BButton *>(child);
+    if (button && label == button->Label())
+      return button;
+    if (auto *nested = VisibleButton(child, label))
+      return nested;
+  }
+  return nullptr;
+}
+
+void CheckInlineEditor(BApplication &app, const std::string &path,
+                       const std::string &otherPath) {
+  const std::string original = "original text\n";
+  const std::string other = "other file\n";
+  const std::string draft = original + "unsaved text\n";
+  std::ofstream(path) << original;
+  std::ofstream(otherPath) << other;
+  auto *host = new BWindow(BRect(40, 40, 500, 420), "Quick view editor test",
+                           B_TITLED_WINDOW, 0);
+  auto *preview = new ImagePreview();
+  host->AddChild(preview);
+  preview->ResizeTo(440, 350);
+  preview->SetQuickViewCloseVisible(true);
+  preview->ShowFile(path);
+  host->Show();
+
+  const bigtime_t previewDeadline = system_time() + 10000000;
+  bool editInvoked = false;
+  while (!editInvoked && system_time() < previewDeadline) {
+    if (!host->Lock())
+      Check(false, "lock Quick view while waiting for the preview");
+    if (auto *edit = VisibleButton(preview, "Edit"); edit && edit->IsEnabled()) {
+      auto *close = View<BButton>(host, "close quick view");
+      Check(!close->IsHidden(close) && edit->Frame().right < close->Frame().left,
+            "async text preview puts Edit to the left of Close");
+      Check(edit->Invoke() == B_OK, "invoke quick view Edit button");
+      editInvoked = true;
+    }
+    host->Unlock();
+    if (!editInvoked)
+      snooze(20000);
+  }
+  Check(editInvoked, "the loaded text preview offers Edit");
+  Send(BMessenger(preview), 'test');
+  Check(host->Lock(), "inspect the inline editor");
+  Check(preview->HasEditor() && app.CountWindows() == 1,
+        "Edit keeps the document inside Quick view");
+  auto *body = View<BTextView>(host, "editor text");
+  Check(original == body->Text(), "inline editor loads the selected text");
+  body->Select(body->TextLength(), body->TextLength());
+  body->Insert("unsaved text\n");
+  body->Select(2, 7);
+  Check(!preview->ShowFile(otherPath) && preview->File() == path &&
+            preview->HasEditor() && draft == body->Text() && Read(path) == original,
+        "changing selection keeps the unsaved draft without writing it");
+  Check(preview->BeginEditing(path) &&
+            body == host->FindView("editor text") && draft == body->Text(),
+        "editing the same path keeps the existing draft");
+  auto *detach = VisibleButton(preview, "Detach");
+  Check(detach && detach->Invoke() == B_OK, "invoke inline editor Detach");
+  host->Unlock();
+
+  Send(BMessenger(preview), 'test');
+  Check(host->Lock(), "inspect Quick view after detaching");
+  Check(!preview->HasEditor() && preview->File() == otherPath,
+        "detaching removes the inline editor and restores the latest preview");
+  host->Unlock();
+  BWindow *window = nullptr;
+  for (int32 i = 0; i < app.CountWindows(); ++i)
+    if (auto *candidate = app.WindowAt(i); candidate != host)
+      window = candidate;
+  Check(window && window->Lock(), "detached editor has its own window");
+  BMessenger editor(window);
+  body = View<BTextView>(window, "editor text");
+  int32 from, to;
+  body->GetSelection(&from, &to);
+  Check(draft == body->Text() && from == 2 && to == 7,
+        "detach preserves the unsaved draft and text selection");
+  window->Unlock();
+  Check(!InspectorEditorsAllowQuit(), "detached draft still counts as unsaved");
+  Send(editor, 'ieSv');
+  Check(Read(path) == draft && Read(otherPath) == other &&
+            InspectorEditorsAllowQuit(),
+        "detached Save writes the original path, not the new selection");
+  editor.SendMessage(B_QUIT_REQUESTED);
+  for (int i = 0; i < 100 && editor.IsValid(); ++i)
+    snooze(20000);
+  Check(!editor.IsValid() && host->Lock(), "close the detached editor and host");
+  host->Quit();
 }
 }
 
@@ -140,6 +236,11 @@ int main() {
   for (int i = 0; i < 100 && editor.IsValid(); ++i)
     snooze(20000);
   Check(!editor.IsValid(), "clean editor closes");
+  const std::string inlinePath = std::string(tmp) + "/inline.txt";
+  const std::string otherPath = std::string(tmp) + "/other.txt";
+  CheckInlineEditor(app, inlinePath, otherPath);
+  unlink(inlinePath.c_str());
+  unlink(otherPath.c_str());
   unlink(path.c_str());
   rmdir(tmp);
 }
