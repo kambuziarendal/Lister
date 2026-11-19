@@ -15,6 +15,12 @@ If a change requires several subsystems to switch at once, lay out compatible
 steps first. Each step should build, preserve existing workflows and be
 reviewable on its own.
 
+Before review, run `git diff --check BASE HEAD`, where `BASE` is the
+commit your change builds on. For C++ changes, if clang-format and its Git
+helper are installed, use `git clang-format --diff BASE HEAD` to inspect
+formatting on the changed lines without rewriting unrelated code. These
+checks do not replace native compilation or regression tests.
+
 ## Bugs and testing
 
 Include the Listi and Haiku versions, reproduction steps and whether files were
