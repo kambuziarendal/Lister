@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "Common.h"
+#include "WorkspaceEditor.h"
 #include <Alert.h>
 #include <Button.h>
 #include <CheckBox.h>
@@ -152,10 +153,16 @@ public:
           .Add(field->CreateMenuBarLayoutItem(), 1, index);
       ++index;
     }
+    auto openLayout = new BMessage(kOpenWorkspaceEditor);
+    openLayout->AddBool("modules", true);
+    auto customize = new BButton("workspace layout",
+                                 "Customize current workspace layout…", openLayout);
+    customize->SetTarget(target);
     views.End()
         .Add(new BStringView(
             "view precedence",
             "An explicit view saved for a folder takes priority."))
+        .Add(customize)
         .AddGlue();
     tabs->AddTab(workspaces);
 
@@ -167,7 +174,7 @@ public:
     date->SetValue(p.date);
     buttons = new BCheckBox("Command button bank", nullptr);
     buttons->SetValue(p.buttons);
-    command = new BCheckBox("Command line (runs in Terminal)", nullptr);
+    command = new BCheckBox("Command field (runs in external terminal)", nullptr);
     command->SetValue(p.command);
     font_family f;
     font_style s;

@@ -73,6 +73,35 @@ int main() {
   workspace(Workspace::smidja);
   assert(item(kSwitch)->IsEnabled() && item(kSame)->IsEnabled());
   assert(std::string(item(kSwitch)->Label()) == "Switch panel");
+  auto *left = dynamic_cast<Listi::PanelTools *>(window->FindView("first panel tools"));
+  auto *right = dynamic_cast<Listi::PanelTools *>(window->FindView("second panel tools"));
+  assert(left && right);
+  using Page = Listi::PanelPage;
+  auto *original = left->Page(Page::Files);
+  auto *tabs = left->FindView("panel tabs");
+  assert(tabs && tabs->IsHidden(tabs));
+  auto select = [&](Page page) {
+    BMessage change(Listi::kPanelPage);
+    change.AddInt32("pane", 0);
+    change.AddInt32("page", static_cast<int32>(page));
+    window->MessageReceived(&change);
+  };
+  send(kSearch);
+  auto *search = left->Page(Page::Search);
+  assert(search && left->Current() == Page::Search && !tabs->IsHidden(tabs));
+  select(Page::Files);
+  assert(left->Page(Page::Files) == original && left->Current() == Page::Files);
+  send(kSearch);
+  assert(left->Page(Page::Search) == search && left->Current() == Page::Search);
+  BMessage close(Listi::kClosePanelPage);
+  close.AddInt32("pane", 0);
+  window->MessageReceived(&close);
+  assert(!left->Page(Page::Search) && left->Current() == Page::Files);
+  assert(tabs->IsHidden(tabs));
+  send(kQuickView);
+  assert(right->Current() == Page::Preview && left->Page(Page::Files) == original);
+  send(kQuickView);
+  assert(right->Current() == Page::Files);
   window->Quit();
   puts("Main window: menu shortcuts and workspace routing OK");
 }

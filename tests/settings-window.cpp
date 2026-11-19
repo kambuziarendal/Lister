@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "Common.h"
+#include "WorkspaceEditor.h"
+#include <Button.h>
 #include <Application.h>
 #include <MenuField.h>
 #include <MenuItem.h>
@@ -10,12 +12,18 @@
 class Receiver : public BLooper {
 public:
   sem_id saved = create_sem(0, "settings saved");
+  sem_id layout = create_sem(0, "layout shortcut");
   BMessage result;
-  ~Receiver() { delete_sem(saved); }
+  ~Receiver() {
+    delete_sem(layout);
+    delete_sem(saved);
+  }
   void MessageReceived(BMessage *message) override {
     if (message->what == kApplyPreferences) {
       result = *message;
       release_sem(saved);
+    } else if (message->what == kOpenWorkspaceEditor && message->GetBool("modules", false)) {
+      release_sem(layout);
     } else
       BLooper::MessageReceived(message);
   }
@@ -44,6 +52,10 @@ int main() {
     check(field && field->Menu()->CountItems() == ViewModeCount &&
               field->Menu()->ItemAt(0)->IsMarked(),
           "Einn starts in Details and all file views remain available");
+    auto customize = dynamic_cast<BButton *>(window->FindView("workspace layout"));
+    check(customize && customize->Invoke() == B_OK &&
+              acquire_sem_etc(receiver->layout, 1, B_RELATIVE_TIMEOUT, 1000000) == B_OK,
+          "Workspaces shortcut requests layout modules without saving settings");
     if (choice) {
       choice->SetMarked(true);
     }

@@ -588,6 +588,7 @@ TerminalPanel::TerminalPanel(BMessenger owner)
     : BGroupView(B_VERTICAL, 0),
       location(new BStringView("terminal location", "Listi CLI")),
       terminal(new TerminalView()),
+      position(new BButton("terminal position", "Move right", nullptr)),
       move(new BButton("Detach CLI", nullptr)),
       close(new BButton("Close CLI", nullptr)) {
   SetName("Listi CLI");
@@ -598,17 +599,38 @@ TerminalPanel::TerminalPanel(BMessenger owner)
       .AddGroup(B_HORIZONTAL, B_USE_HALF_ITEM_SPACING)
       .SetInsets(B_USE_HALF_ITEM_SPACING, 0)
       .Add(location)
+      .Add(position)
       .Add(move)
       .Add(close)
       .End()
       .Add(terminal);
+  SetDockSide(false);
+  position->SetTarget(owner);
+  position->SetTimeout(0);
   move->SetTarget(owner);
   close->SetTarget(owner);
   move->SetTimeout(0);
   close->SetTimeout(0);
 }
 
-void TerminalPanel::SetPlacement(bool floating, int64 placement) {
+void TerminalPanel::SetDockSide(bool beside) {
+  position->SetLabel(beside ? "Move below" : "Move right");
+  position->SetToolTip(beside ? "Move this shell below the file panels."
+                              : "Move this shell to the right of the file panels.");
+}
+
+void TerminalPanel::SetPlacement(bool detached, int64 generation) {
+  placement = generation;
+  if (floating != detached) {
+    floating = detached;
+    if (floating)
+      position->Hide();
+    else
+      position->Show();
+  }
+  auto reposition = new BMessage(kToggleTerminalSide);
+  reposition->AddInt64("terminal placement", placement);
+  position->SetMessage(reposition);
   move->SetLabel(floating ? "Dock CLI" : "Detach CLI");
   auto change = new BMessage(floating ? kDockTerminal : kFloatTerminal);
   change->AddInt64("terminal placement", placement);

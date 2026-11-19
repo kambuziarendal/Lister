@@ -12,6 +12,7 @@ namespace Listi {
 
 inline constexpr uint32 kTerminalBelow = 'tlbl';
 inline constexpr uint32 kTerminalBeside = 'tlbs';
+inline constexpr uint32 kToggleTerminalSide = 'tlts';
 inline constexpr uint32 kTerminalWindow = 'tlwn';
 inline constexpr uint32 kShowFloatingTerminal = 'tlof';
 inline constexpr uint32 kCloseTerminal = 'tlcl';
@@ -24,6 +25,7 @@ class TerminalPanel : public BGroupView {
 public:
   explicit TerminalPanel(BMessenger owner);
   const std::string &StartFolder() const { return startFolder; }
+  int64 Placement() const { return placement; }
   int64 SessionId() const { return sessionId; }
   bool Active() const;
   bool HasFocus() const;
@@ -31,14 +33,17 @@ public:
   int Start(const char *directory);
   void Stop();
   bool HandleKey(BMessage *message);
-  void SetPlacement(bool floating, int64 placement);
+  void SetPlacement(bool floating, int64 generation);
+  void SetDockSide(bool beside);
 
 private:
   std::string startFolder;
   int64 sessionId = 0;
+  int64 placement = 0;
+  bool floating = false;
   BStringView *location;
   TerminalView *terminal;
-  BButton *move, *close;
+  BButton *position, *move, *close;
 };
 
 } // namespace Listi

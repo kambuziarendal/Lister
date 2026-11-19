@@ -72,7 +72,7 @@ in this alpha.
   shortcuts remain available when the bank is hidden.
 - **Terminal here:** start an interactive shell in the active local folder.
   Choose **Below file panels** or **Beside file panels** to keep the shell in
-  the main window. **Detach CLI** moves that same shell to its own Listi window;
+  the main window. Use **Move right** or **Move below** on the open CLI to move the same shell without changing its working directory. **Detach CLI** moves that same shell to its own Listi window;
   **Dock CLI** or closing the detached window returns it to the file panels.
   Moving the CLI keeps running commands, shell state and scrollback. **Close
   CLI** ends the shell. **Detached Listi CLI** (Command+Shift+T) opens or
@@ -99,7 +99,7 @@ in this alpha.
 
 ### Custom workspaces
 
-Open **View > Workspace > Customize workspace…**. The four built-in presets
+Open **View > Workspace > Customize workspace…**, or go straight to **Modules** with **Listi > Settings > Workspaces > Customize current workspace layout…**. The four built-in presets
 still work without changing any settings.
 
 - **Action buttons:** remove buttons you rarely use and move the others into
@@ -351,6 +351,8 @@ The scan runs in the background and lists regular files on the same persistent
 local volume. It does not follow symbolic links or enter Trash. **Stop scan**
 keeps the rows received so far. A stopped scan, unreadable branch or scan limit
 (5,000 results or 250,000 entries examined) is reported as incomplete.
+
+In **Smiðja**, **Listi > Find files** (Command+Shift+F) opens **Search** in the active panel. Enter a name fragment and press Enter. Click **Files** to return to the same file list, then **Search** to resume without restarting. **Quick view** opens **Preview** in the opposite panel. Close a tool with **×**; closing the last tool removes the tab row. Outside Smiðja, Find files still opens its own window.
 
 **Listi > Find files** combines a name fragment or BFS formula with extension,
 size and date criteria. Saved searches store criteria, not copies of results.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.36.0 (unreleased)
+
+- Smiðja can keep search results and previews in temporary panel tabs without navigating away from a file list.
+- Open the layout editor directly from Settings, or move the running shell from its own header.
+
 ## [0.35.0 alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.35.0)
 
 Download `Listi-0.35.0-1-x86_64.hpkg` and its checksum from the release. See [what was tested](docs/VERIFICATION.md#0350-package-results).
