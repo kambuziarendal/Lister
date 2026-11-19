@@ -20,7 +20,7 @@ Choose a layout under **View > Workspace**:
 | --- | --- |
 | **Einn** | Browse in one panel, with no second location competing for space. |
 | **Askr** | See the folder hierarchy and the active file list together. |
-| **Tvískipt** | Keep a source and destination visible for transfers. Use **Buttons** to hide or show the function buttons. |
+| **Tvískipt** | Keep a source and destination visible for transfers. Use **View > Show function buttons** to hide or show the function buttons. |
 | **Smiðja** | Keep two panels alongside tools such as the inspector, and choose a tree, favourites or no sidebar for each panel. |
 
 Switching workspaces does not clear the panels or restart queued jobs. In a

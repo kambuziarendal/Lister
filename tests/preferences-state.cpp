@@ -33,7 +33,14 @@ int main() {
         "Tviskipt-only hide survives restart without changing the layout default");
   resumed.workspace = Workspace::smidja;
   check(resumed.ActionButtonsVisible(), "Smidja still uses the layout default");
+  resumed.smidjaButtons = 0;
+  resumed.tviskiptButtons = 1;
+  resumed.Load(resumed.Save());
+  resumed.ApplyDialog(stale);
+  check(!resumed.ActionButtonsVisible(), "Smidja hide survives restart and stale settings");
   resumed.workspace = Workspace::tviskipt;
+  check(resumed.ActionButtonsVisible(), "Tviskipt visibility is independent of Smidja");
+  resumed.tviskiptButtons = 0;
   resumed.ApplyDialog(stale);
   check(!resumed.ActionButtonsVisible(), "stale appearance dialog preserves the quick toggle");
   resumed.ApplyLayout(WorkspaceLayout{});

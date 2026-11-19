@@ -64,12 +64,9 @@ in this alpha.
 
 ### Tools and preferences
 
-- **Buttons:** In Tvískipt, use the compact button beside the menu bar to
-  hide or show all configured function buttons without changing the frame.
-  This choice is remembered separately from layout profiles and other
-  workspaces. If the bank cannot fit, **Buttons** opens the same actions as
-  a menu. The full bank returns when there is room. Menu commands and keyboard
-  shortcuts remain available when the bank is hidden.
+- **View > Show function buttons:** toggle the button bank in Tvískipt or
+  Smiðja. Each remembers its own choice. If the buttons do not fit, use
+  **View > Function actions** instead.
 - **Terminal here:** **Active lister** (Command+T) starts a shell in the active
   local folder. Choose **Left CLI** or **Right CLI** to open or focus the shell
   belonging to that file panel, even if the other panel is active. Both can run

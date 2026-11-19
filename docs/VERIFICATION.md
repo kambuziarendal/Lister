@@ -118,13 +118,13 @@ Also test the installed app with disposable files:
    and open a local clip in **MediaPlayer**. Try an unavailable codec or audio
    device separately. Seeing a frame is not evidence of audible output.
 
-### Tvískipt function buttons
+### Tvískipt and Smiðja function buttons
 
-With both panes open, select files and click **Buttons** beside the menu bar.
+With both panes open, select files and toggle **View > Show function buttons**.
 Check that the bank hides and returns without changing the window frame, active
 pane, selection, or command field, with the bank at the top and at the bottom.
-Hide the bank, make the window too small for it, and click **Buttons** again.
-Check that configured actions remain available in the menu without enlarging
+Hide the bank, make the window too small for it, and enable **View > Show function buttons** again.
+Check that configured actions remain available in **View > Function actions** without enlarging
 the frame. Restart Listi to check that the toggle is remembered independently
 of Smiðja. Run the `preferences-state` native test for settings compatibility.
 

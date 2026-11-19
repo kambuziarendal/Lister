@@ -29,6 +29,9 @@ void Preferences::Load(const BMessage &m) {
   tviskiptButtons = m.GetInt32("tviskiptButtons", -1);
   if (tviskiptButtons < -1 || tviskiptButtons > 1)
     tviskiptButtons = -1;
+  smidjaButtons = m.GetInt32("smidjaButtons", -1);
+  if (smidjaButtons < -1 || smidjaButtons > 1)
+    smidjaButtons = -1;
   profiles.Load(m);
   folderModes.clear();
   BMessage folder;
@@ -64,6 +67,7 @@ void Preferences::ApplyDialog(const BMessage &message) {
   BMessage changes;
   const bool hasChanges = message.FindMessage("layoutChanges", &changes) == B_OK;
   updated.tviskiptButtons = tviskiptButtons;
+  updated.smidjaButtons = smidjaButtons;
   for (auto w : {Workspace::tviskipt, Workspace::einn, Workspace::askr,
                  Workspace::smidja}) {
     if (!hasChanges || changes.GetBool(WorkspaceId(w), false))
@@ -72,7 +76,7 @@ void Preferences::ApplyDialog(const BMessage &message) {
   if ((!hasChanges && layout.buttons != updated.buttons) ||
       (hasChanges && changes.GetBool("buttons", false))) {
     layout.buttons = updated.buttons;
-    updated.tviskiptButtons = -1;
+    updated.smidjaButtons = updated.tviskiptButtons = -1;
   }
   if (!hasChanges || changes.GetBool("command", false))
     layout.command = updated.command;
@@ -85,6 +89,7 @@ BMessage Preferences::Save() const {
   BMessage m;
   WorkspaceLayout::Archive(m);
   m.AddInt32("tviskiptButtons", tviskiptButtons);
+  m.AddInt32("smidjaButtons", smidjaButtons);
   profiles.Archive(m);
   for (auto &entry : folderModes) {
     BMessage folder;

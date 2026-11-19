@@ -223,7 +223,8 @@ class MainWindow : public BWindow {
   BMenuItem *quickViewMenu;
   bool quickView = false;
   BMenuBar *menu;
-  BButton *bankToggle;
+  BMenuItem *bankToggle;
+  BMenu *compactActions;
   BMenu *fileView;
   BMenuItem *saveClipboardTextItem, *saveClipboardImageItem, *undoBulkRenameItem;
   BSplitView *split;
@@ -564,7 +565,7 @@ class MainWindow : public BWindow {
     }
   }
   OperationQueue *queue;
-  static constexpr uint32 kToggleBank = 'atbk', kHideBank = 'ahbk';
+  static constexpr uint32 kToggleBank = 'atbk';
   BGroupView *bank = nullptr;
   BGridView *bankGrid = nullptr;
   std::vector<int32> renderedButtons;
@@ -599,15 +600,10 @@ class MainWindow : public BWindow {
   }
   void ShowBank(bool visible) {
     const bool dual = !prefs.SinglePane() && !prefs.actionButtons.empty();
-    const bool tviskipt = prefs.workspace == Workspace::tviskipt;
-    if (tviskipt && bankToggle->IsHidden(bankToggle))
-      bankToggle->Show();
-    else if (!tviskipt && !bankToggle->IsHidden(bankToggle))
-      bankToggle->Hide();
     visible = visible && dual;
     bankOverflow = false;
     SetBankVisible(visible);
-    if (visible && tviskipt) {
+    if (visible) {
       // Showing a layout item invalidates layout but does not run it inline.
       // Measure before the window's auto-size pass can impose a larger frame.
       auto minimum = GetLayout()->MinSize();
@@ -621,34 +617,11 @@ class MainWindow : public BWindow {
         SetBankVisible(false);
     }
     bankToggle->SetEnabled(dual);
-    bankToggle->SetValue(prefs.ActionButtonsVisible() ? B_CONTROL_ON
-                                                     : B_CONTROL_OFF);
-    bankToggle->SetToolTip(
-        !dual ? "Add buttons in Customize workspace."
-        : bankOverflow ? "Open function buttons as a menu at this window size."
-        : prefs.ActionButtonsVisible() ? "Hide function buttons"
-                                       : "Show function buttons");
+    bankToggle->SetMarked(dual && prefs.ActionButtonsVisible());
+    compactActions->Superitem()->SetEnabled(bankOverflow);
   }
   void RefreshBank() {
     ShowBank(prefs.ActionButtonsVisible() && !actionArea->Pending());
-  }
-  void OpenCompactBank() {
-    auto popup = new BPopUpMenu("Function buttons", false, false);
-    for (auto id : prefs.actionButtons) {
-      if (id < 0 || id >= WorkspaceLayout::ActionButtonCount)
-        continue;
-      const auto &action = kWorkspaceActions[id];
-      popup->AddItem(
-          new BMenuItem(action.description, new BMessage(action.message)));
-    }
-    popup->AddSeparatorItem();
-    popup->AddItem(
-        new BMenuItem("Hide function buttons", new BMessage(kHideBank)));
-    popup->SetTargetForItems(this);
-    popup->SetAsyncAutoDestruct(true);
-    const auto where =
-        bankToggle->ConvertToScreen(BPoint(0, bankToggle->Bounds().bottom + 1));
-    popup->Go(where, true, true, true);
   }
   void UpdateBank(float width, bool forceCompact = false) {
     const int columns = forceCompact || (prefs.adaptive && width < 850) ? 3 : 6;
@@ -656,6 +629,8 @@ class MainWindow : public BWindow {
       return;
     bankColumns = columns;
     renderedButtons = prefs.actionButtons;
+    while (auto *item = compactActions->RemoveItem(int32(0)))
+      delete item;
     if (bankGrid) {
       bank->GroupLayout()->RemoveView(bankGrid);
       delete bankGrid;
@@ -666,6 +641,7 @@ class MainWindow : public BWindow {
       if (id < 0 || id >= WorkspaceLayout::ActionButtonCount)
         continue;
       const auto &action = kWorkspaceActions[id];
+      compactActions->AddItem(new BMenuItem(action.description, new BMessage(action.message)));
       BString label(action.label);
       if (columns == 6 && action.message != kNone)
         label << " [" << action.shortcut << "]";
@@ -967,9 +943,6 @@ public:
         places(saved), placesWritable(writable), service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
     menu = new BMenuBar("menu");
-    bankToggle = new BButton("toggle action buttons", "Buttons",
-                             new BMessage(kToggleBank));
-    bankToggle->SetBehavior(BButton::B_TOGGLE_BEHAVIOR);
     auto files = new BMenu("Files");
     struct Item {
       const char *label;
@@ -1088,6 +1061,10 @@ public:
         new BMenuItem("Flat View…", new BMessage(Listi::kFlatView));
     fileView->AddItem(flatViewItem);
     viewMenu->AddItem(fileView);
+    bankToggle = new BMenuItem("Show function buttons", new BMessage(kToggleBank));
+    viewMenu->AddItem(bankToggle);
+    compactActions = new BMenu("Function actions");
+    viewMenu->AddItem(compactActions);
     menu->AddItem(viewMenu);
     auto view = new BMenu("Listi");
     view->AddItem(new BMenuItem("Switch panel", new BMessage(kSwitch), 'S'));
@@ -1183,10 +1160,7 @@ public:
     bottomTools->AddChild(bank);
     bottomTools->AddChild(command);
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
-        .AddGroup(B_HORIZONTAL, 4, 0)
-        .Add(menu, 1)
-        .Add(bankToggle, 0)
-        .End()
+        .Add(menu, 0)
         .Add(topTools, 0)
         .Add(terminalSplit)
         .Add(actionArea, 0)
@@ -2307,20 +2281,13 @@ public:
       Save();
       break;
     case kToggleBank:
-    case kHideBank:
-      if (prefs.workspace != Workspace::tviskipt || prefs.actionButtons.empty())
-        break;
-      if (m->what == kHideBank || !bankOverflow) {
-        prefs.tviskiptButtons = m->what == kHideBank
-                                    ? 0
-                                    : !prefs.ActionButtonsVisible();
+      if (!prefs.SinglePane() && !prefs.actionButtons.empty()) {
+        auto &choice = prefs.workspace == Workspace::smidja
+                           ? prefs.smidjaButtons : prefs.tviskiptButtons;
+        choice = !prefs.ActionButtonsVisible();
         RefreshBank();
         Save();
-      } else {
-        bankToggle->SetValue(B_CONTROL_ON);
       }
-      if (m->what == kToggleBank && bankOverflow)
-        OpenCompactBank();
       break;
     case kOpenWorkspaceEditor:
       if (actionArea->Pending())
@@ -2341,7 +2308,7 @@ public:
       layout.Load(layoutMessage);
       prefs.profiles.Load(profilesMessage);
       if (layout.buttons != prefs.buttons)
-        prefs.tviskiptButtons = -1;
+        prefs.smidjaButtons = prefs.tviskiptButtons = -1;
       quickView = false;
       prefs.ApplyLayout(layout);
       if (prefs.SinglePane())
