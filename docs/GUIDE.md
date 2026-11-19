@@ -37,9 +37,10 @@ in this alpha.
 - **Same folder in other panel:** open the active location on the other side.
 - **View:** Details, Icons, Large icons, Thumbnails and Miller columns; optional folder tree per
   panel. Details columns can also be used to choose sort order.
-- **Remember view for this folder / Use default for this folder:** save or clear
+- **Remember view for this folder / Use pane view for this folder:** save or clear
   a folder-specific display-mode override. This is not a saved workspace or a
-  promise to remember every column, tree or sort setting per folder.
+  promise to remember every column, tree or sort setting per folder. Right-click empty space and open **View** to change modes (including Miller columns), remember a folder view, or use the workspace default.
+- **Type to select:** with the file list focused, type the beginning of a file or folder name to select it without opening it. After a one-second pause, the next letter starts a new match. This also works in icon views and Miller columns.
 - **All, None, Invert:** apply to the visible list; filtered-out entries do not
   silently rejoin the selection when revealed.
 - **Selection summary:** selected file bytes, folder/link counts and unavailable
@@ -117,9 +118,10 @@ still work without changing any settings.
   panels are a better fit for shorter screens.
 - **Askr and Smiðja sidebars:** right-click a sidebar or open **Sidebar** in the
   panel's display menu to choose **File tree**, **Shortcuts**, **Shortcuts
-  above tree**, **Shelf**, or **Hide sidebar**. To bring a hidden sidebar back
+  above tree**, **Shelf**, **Recent folders**, or **Hide sidebar**. To bring a hidden sidebar back
   in its last mode, right-click an empty area of the file panel and choose
   **Show sidebar**. Choices are remembered separately for each sidebar.
+  **Recent folders** lists successful visits in this panel during the current session, most recent first. Click a location to return to it.
   Right-click a folder in the file panel or tree and choose **Add to shortcuts…**.
   Right-click a shortcut in the sidebar and choose **Remove shortcut**, or
   right-click it under **Go → Places**. Both use the same saved destinations.
@@ -159,6 +161,7 @@ choices.
 Choose the view that fits the task:
 
 - **Listi > Quick view** (Command+Shift+P) shows the current selection next to the active panel in any workspace. In a two-panel layout, it temporarily replaces the other panel on screen. Move through the active list to inspect another file. Toggle Quick view off to return to the previous layout; the other panel has not navigated away. Space still selects files.
+- From a file’s context menu, **Preview in other panel** (or **Preview beside file list** in a single-panel workspace) opens Quick view without toggling it off. Click **×** or press **Esc** to return to the file list. **Preview in window** opens a separate viewer.
 - **View** (Command+Shift+V) opens a separate viewer for one file. Escape or Command+W closes it. **Listi > Inspector panel** keeps an inspector in a two-panel layout instead.
 - **Edit** (Command+E) from the file manager still uses the configured external editor for a local file. **Edit** *inside the preview* opens Listi’s native editor. Opening a preview alone does not change the file.
 
@@ -274,7 +277,7 @@ selection with visible ordinary files sharing an extension; it is not MIME or
 content detection. `.jpg` and `.jpeg` remain distinct.
 
 **Shelf:** Select local entries and press Command+Shift+Y
-(**Files > Add to Shelf**). Open **Listi > Show Shelf** to see their names,
+(**Files > Add to Shelf**), or right-click the selection and choose **Add to Shelf**. **Copy path as text** copies the address rather than file references; multiple paths are separated by newlines. Open **Listi > Show Shelf** to see their names,
 original folders and status. You can also drop local entries onto the list.
 Select one or more rows and click **Remove from Shelf** to remove just those
 references. **Clear Shelf** removes every reference. Neither action deletes or
@@ -378,7 +381,7 @@ In **Smiðja**, **Listi > Find files** (Command+Shift+F) opens **Search** in the
 **Listi > Find files** combines a name fragment or BFS formula with extension,
 size and date criteria. Saved searches store criteria, not copies of results.
 Advanced BFS queries can subscribe to live changes. Search results refer to
-original files: deleting a result's file deletes the original.
+original files: deleting a result's file deletes the original. Right-click a result and choose **Show original in panel** to reveal that specific entry.
 
 Search is currently limited to one persistent local volume, 5,000 displayed
 hits and 250,000 examined entries, with explicit incomplete/error outcomes.

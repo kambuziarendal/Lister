@@ -393,6 +393,7 @@ ImagePreview::ImagePreview(bool standalone)
   next = addButton("Next", kNext);
   play = addButton("Play preview", kPlay);
   closeQuickView = addButton("×", kCloseQuickView);
+  closeQuickView->ResizeTo(closeQuickView->Bounds().Height(), closeQuickView->Bounds().Height());
   closeQuickView->SetName("close quick view");
   closeQuickView->SetToolTip("Close Quick view (Esc)");
 }
