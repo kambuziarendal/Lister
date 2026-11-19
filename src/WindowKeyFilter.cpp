@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "WindowKeyFilter.h"
 #include "Common.h"
+#include "InspectorEditor.h"
 #include "Pane.h"
 #include "TerminalPanel.h"
 #include <TextView.h>
@@ -22,6 +23,8 @@ WindowKeyFilter::WindowKeyFilter() : BMessageFilter(B_KEY_DOWN) {}
 filter_result WindowKeyFilter::Filter(BMessage *m, BHandler **target) {
   const char *bytes = m->GetString("bytes", "");
   auto window = dynamic_cast<BWindow *>(Looper());
+  if (window && HandleInspectorEditorKey(window->CurrentFocus(), *m))
+    return B_SKIP_MESSAGE;
   for (auto view = window ? window->CurrentFocus() : nullptr; view;
        view = view->Parent()) {
     if (auto panel = dynamic_cast<Listi::TerminalPanel *>(view)) {

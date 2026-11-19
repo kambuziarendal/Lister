@@ -163,7 +163,7 @@ Choose the view that fits the task:
 - **Listi > Quick view** (Command+Shift+P) shows the current selection next to the active panel in any workspace. In a two-panel layout, it temporarily replaces the other panel on screen. Move through the active list to inspect another file. Toggle Quick view off to return to the previous layout; the other panel has not navigated away. Space still selects files.
 - From a file’s context menu, **Preview in other panel** (or **Preview beside file list** in a single-panel workspace) opens Quick view without toggling it off. Click **×** or press **Esc** to return to the file list. **Preview in window** opens a separate viewer.
 - **View** (Command+Shift+V) opens a separate viewer for one file. Escape or Command+W closes it. **Listi > Inspector panel** keeps an inspector in a two-panel layout instead.
-- **Edit** (Command+E) from the file manager still uses the configured external editor for a local file. **Edit** *inside the preview* opens Listi’s native editor. Opening a preview alone does not change the file.
+- **Edit** (Command+E) opens a supported local text file for editing inside the lister. You can also click **Edit** in its preview. Use **Detach** to move the live draft into a separate editor window, or **Done** to return to the preview. For the configured external editor, use **Files > Edit in external editor**.
 
 ### Text, source code and unknown formats
 

@@ -75,7 +75,7 @@ using Listi::PanelPage;
 constexpr uint32 kResumeArchiveEdits = 'ared';
 constexpr uint32 kPreviewPattern = 'sppv', kApplyPattern = 'spap';
 constexpr uint32 kSplitChanged = 'swgt',
-                 kQuickView = 'qvpr';
+                 kQuickView = 'qvpr', kEditExternally = 'edex';
 
 class WorkspaceSplit : public BSplitView {
 public:
@@ -178,7 +178,7 @@ class MainWindow : public BWindow {
              hosts[1]->Current() == PanelPage::Files;
     case kClipboardCopy: case kClipboardCut: case kClipboardPaste: case kCopyPaths:
     case kClipboardSaveText: case kClipboardSaveImage: case kUndoBulkRename:
-    case kEdit: case kView: case kPreviewOtherPanel:
+    case kEdit: case kEditExternally: case kView: case kPreviewOtherPanel:
     case kOpenWith: case kOpenSystem: case kProperties:
     case kDelete: case kRestore: case kPermanentDelete: case kRename:
     case kBulkRename: case kMkdir: case kAddArchive: case kRemoveArchive:
@@ -729,7 +729,24 @@ class MainWindow : public BWindow {
     else
       hosts[pane]->Open(PanelPage::Preview, new ImagePreview());
   }
+  ImagePreview *PanelPreview(int pane) const {
+    return static_cast<ImagePreview *>(hosts[pane]->Page(PanelPage::Preview));
+  }
+  bool LeavePanelPage(int pane) {
+    return hosts[pane]->Current() != PanelPage::Preview ||
+           PanelPreview(pane)->CloseEditor();
+  }
+  bool CloseWorkspaceEditors() {
+    if (!preview->CloseEditor())
+      return false;
+    for (int pane = 0; pane < 2; ++pane)
+      if (auto *page = PanelPreview(pane); page && !page->CloseEditor())
+        return false;
+    return true;
+  }
   void ClosePanelPreview(int pane) {
+    if (!PanelPreview(pane)->CloseEditor())
+      return;
     hosts[pane]->Close(PanelPage::Preview);
     ActivatePanel(1 - pane);
     ApplyPreviewVisibility();
@@ -737,6 +754,8 @@ class MainWindow : public BWindow {
   }
   void SetQuickView(bool enabled) {
     if (quickView != enabled) {
+      if (!enabled && !preview->CloseEditor())
+        return;
       quickView = enabled;
       ApplyWorkspace();
     }
@@ -801,7 +820,7 @@ class MainWindow : public BWindow {
     RefreshBank();
   }
   void SetWorkspace(Workspace value) {
-    if (prefs.workspace == value)
+    if (prefs.workspace == value || !CloseWorkspaceEditors())
       return;
     quickView = false;
     prefs.workspace = value;
@@ -940,14 +959,21 @@ class MainWindow : public BWindow {
       Notice("Select exactly one file.");
       return;
     }
-    if (action == kPreviewOtherPanel) {
+    const bool editInPanel = action == kEdit && !Listi::IsVirtual(selected.front());
+    if (action == kPreviewOtherPanel || editInPanel) {
+      ImagePreview *target = preview;
       if (prefs.IsSmidja()) {
+        if (previewVisible && !preview->CloseEditor())
+          return;
         OpenPanelPreview(1 - source);
+        target = PanelPreview(1 - source);
         ApplyPreviewVisibility();
         FocusPage(source);
       } else {
         SetQuickView(true);
       }
+      if (editInPanel)
+        target->BeginEditing(selected.front());
       return;
     }
     if (action == kView) {
@@ -962,7 +988,7 @@ class MainWindow : public BWindow {
       window->Show();
       return;
     }
-    if (action == kEdit && Listi::ParseLocation(selected[0]).Archive()) {
+    if (Listi::ParseLocation(selected[0]).Archive()) {
       OpenArchiveEditor(selected[0], prefs.editor.String());
       return;
     }
@@ -1004,6 +1030,7 @@ public:
     files->AddSeparatorItem();
     Item commands[] = {{"View", kView, 0},
                        {"Edit", kEdit, 'E'},
+                       {"Edit in external editor", kEditExternally, 0},
                        {"Copy to other panel", kCopy, 0},
                        {"Move to other panel", kMove, 'M'},
                        {"Rename", kRename, 'R'},
@@ -1573,6 +1600,8 @@ public:
         const int32 page = m->GetInt32("page", -1);
         if (page < 0 || page > 2 || !hosts[pane]->Page(PanelPage(page)))
           break;
+        if (PanelPage(page) != hosts[pane]->Current() && !LeavePanelPage(pane))
+          break;
         hosts[pane]->Select(PanelPage(page));
       }
       ActivatePanel(pane);
@@ -1588,6 +1617,8 @@ public:
         if (hosts[pane]->Current() == PanelPage::Preview) {
           ClosePanelPreview(pane);
         } else {
+          if (previewVisible && !preview->CloseEditor())
+            break;
           OpenPanelPreview(pane);
           ApplyPreviewVisibility();
           FocusPage(source);
@@ -1602,6 +1633,8 @@ public:
       break;
     case kPreviewToggle:
       if (prefs.SinglePane() || quickView || PanelPreviewVisible())
+        break;
+      if (previewVisible && !preview->CloseEditor())
         break;
       prefs.SetPreview(!prefs.Preview());
       ApplyPreviewVisibility();
@@ -1675,6 +1708,8 @@ public:
       break;
     case kSearch:
       if (prefs.IsSmidja()) {
+        if (!LeavePanelPage(source))
+          break;
         if (!hosts[source]->Page(PanelPage::Search))
           hosts[source]->Open(PanelPage::Search, CreatePanelSearch(
               BMessenger(this), source, panes[source]->Path(), SearchStore()));
@@ -1710,9 +1745,13 @@ public:
       if (which < 0 || which > 1)
         break;
       if (quickView && source != which) {
+        if (!preview->CloseEditor())
+          break;
         quickView = false;
         ApplyWorkspace();
       }
+      if (!LeavePanelPage(which))
+        break;
       hosts[which]->Select(PanelPage::Files);
       source = which;
       ApplyPreviewVisibility();
@@ -1729,6 +1768,8 @@ public:
       break;
     }
     case kFilter:
+      if (!LeavePanelPage(source))
+        break;
       hosts[source]->Select(PanelPage::Files);
       ApplyPreviewVisibility();
       panes[source]->FocusFilter();
@@ -2252,6 +2293,7 @@ public:
     case kPreviewOtherPanel:
     case kView:
     case kEdit:
+    case kEditExternally:
       Open(m->what);
       break;
     case kOpenPaths:
@@ -2402,6 +2444,8 @@ public:
       BMessage layoutMessage, profilesMessage;
       if (m->FindMessage("layout", &layoutMessage) != B_OK ||
           m->FindMessage("profiles", &profilesMessage) != B_OK)
+        break;
+      if (!CloseWorkspaceEditors())
         break;
       WorkspaceLayout layout;
       layout.Load(layoutMessage);
