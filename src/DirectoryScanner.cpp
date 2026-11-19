@@ -70,6 +70,9 @@ public:
     BMessage batch(kRows);
     batch.AddInt64("serial", serial);
     int count = 0;
+    // A small first batch lets the pane draw before another screenful of
+    // Tracker icons is decoded. Keep later batches large to limit UI work.
+    int batchLimit = icons ? 8 : 80;
     bool deliveryFailed = false;
     auto send = [&]() {
       if (!Send(batch, serial)) {
@@ -80,6 +83,7 @@ public:
       batch.what = kRows;
       batch.AddInt64("serial", serial);
       count = 0;
+      batchLimit = 80;
     };
     auto row = [&](const char *full, const char *label, bool parent = false) {
       if (deliveryFailed)
@@ -146,7 +150,7 @@ public:
         }
       }
       batch.AddMessage("entry", &item);
-      if (++count == 80)
+      if (++count == batchLimit)
         send();
     };
     BMessage done(kScanDone);
@@ -180,7 +184,7 @@ public:
                          bitmap.BitsLength());
         }
         batch.AddMessage("entry", &item);
-        if (++count == 80)
+        if (++count == batchLimit)
           send();
       };
       try {
