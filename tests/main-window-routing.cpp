@@ -144,9 +144,12 @@ int main() {
   waitFor([&] { return !pane->IsScanning(); });
   assert(pane->MatchPattern("visible.txt", true) == 1);
   select(Page::Files);
-  send(kQuickView);
+  send(kPreviewOtherPanel);
   auto *inspect = right->Page(Page::Preview);
-  assert(inspect);
+  assert(inspect && right->Current() == Page::Preview);
+  send(kPreviewOtherPanel);
+  assert(right->Page(Page::Preview) == inspect &&
+         right->Current() == Page::Preview);
   auto *textPreview = inspect->FindView("preview scroll");
   assert(textPreview);
   waitFor([&] { return !textPreview->IsHidden(); });
@@ -154,6 +157,26 @@ int main() {
   assert(left->Current() == Page::Search && textPreview->IsHidden());
   select(Page::Files);
   waitFor([&] { return !textPreview->IsHidden(); });
+  BMessage focusPreview(Listi::kPanelPage);
+  focusPreview.AddInt32("pane", 1);
+  focusPreview.AddInt32("page", static_cast<int32>(Page::Preview));
+  window->MessageReceived(&focusPreview);
+  send(kInlineCancel);
+  assert(!right->Page(Page::Preview) && right->Current() == Page::Files);
+  assert(pane->Selected() == std::vector<std::string>{file});
+
+  select(Page::Files);
+  workspace(Workspace::einn);
+  waitFor([&] { return !pane->IsScanning(); });
+  assert(pane->MatchPattern("visible.txt", true) == 1);
+  send(kPreviewOtherPanel);
+  assert(item(kQuickView)->IsMarked());
+  send(kPreviewOtherPanel);
+  assert(item(kQuickView)->IsMarked());
+  send(kCloseQuickView);
+  send(kCloseQuickView);
+  assert(!item(kQuickView)->IsMarked());
+  assert(pane->Selected() == std::vector<std::string>{file});
   assert(unlink(file.c_str()) == 0 && rmdir(temp) == 0);
   window->Quit();
   puts("Main window: menu shortcuts and workspace routing OK");

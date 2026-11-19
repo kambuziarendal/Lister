@@ -130,6 +130,25 @@ std::string ReadClipboardText(BClipboard *clipboard) {
   return std::string(static_cast<const char *>(bytes), size);
 }
 
+void PutPathsAsText(const std::vector<std::string> &paths,
+                    BClipboard *clipboard) {
+  if (paths.empty())
+    throw std::runtime_error("Select at least one entry first.");
+  std::string text;
+  for (const auto &path : paths) {
+    if (text.size() + path.size() + !text.empty() > kMaximumTextBytes)
+      throw std::runtime_error("The selected paths exceed the 4 MiB text limit.");
+    if (!text.empty())
+      text += '\n';
+    text += path;
+  }
+  BMessage message;
+  Require(message.AddData("text/plain", B_MIME_TYPE, text.data(), text.size()),
+          "Add clipboard text");
+  ClipboardLock lock(clipboard);
+  Commit(clipboard, message);
+}
+
 std::vector<ClipboardItem> ReadFileClipboard(const BMessage &message) {
   if (message.FlattenedSize() > 2 * 1024 * 1024)
     throw std::runtime_error(

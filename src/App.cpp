@@ -129,9 +129,9 @@ class MainWindow : public BWindow {
       shelfWindow.SendMessage(&refresh, (BHandler *)nullptr, 0);
     }
   }
-  void AddToShelf() {
+  void AddToShelf(const std::map<std::string, Listi::NodeIdentity> &expected = {}) {
     try {
-      const auto added = shelf->Add(panes[source]->Selected());
+      const auto added = shelf->Add(panes[source]->Selected(), expected);
       BString status;
       if (added)
         status << int32(added)
@@ -176,9 +176,10 @@ class MainWindow : public BWindow {
     case kCompareFolders: case kCreateArchive: case kExtractArchive:
       return hosts[0]->Current() == PanelPage::Files &&
              hosts[1]->Current() == PanelPage::Files;
-    case kClipboardCopy: case kClipboardCut: case kClipboardPaste:
+    case kClipboardCopy: case kClipboardCut: case kClipboardPaste: case kCopyPaths:
     case kClipboardSaveText: case kClipboardSaveImage: case kUndoBulkRename:
-    case kEdit: case kView: case kOpenWith: case kOpenSystem: case kProperties:
+    case kEdit: case kView: case kPreviewOtherPanel:
+    case kOpenWith: case kOpenSystem: case kProperties:
     case kDelete: case kRestore: case kPermanentDelete: case kRename:
     case kBulkRename: case kMkdir: case kAddArchive: case kRemoveArchive:
     case kAll: case kNone: case kInvert: case kSelectType: case kSelectPattern:
@@ -527,6 +528,13 @@ class MainWindow : public BWindow {
     try {
       if (action != kClipboardPaste) {
         auto selected = panes[source]->Selected();
+        if (action == kCopyPaths) {
+          Listi::PutPathsAsText(selected);
+          panes[source]->ShowStatus(selected.size() == 1
+                                        ? "Path copied as text."
+                                        : "Paths copied as text.");
+          return;
+        }
         Listi::PutFileClipboard(selected, action == kClipboardCut);
         BString status;
         status
@@ -702,6 +710,7 @@ class MainWindow : public BWindow {
   }
   void ApplyPreviewVisibility() {
     const bool showPreview = quickView || (prefs.Preview() && !prefs.SinglePane() && !PanelPreviewVisible());
+    preview->SetQuickViewCloseVisible(quickView);
     if (showPreview != previewVisible) {
       previewVisible = showPreview;
       if (showPreview && preview->IsHidden(preview))
@@ -713,6 +722,19 @@ class MainWindow : public BWindow {
     previewMenu->SetMarked(prefs.Preview() && !prefs.SinglePane());
     previewMenu->SetEnabled(!quickView && !PanelPreviewVisible() && !prefs.SinglePane());
     UpdatePreview();
+  }
+  void OpenPanelPreview(int pane) {
+    if (hosts[pane]->Page(PanelPage::Preview))
+      hosts[pane]->Select(PanelPage::Preview);
+    else
+      hosts[pane]->Open(PanelPage::Preview, new ImagePreview());
+  }
+  void SetQuickView(bool enabled) {
+    if (quickView != enabled) {
+      quickView = enabled;
+      ApplyWorkspace();
+    }
+    FocusPage(source);
   }
   void ApplyWorkspace() {
     const bool previewFirst = quickView ? source == 1 : prefs.inspectorLeft;
@@ -910,6 +932,16 @@ class MainWindow : public BWindow {
     auto selected = panes[source]->Selected();
     if (selected.size() != 1) {
       Notice("Select exactly one file.");
+      return;
+    }
+    if (action == kPreviewOtherPanel) {
+      if (prefs.IsSmidja()) {
+        OpenPanelPreview(1 - source);
+        ApplyPreviewVisibility();
+        FocusPage(source);
+      } else {
+        SetQuickView(true);
+      }
       return;
     }
     if (action == kView) {
@@ -1508,7 +1540,10 @@ public:
       if (actionArea->Pending())
         CloseAction();
       else if (hosts[source]->Current() != PanelPage::Files) {
-        hosts[source]->Select(PanelPage::Files);
+        if (hosts[source]->Current() == PanelPage::Preview)
+          hosts[source]->Close(PanelPage::Preview);
+        else
+          hosts[source]->Select(PanelPage::Files);
         ApplyPreviewVisibility();
         FocusPage(source);
       } else if (PanelPreviewVisible()) {
@@ -1516,9 +1551,7 @@ public:
         ApplyPreviewVisibility();
         FocusPage(source);
       } else if (quickView) {
-        quickView = false;
-        ApplyWorkspace();
-        FocusPage(source);
+        SetQuickView(false);
       } else
         queue->Collapse();
       break;
@@ -1541,22 +1574,23 @@ public:
       break;
     }
     case kQuickView:
+      if (actionArea->Pending())
+        break;
       if (prefs.IsSmidja()) {
         int pane = hosts[source]->Current() == PanelPage::Preview ? source : 1 - source;
-        if (hosts[pane]->Current() == PanelPage::Preview) {
+        if (hosts[pane]->Current() == PanelPage::Preview)
           hosts[pane]->Close(PanelPage::Preview);
-        } else if (hosts[pane]->Page(PanelPage::Preview)) {
-          hosts[pane]->Select(PanelPage::Preview);
-        } else {
-          hosts[pane]->Open(PanelPage::Preview, new ImagePreview());
-        }
+        else
+          OpenPanelPreview(pane);
         ApplyPreviewVisibility();
         FocusPage(source);
         break;
       }
-      quickView = !quickView;
-      ApplyWorkspace();
-      FocusPage(source);
+      SetQuickView(!quickView);
+      break;
+    case kCloseQuickView:
+      if (quickView && !actionArea->Pending())
+        SetQuickView(false);
       break;
     case kPreviewToggle:
       if (prefs.SinglePane() || quickView || PanelPreviewVisible())
@@ -1716,11 +1750,24 @@ public:
       try {
         BMessage snapshot;
         std::exception_ptr fileSnapshotError;
+        Listi::Job shelfSnapshot{Listi::Action::Copy, selected, ""};
+        bool canAddToShelf = false;
         if (!selected.empty() && local) {
           try {
             snapshot = Listi::MakeFileSelection(selected);
           } catch (...) {
             fileSnapshotError = std::current_exception();
+          }
+          // Shelf accepts overlapping folders and distinct hard-link names;
+          // the native transfer clipboard has stricter rules for those.
+          if (folder != "@disks" &&
+              selected.size() <= Listi::Shelf::kMaximumEntries) {
+            try {
+              FreezeLocalJob(shelfSnapshot);
+              canAddToShelf = true;
+            } catch (const std::runtime_error &) {
+              // An unavailable selection cannot be saved to the Shelf.
+            }
           }
         }
         struct stat folderBefore {};
@@ -1760,6 +1807,9 @@ public:
         options.fileType = panes[owner]->SelectedFileType();
         options.sort = panes[owner]->Sorting();
         options.view = panes[owner]->CurrentView();
+        options.singlePane = prefs.SinglePane();
+        options.rememberView = prefs.folderModes.count(folder);
+        options.addToShelf = canAddToShelf;
         options.restoreSidebar = panes[owner]->SidebarCanBeRestored();
         options.addShortcut =
             options.directory && selected.size() == 1 && placesWritable &&
@@ -1795,6 +1845,11 @@ public:
           MessageReceived(&request);
           break;
         }
+        if (action == Listi::kAddToShelf) {
+          if (options.addToShelf)
+            AddToShelf(shelfSnapshot.expectedSources);
+          break;
+        }
         if (choice.folder) {
           struct stat folderAfter {};
           if (folderLocal && (stat(folder.c_str(), &folderAfter) ||
@@ -1806,9 +1861,11 @@ public:
             panes[owner]->Sort({choice.value, choice.ascending});
             break;
           }
-          if (action == kGridMode) {
-            BMessage command(kGridMode);
-            command.AddInt32("mode", choice.value);
+          if (action == kGridMode || action == kRememberView ||
+              action == kForgetView) {
+            BMessage command(action);
+            if (action == kGridMode)
+              command.AddInt32("mode", choice.value);
             panes[owner]->MessageReceived(&command);
             break;
           }
@@ -1820,7 +1877,7 @@ public:
             panes[owner]->Reload();
             break;
           }
-        } else if (local) {
+        } else if (local && action != kCopyPaths) {
           if (fileSnapshotError)
             std::rethrow_exception(fileSnapshotError);
           Listi::ReadFileClipboard(snapshot);
@@ -1932,6 +1989,7 @@ public:
     case kClipboardCopy:
     case kClipboardCut:
     case kClipboardPaste:
+    case kCopyPaths:
       ClipboardAction(m->what);
       break;
     case kCopy:
@@ -2183,6 +2241,7 @@ public:
     case kInvert:
       panes[source]->Select(2);
       break;
+    case kPreviewOtherPanel:
     case kView:
     case kEdit:
       Open(m->what);

@@ -1,20 +1,24 @@
 // SPDX-License-Identifier: MIT
 #include "FileContextMenu.h"
 #include "Common.h"
+#include "ShelfWindow.h"
 #include <MenuItem.h>
 #include <PopUpMenu.h>
 #include <Screen.h>
 #include <algorithm>
 namespace {
-void FolderActions(BMenu &menu, bool local, bool archive, PaneSort sort,
-                   int view, bool restoreSidebar) {
-  auto add = [&](const char *label, uint32 what, bool enabled) {
+void FolderActions(BMenu &menu, const ContextMenuOptions &options) {
+  auto add = [](BMenu &target, const char *label, uint32 what, bool enabled,
+                int32 value = 0, bool marked = false) {
     auto message = new BMessage(what);
     message->AddBool("folderContext", true);
+    message->AddInt32("value", value);
     auto item = new BMenuItem(label, message);
     item->SetEnabled(enabled);
-    menu.AddItem(item);
+    item->SetMarked(marked);
+    target.AddItem(item);
   };
+  const auto sort = options.sort;
   auto sorting = new BMenu("Sort by");
   auto sortItem = [&](const char *label, int column, bool ascending,
                       bool marked) {
@@ -34,26 +38,26 @@ void FolderActions(BMenu &menu, bool local, bool archive, PaneSort sort,
   sortItem("Descending", sort.column, false, !sort.ascending);
   menu.AddItem(sorting);
   auto views = new BMenu("View");
-  const char *names[] = {"Details", "Icons", "Large icons", "Thumbnails"};
-  for (int i = 0; i < 4; ++i) {
-    auto message = new BMessage(kGridMode);
-    message->AddBool("folderContext", true);
-    message->AddInt32("value", i);
-    auto item = new BMenuItem(names[i], message);
-    item->SetMarked(view == i);
-    views->AddItem(item);
-  }
+  for (int32 mode = 0; mode < ViewModeCount; ++mode)
+    add(*views, ViewModeLabel(mode), kGridMode, true, mode, options.view == mode);
+  views->AddSeparatorItem();
+  add(*views, "Remember view for this folder", kRememberView, true, 0,
+      options.rememberView);
+  add(*views, "Use pane view for this folder", kForgetView, options.rememberView);
+  add(*views, "Use workspace default", kGridMode, true, -1);
   menu.AddItem(views);
-  if (restoreSidebar)
-    add("Show sidebar", kRestoreSidebar, true);
+  if (options.restoreSidebar)
+    add(menu, "Show sidebar", kRestoreSidebar, true);
+  const bool local = options.folderLocal;
+  const bool writable = local || options.folderArchive;
   menu.AddSeparatorItem();
-  add("New folder...", kMkdir, local || archive);
-  add("Paste here", kClipboardPaste, local || archive);
+  add(menu, "New folder...", kMkdir, writable);
+  add(menu, "Paste here", kClipboardPaste, writable);
   menu.AddSeparatorItem();
-  add("Refresh", kRefresh, true);
-  add("Terminal here", kTerminal, local);
+  add(menu, "Refresh", kRefresh, true);
+  add(menu, "Terminal here", kTerminal, local);
   menu.AddSeparatorItem();
-  add("Properties...", kProperties, local);
+  add(menu, "Properties...", kProperties, local);
 }
 ContextAction Choose(BPopUpMenu &menu, BPoint screen) {
   auto chosen = menu.Go(screen, false, true, false);
@@ -80,7 +84,9 @@ void FileActions(BMenu &menu, const ContextMenuOptions &options) {
     add("Add to shortcuts…", kAddShortcut, options.addShortcut);
   if (!directory) {
     add("Open with...", kOpenWith, single && local);
-    add("View", kView, single);
+    add(options.singlePane ? "Preview beside file list" : "Preview in other panel",
+        kPreviewOtherPanel, single);
+    add("Preview in window", kView, single);
     add("Edit", kEdit, single && (local || options.archiveRemove));
     const std::string typeLabel =
         options.fileType.empty()
@@ -91,6 +97,9 @@ void FileActions(BMenu &menu, const ContextMenuOptions &options) {
   menu.AddSeparatorItem();
   add("Copy", kClipboardCopy, local || options.archiveRemove);
   add("Cut", kClipboardCut, local || options.archiveRemove);
+  add(single ? "Copy path as text" : "Copy paths as text", kCopyPaths,
+      options.selected != 0);
+  add("Add to Shelf", Listi::kAddToShelf, options.addToShelf);
   add("Paste here", kClipboardPaste,
       options.folderLocal || options.folderArchive);
   add("Copy to other panel", kCopy, dual);
@@ -143,8 +152,7 @@ ContextAction ShowContextMenu(BPoint point, const ContextMenuOptions &options) {
   ContextSelector(files, false, options.selected != 0);
   ContextSelector(folder, true, options.selected != 0);
   FileActions(files, options);
-  FolderActions(folder, options.folderLocal, options.folderArchive,
-                options.sort, options.view, options.restoreSidebar);
+  FolderActions(folder, options);
   // Reserve an anchor that fits either menu. Switching context near an edge
   // must not move the selector under the pointer or lose the original owner.
   float fileWidth, fileHeight, folderWidth, folderHeight;

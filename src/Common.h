@@ -15,6 +15,8 @@
 constexpr const char *kSignature = "application/x-vnd.Kambuzi-Lister";
 enum : uint32 {
   kGridMode = 'gmod',
+  kRememberView = 'grem',
+  kForgetView = 'gfor',
   kSort = 'sort',
   kWorkspace = 'wksp',
   kContextMenu = 'ctxm',
@@ -35,6 +37,8 @@ enum : uint32 {
   kSelection = 'sels',
   kPreviewSelection = 'pvsl',
   kPreviewToggle = 'pvtg',
+  kPreviewOtherPanel = 'pvop',
+  kCloseQuickView = 'qvcl',
   kPaneDisplay = 'pnds',
   kParent = 'prnt',
   kRoot = 'root',
@@ -44,6 +48,7 @@ enum : uint32 {
   kProperties = 'prop',
   kOpenWith = 'opwi',
   kClipboardCopy = 'ccpy',
+  kCopyPaths = 'cpat',
   kClipboardCut = 'ccut',
   kClipboardPaste = 'cpst',
   kClipboardSaveText = 'ctsf',

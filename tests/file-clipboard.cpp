@@ -47,6 +47,15 @@ int main(int argc, char **argv) {
     PutFileClipboard({a+"/one",a+"/two"},false,&clip);
     auto data=Data(clip); auto items=ReadFileClipboard(data);
     Check(items.size()==2 && !items[0].cut,"copy publishes native references and modes");
+    const std::string archivePath = "archive:///boot/home/two%20words.zip!/three";
+    PutPathsAsText({a + "/one", archivePath}, &clip);
+    Check(!HasClipboardFiles(Data(clip)) &&
+              ReadClipboardText(&clip) == a + "/one\n" + archivePath,
+          "Copy paths replaces file references with newline-separated plain text");
+    Check(Rejected([&] { PutPathsAsText({}, &clip); }) &&
+              ReadClipboardText(&clip) == a + "/one\n" + archivePath,
+          "Copy paths without a selection preserves clipboard contents");
+    PutFileClipboard({a+"/one",a+"/two"},false,&clip);
     auto paste=PrepareFilePaste(b,&clip);
     auto r=Run(paste.jobs[0],{}); FinishFilePaste(paste,{},&clip);
     Check(r.completed==2 && Read(b+"/one")=="original" && Read(a+"/one")=="original","copy preserves both originals");
