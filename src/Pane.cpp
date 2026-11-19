@@ -112,6 +112,42 @@ void ClearSidebarItems(BListView &list) {
     delete item;
 }
 
+class PlacesMenu : public BMenu {
+public:
+  explicit PlacesMenu(Pane *owner) : BMenu("Places"), pane(owner) {}
+
+  void AttachedToWindow() override {
+    BMenu::AttachedToWindow();
+    // Menu tracking polls GetMouse. Leave mouse-down delivery to this view
+    // instead of letting the tracking thread consume it from the queue.
+    SetEventMask(EventMask(), B_NO_POINTER_HISTORY);
+  }
+
+  void MouseDown(BPoint point) override {
+    const auto event = Window()->CurrentMessage();
+    if (event && (event->GetInt32("buttons", 0) & B_SECONDARY_MOUSE_BUTTON)) {
+      for (int32 i = 0; i < CountItems(); ++i) {
+        const auto item = ItemAt(i);
+        const auto message = item->Message();
+        if (!item->Frame().Contains(point) || !message ||
+            message->what != kNavigate || !message->GetBool("place", false))
+          continue;
+
+        BMessage remove(kRemoveShortcut);
+        remove.AddString("path", message->GetString("path", ""));
+        const char escape = B_ESCAPE;
+        KeyDown(&escape, 1);
+        BMessenger(pane).SendMessage(&remove, (BHandler *)nullptr, 0);
+        return;
+      }
+    }
+    BMenu::MouseDown(point);
+  }
+
+private:
+  Pane *pane;
+};
+
 class ShelfSidebarList : public BListView {
 public:
   explicit ShelfSidebarList(Pane *owner) : BListView("sidebar shelf"), pane(owner) {}
@@ -226,7 +262,7 @@ Pane::Pane(int32 number, const Preferences &p, std::shared_ptr<Listi::Shelf> sha
   for (int i = 0; i < 6; i++)
     menu->AddItem(new BMenuItem(names[i], new BMessage(codes[i])));
   menu->AddSeparatorItem();
-  placesMenu = new BMenu("Places");
+  placesMenu = new PlacesMenu(this);
   menu->AddItem(placesMenu);
   auto field = new BMenuField("go", "", menu);
   menu->SetRadioMode(false);

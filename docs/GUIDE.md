@@ -121,8 +121,8 @@ still work without changing any settings.
   in its last mode, right-click an empty area of the file panel and choose
   **Show sidebar**. Choices are remembered separately for each sidebar.
   Right-click a folder in the file panel or tree and choose **Add to shortcuts…**.
-  Right-click a shortcut in the sidebar and choose **Remove shortcut**.
-  Shortcuts and the **Places** menu share the same saved destinations.
+  Right-click a shortcut in the sidebar and choose **Remove shortcut**, or
+  right-click it under **Go → Places**. Both use the same saved destinations.
   The **Shelf** sidebar shows the same references as the Shelf window. Drop
   files onto it, or right-click to add the selected files, remove a reference
   or open the Shelf window for transfer, archive and collection actions.
