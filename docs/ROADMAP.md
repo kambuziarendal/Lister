@@ -16,6 +16,35 @@ outperforms Directory Opus, Tracker or Dolphin.
 
 The current [test candidate](../README.md#install) is available for Haiku x86_64. See the [feature tour](FEATURES.md) for what you can try today. The ideas below are not a release schedule.
 
+## Current priorities
+
+1. **Before beta: interrupted file jobs.** Late removal of a virtual USB disk
+   left a copy waiting for over 100 seconds after cancellation. Physical USB
+   removal remains untested. The window must stay responsive and unrelated
+   jobs must be able to proceed. While a write can still return, report
+   “Cancellation requested; waiting for device”, not “Cancelled”. Prevent a
+   second write to the same target until the first is resolved. Check the
+   original, previously copied files and the reported outcome after remount.
+2. **First new workflow: open a live BFS search in this panel.** Reuse the
+   existing query worker and keep the other panel available for browsing.
+   Show each hit’s original folder. Test with two same-named files: when
+   another hit arrives, the selection must not jump; Quick view and Add to
+   Shelf must still use the selected original. Back returns to the folder
+   the user left. A query is a source of entries, not a destination folder.
+3. **Then add independent tabs, followed by paired navigation.** Each tab
+   remembers its source, history, selection and scroll position. Link two
+   folder roots by relative path only when requested. If a peer folder is
+   missing, say so and leave the peer panel in place; never create or sync
+   files while browsing. Add named project sessions after these work: restore
+   locations, queries and layout, never replay file jobs.
+
+**Keep the architecture lister-first.** Let folders and queries feed the same
+panel without tying their state to a particular window layout. Extract shared
+commands as real workflows need them, not in a wholesale rewrite. The first
+custom button should be **Open selected in [app]**: choose the app once, then
+pass the current selection on click without changing MIME defaults. A saved
+bulk-rename template with a preview can follow. Neither blocks live search.
+
 ## Optional by design
 
 **Depth should be available, not compulsory.** A straightforward file browser
@@ -67,7 +96,7 @@ See the [workflow guide](GUIDE.md) for interpreting partial results and the
 [verification guide](VERIFICATION.md) for reproducing fault tests. Job reports
 are session information, not a persistent audit log or an undo mechanism.
 
-## Priorities after 0.32.0
+## Existing foundations and later ideas
 
 ### Implemented in the 0.35.0 alpha
 
@@ -99,23 +128,8 @@ are session information, not a persistent audit log or an undo mechanism.
 
 See the [workflow guide](GUIDE.md) for the controls and limitations.
 
-### Next workflows, in priority order
+### Other follow-ups, not prerequisites
 
-1. **Paired navigation.** In Tvískipt, offer
-   linked browsing relative to two independently chosen roots. If the peer
-   subfolder is missing, show that and leave the other panel in place; never
-   create or synchronise files just because someone navigates. Follow with
-   independent panel tabs and named paired sets that restore locations and
-   view state, never file jobs.
-2. **Reusable buttons.** Let the workspace editor save presets for existing
-   commands, starting with rename previews rather than a scripting language.
-   Quick view no longer depends on this work; it already reuses the inspector
-   across all four workspaces.
-
-### Focused follow-ups, not prerequisites
-
-- Feed a panel from a saved BFS query before considering arbitrary command
-  output. Show origins and distinguish a live result from a saved collection.
 - Add an on-demand, cancellable folder-size scan. Distinguish logical bytes
   from allocated space, define hard-link counting and flag unreadable subtrees.
   Do not slow down ordinary selection summaries.
@@ -215,8 +229,8 @@ binary format can be meaningfully diffed.
 ### Synchronise with a plan, not a surprise
 
 Directory synchronisation should start with a proposed action list: direction,
-new or changed entries, conflicts and any deletion. Make one-way and two-way
-semantics explicit, recheck changed sources and let the user review before
+new or changed entries, and conflicts. Start with one-way copy/update and no
+automatic deletion. Recheck changed sources and let the user review before
 writing. Do not treat a successful folder comparison as permission to synchronise
 or delete. This follows the stronger job-result and conflict model.
 
@@ -304,7 +318,8 @@ WAN condition.
   platforms need native filesystem, package and UI verification. A port is not a
   reason to replace the Haiku experience.
 - **Desktop integration:** coexist with Tracker by default. A replacement role
-  requires a separate compatibility and recovery study.
+  is optional, not a 1.0 requirement. It needs a separate compatibility study
+  and a tested route back to Tracker.
 - **Optional peer sharing:** a future adapter could connect to a separately
   developed sharing system; it is not a current dependency or shipped feature.
 
