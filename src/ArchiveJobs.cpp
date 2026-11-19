@@ -442,7 +442,8 @@ Result RunArchiveLocalMove(const Job &job, const Hooks &hooks) {
     };
     std::unique_ptr<LocalMoveTree> localSource;
     if (source.Local())
-      localSource.reset(new LocalMoveTree(job.sources, internal, true));
+      localSource = std::make_unique<LocalMoveTree>(
+          job.sources, internal, true, job.expectedDestination.device);
     Stage stage(job.destinationFolder);
     const auto snapshot = PathOf(stage.dir);
     Job extract{Action::Copy, job.sources, snapshot};
@@ -480,6 +481,7 @@ Result RunArchiveLocalMove(const Job &job, const Hooks &hooks) {
       // Local directory merges may publish several files. A skipped or failed
       // file retains every source member; never treat a partial copy as a move.
       Job copy{Action::Copy, additions, job.destination};
+      copy.copyForArchiveMove = true;
       FreezeLocalJob(copy, job.destination);
       copied = true;
       auto written = Run(copy, internal);
@@ -490,7 +492,8 @@ Result RunArchiveLocalMove(const Job &job, const Hooks &hooks) {
               written.errors.empty()
                   ? "Incomplete destination copy. Source archive retained."
                   : written.errors.front());
-      localDestination.reset(new LocalMoveTree(destinations, internal, false));
+      localDestination = std::make_unique<LocalMoveTree>(
+          destinations, internal, false, job.expectedDestination.device);
       localDestination->Flush();
     }
     auto destinationGuard = [&] {

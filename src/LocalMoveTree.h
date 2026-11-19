@@ -10,7 +10,7 @@ namespace Listi {
 class LocalMoveTree {
 public:
   LocalMoveTree(const std::vector<std::string> &, const Hooks &,
-                bool portableSource);
+                bool portableSource, std::optional<dev_t> requiredVolume = {});
   void Verify() const;
   void Flush() const;
   void Remove(const std::string &root, const Hooks &);

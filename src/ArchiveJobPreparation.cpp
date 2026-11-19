@@ -4,6 +4,7 @@
 #include "ArchiveVolumes.h"
 #include "ArchiveWriting.h"
 #include "JobSnapshot.h"
+#include "MoveVolume.h"
 #include "VirtualFile.h"
 #include <StorageDefs.h>
 #include <cerrno>
@@ -275,6 +276,7 @@ Job PrepareArchiveMove(const Job &transfer) {
     move.expectedSources.insert(edit.expectedSources.begin(),
                                 edit.expectedSources.end());
     move.expectedArchiveSets = edit.expectedArchiveSets;
+    CheckMoveVolumes(move);
     Guards(transfer);
     VerifyArchiveSets(transfer);
     return move;
@@ -318,6 +320,7 @@ Job PrepareArchiveMove(const Job &transfer) {
                                   to.expectedArchiveSets.end());
   move.destinationFolder = to.destinationFolder;
   move.expectedDestination = to.expectedDestination;
+  CheckMoveVolumes(move);
   // Do not refresh stale clipboard/confirmation guards during preparation.
   Guards(transfer);
   VerifyArchiveSets(transfer);

@@ -5,6 +5,8 @@
 #include "ArchiveJobs.h"
 #include "ImageConvert.h"
 #include "NamedEntry.h"
+#include "JobSnapshot.h"
+#include "MoveVolume.h"
 #include "Trash.h"
 #include <Directory.h>
 #include <Entry.h>
@@ -295,13 +297,14 @@ struct Runner {
            a.st_ctim.tv_sec == b.st_ctim.tv_sec &&
            a.st_ctim.tv_nsec == b.st_ctim.tv_nsec;
   }
-  void VerifyCopy(const std::string &source) {
+  void VerifyCopy(const std::string &source, dev_t sourceVolume) {
     if (!deferCompletion)
       return;
     const auto recorded = copied.find(source);
     if (recorded == copied.end())
       throw std::runtime_error(source + ": no committed copy; source retained");
     const auto &copy = recorded->second;
+    RequireSameMoveVolume(sourceVolume, copy.committed.st_dev);
     struct stat now;
     if (lstat(copy.destination.c_str(), &now) || !SameEntry(copy.committed, now)) {
       auto &row = Outcome(source);
@@ -321,7 +324,7 @@ struct Runner {
           root + ": source changed; copied data kept and source retained");
     for (auto &entry : before) {
       auto found = after.find(entry.first);
-      VerifyCopy(entry.first);
+      VerifyCopy(entry.first, entry.second.st_dev);
       if (found == after.end() || !SameEntry(entry.second, found->second))
         throw std::runtime_error(
             root + ": source changed; copied data kept and source retained");
@@ -334,7 +337,7 @@ struct Runner {
       struct stat now;
       if (lstat(it->first.c_str(), &now))
         Fail(it->first);
-      VerifyCopy(it->first);
+      VerifyCopy(it->first, it->second.st_dev);
       bool directory = S_ISDIR(it->second.st_mode);
       if (now.st_ino != it->second.st_ino || now.st_dev != it->second.st_dev ||
           (!directory && !SameEntry(it->second, now)))
@@ -404,6 +407,8 @@ struct Runner {
       Fail(src);
     struct stat before {};
     bool existed = Exists(dst, &before);
+    if (existed && (deferCompletion || guardedJob->copyForArchiveMove))
+      RequireSameMoveVolume(guardedJob->expectedDestination.device, before.st_dev);
     if (existed && guardedJob && guardedJob->action == Action::Duplicate)
       throw std::runtime_error(
           dst + ": already exists; duplicate does not overwrite");
@@ -699,8 +704,8 @@ struct Runner {
               h.progress(source, 0);
             continue;
           }
-          if (s != B_CROSS_DEVICE_LINK)
-            throw std::runtime_error(source + ": " + strerror(s));
+          // Do not fall back to copy-and-delete if the mount changed after preflight.
+          throw std::runtime_error(source + ": " + strerror(s));
         }
         Snapshot beforeMove;
         if (job.action == Action::Move) {
@@ -774,7 +779,13 @@ Result Run(const Job &j, const Hooks &h) {
 
   Runner r{h};
   try {
-    r.Execute(j);
+    if (j.action == Action::Move) {
+      Job move = j;
+      FreezeLocalJob(move, move.destination);
+      CheckMoveVolumes(move);
+      r.Execute(move);
+    } else
+      r.Execute(j);
   } catch (const Cancelled &) {
     r.result.cancelled = true;
   } catch (const std::exception &e) {
