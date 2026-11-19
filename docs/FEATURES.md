@@ -187,10 +187,12 @@ values. For native lookup use Find files' BFS query mode.
 
 For one local regular file, **Files > Open with… > Open once** picks an
 installed application without changing the system's associations. **Listi >
-Terminal here** opens an interactive shell in the active local directory.
-Choose **Below file panels**, **Beside file panels** or **Detached Listi CLI**.
-Detaching and docking retain the same session, running commands and scrollback.
-**External terminal window** launches the configured separate terminal instead.
+Terminal here** opens an interactive shell in a local directory. **Left CLI**
+and **Right CLI** start separate shells from their respective file panels and
+can stay open together. **Dock position** moves the shared dock below, right,
+above or left of the file panels. Either CLI can detach without losing its
+running commands or scrollback. **External terminal window** launches the
+configured separate terminal instead.
 
 ## Work with archives and network folders
 

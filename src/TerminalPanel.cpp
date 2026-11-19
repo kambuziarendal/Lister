@@ -585,15 +585,15 @@ private:
   bool selecting = false;
 };
 
-TerminalPanel::TerminalPanel(BMessenger owner)
+TerminalPanel::TerminalPanel(BMessenger owner, int lister)
     : BGroupView(B_VERTICAL, 0),
       header(new BGroupLayout(B_HORIZONTAL, B_USE_HALF_ITEM_SPACING)),
-      location(new BStringView("terminal location", "Listi CLI")),
+      location(new BStringView("terminal location", TerminalName(lister))),
       terminal(new TerminalView()),
       position(new BButton("terminal position", "Move right", nullptr)),
       move(new BButton("Detach CLI", nullptr)),
       close(new BButton("Close CLI", nullptr)) {
-  SetName("Listi CLI");
+  SetName(TerminalName(lister));
   location->SetTruncation(B_TRUNCATE_MIDDLE);
   location->SetExplicitMinSize(BSize(0, B_SIZE_UNSET));
   location->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
@@ -610,7 +610,7 @@ TerminalPanel::TerminalPanel(BMessenger owner)
       .End()
       .End()
       .Add(terminal);
-  SetDockSide(false);
+  SetDockSide(TerminalSide::Below);
   position->SetTarget(owner);
   position->SetTimeout(0);
   move->SetTarget(owner);
@@ -619,19 +619,32 @@ TerminalPanel::TerminalPanel(BMessenger owner)
   close->SetTimeout(0);
 }
 
-void TerminalPanel::SetDockSide(bool beside) {
-  dockedBeside = beside;
-  header->SetOrientation(dockedBeside && !floating ? B_VERTICAL : B_HORIZONTAL);
-  position->SetLabel(beside ? "Move below" : "Move right");
-  position->SetToolTip(beside ? "Move this shell below the file panels."
-                              : "Move this shell to the right of the file panels.");
+void TerminalPanel::SetDockSide(TerminalSide side) {
+  dockSide = side;
+  header->SetOrientation(IsSideDock(side) && !floating ? B_VERTICAL
+                                                         : B_HORIZONTAL);
+  switch (side) {
+  case TerminalSide::Below:
+    position->SetLabel("Move right");
+    break;
+  case TerminalSide::Right:
+    position->SetLabel("Move above");
+    break;
+  case TerminalSide::Above:
+    position->SetLabel("Move left");
+    break;
+  case TerminalSide::Left:
+    position->SetLabel("Move below");
+    break;
+  }
+  position->SetToolTip("Move the shared CLI dock.");
 }
 
 void TerminalPanel::SetPlacement(bool detached, int64 generation) {
   placement = generation;
   if (floating != detached) {
     floating = detached;
-    header->SetOrientation(dockedBeside && !floating ? B_VERTICAL : B_HORIZONTAL);
+    header->SetOrientation(IsSideDock(dockSide) && !floating ? B_VERTICAL : B_HORIZONTAL);
     if (floating)
       position->Hide();
     else
@@ -659,8 +672,8 @@ int TerminalPanel::Start(const char *path) {
     return error;
   ++sessionId;
   startFolder = path;
-  BString title("Listi CLI   Started in: ");
-  title << path;
+  BString title(Name());
+  title << "   Started in: " << path;
   location->SetText(title);
   location->SetToolTip(title);
   return 0;

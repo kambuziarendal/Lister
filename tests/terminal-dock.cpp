@@ -4,6 +4,7 @@
 #include <Application.h>
 #include <Button.h>
 #include <Clipboard.h>
+#include <Layout.h>
 #include <SplitView.h>
 #include <Window.h>
 #include <cstdlib>
@@ -71,28 +72,39 @@ public:
   Owner() : BWindow(BRect(35, 55, 850, 620), "Terminal dock test",
                     B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS),
             split(new BSplitView(B_VERTICAL, 6)) {
-    split->AddChild(new BGroupView(B_VERTICAL), 0.68f);
-    dock = std::make_unique<TerminalDock>(split, BMessenger(this));
+    auto *workspace = new BGroupView(B_VERTICAL);
+    workspace->SetName("file panels");
+    dock = std::make_unique<TerminalDock>(split, workspace, BMessenger(this));
     AddChild(split);
     split->ResizeTo(Bounds().Width(), Bounds().Height());
   }
 
-  TerminalPanel *Start(const fs::path &path) {
-    auto *panel = dock->Docked();
-    split->SetItemCollapsed(1, false);
+  TerminalPanel *Start(const fs::path &path, int lister = 0) {
+    auto *panel = dock->Docked(lister);
     if (!panel || panel->Start(path.c_str()) != 0)
       return nullptr;
+    dock->Show(lister);
     panel->Focus();
     return panel;
   }
 
+  bool DockIs(orientation direction, int32 workspaceIndex) const {
+    return split->Orientation() == direction &&
+           split->GetLayout()->IndexOfView(FindView("file panels")) ==
+               workspaceIndex;
+  }
+
   bool StartFloating(const fs::path &path) {
-    return Start(path) && dock->Float();
+    auto *panel = Start(path);
+    return panel && dock->Float(panel->Placement());
   }
 
   void MessageReceived(BMessage *message) override {
     const int64 serial = message->GetInt64("terminal placement", -1);
     switch (message->what) {
+    case kToggleTerminalSide:
+      dock->Move(serial);
+      return;
     case kFloatTerminal:
       dock->Float(serial);
       return;
@@ -149,9 +161,9 @@ BButton *Button(BView *view, const char *label) {
 }
 
 bool Click(const BMessenger &target, const char *label,
-           BMessage *capture = nullptr) {
+           BMessage *capture = nullptr, int lister = 0) {
   return WithWindow(target, [&](BWindow &window) {
-    auto *panel = window.FindView("Listi CLI");
+    auto *panel = window.FindView(TerminalName(lister));
     auto *button = panel ? Button(panel, label) : nullptr;
     if (!button)
       return false;
@@ -161,26 +173,31 @@ bool Click(const BMessenger &target, const char *label,
   });
 }
 
-BMessenger Floating(BApplication &app) {
-  if (auto *window = app.WindowAt(1))
-    return BMessenger(window);
+BMessenger Floating(BApplication &app, int lister = 0) {
+  for (int32 i = 0; i < app.CountWindows(); ++i) {
+    auto *window = app.WindowAt(i);
+    if (window && !std::strcmp(window->Title(), TerminalName(lister)))
+      return BMessenger(window);
+  }
   return {};
 }
 
 bool PanelMatches(const BMessenger &target, TerminalPanel *original,
-                  int64 session, bool active) {
+                  int64 session, bool active, int lister = 0) {
   return WithWindow(target, [&](BWindow &window) {
-    auto *panel = dynamic_cast<TerminalPanel *>(window.FindView("Listi CLI"));
+    auto *panel =
+        dynamic_cast<TerminalPanel *>(window.FindView(TerminalName(lister)));
     return panel && panel == original && panel->HasFocus() &&
            panel->SessionId() == session && panel->Active() == active;
   });
 }
 
 bool Key(const BMessenger &target, const char *bytes, uint32 what = B_KEY_DOWN,
-         int32 modifiers = 0) {
+         int32 modifiers = 0, int lister = 0) {
   BMessenger toScreen;
   WithWindow(target, [&](BWindow &window) {
-    if (auto *screen = window.FindView("terminal screen"))
+    auto *panel = window.FindView(TerminalName(lister));
+    if (auto *screen = panel ? panel->FindView("terminal screen") : nullptr)
       toScreen = BMessenger(screen);
     return toScreen.IsValid();
   });
@@ -192,8 +209,9 @@ bool Key(const BMessenger &target, const char *bytes, uint32 what = B_KEY_DOWN,
   return toScreen.SendMessage(&key) == B_OK;
 }
 
-bool Enter(const BMessenger &target, const char *command) {
-  return Key(target, command) && Key(target, "\n");
+bool Enter(const BMessenger &target, const char *command, int lister = 0) {
+  return Key(target, command, B_KEY_DOWN, 0, lister) &&
+         Key(target, "\n", B_KEY_DOWN, 0, lister);
 }
 
 std::string Read(const fs::path &path) {
@@ -206,7 +224,7 @@ std::string Read(const fs::path &path) {
 int main() {
   try {
     BApplication app("application/x-vnd.Listi-TerminalDockTest");
-    Fixture fixture;
+    Fixture fixture, rightFixture;
     ClipboardFixture clipboard;
     auto *owner = new Owner();
     BMessenger main(owner);
@@ -222,18 +240,55 @@ int main() {
               Until([&] { return Read(fixture.path / "ready") == "ready"; }),
           "start an interactive command that waits for input");
 
+    TerminalPanel *right = nullptr;
+    Check(WithWindow(main, [&](BWindow &) {
+            right = owner->Start(rightFixture.path, 1);
+            return right && right != panel && !panel->IsHidden() &&
+                   !right->IsHidden();
+          }) &&
+              Enter(main, "token=right; printf '%s' \"$token\" > ready", 1) &&
+              Until([&] { return Read(rightFixture.path / "ready") == "right"; }),
+          "both listers can run separate shells in their own folders");
+    Check(Click(main, "Move right", nullptr, 1) && Until([&] {
+            return WithWindow(main, [&](BWindow &) {
+              return owner->DockIs(B_HORIZONTAL, 0);
+            });
+          }) &&
+              Click(main, "Move above", nullptr, 1) && Until([&] {
+                return WithWindow(main, [&](BWindow &) {
+                  return owner->DockIs(B_VERTICAL, 1);
+                });
+              }) &&
+              Click(main, "Move left", nullptr, 1) && Until([&] {
+                return WithWindow(main, [&](BWindow &) {
+                  return owner->DockIs(B_HORIZONTAL, 1) && !panel->IsHidden() &&
+                         !right->IsHidden();
+                });
+              }),
+          "shared dock moves right, above and left without hiding either CLI");
+
     BMessage stale;
     Check(Click(main, "Detach CLI", &stale) && Until([&] {
             return PanelMatches(Floating(app), panel, 1, true);
           }),
           "Detach CLI moves the same live view and focuses it");
     auto detached = Floating(app);
+    Check(Click(main, "Detach CLI", nullptr, 1) && Until([&] {
+            return PanelMatches(Floating(app, 1), right, 1, true, 1);
+          }),
+          "both CLIs can detach into independent windows");
+    auto rightDetached = Floating(app, 1);
     Check(main.SendMessage(&stale) == B_OK &&
               Key(detached, "v", B_KEY_DOWN, B_COMMAND_KEY) &&
               Key(detached, "\n") && Until([&] {
                 return Read(fixture.path / "result") == "live:continuéd";
               }),
           "stale placement is ignored; detached clipboard completes the command");
+    Check(Click(rightDetached, "Dock CLI", nullptr, 1) && Until([&] {
+            return !rightDetached.IsValid() &&
+                   PanelMatches(main, right, 1, true, 1);
+          }),
+          "right CLI docks without disturbing the detached left CLI");
     Check(Click(detached, "Dock CLI") && Until([&] {
             return !detached.IsValid() && PanelMatches(main, panel, 1, true);
           }),
@@ -262,8 +317,10 @@ int main() {
               Until([&] { return PanelMatches(detached, panel, 1, false); }),
           "rebound polling notices PTY exit while detached");
     Check(Click(detached, "Close CLI") &&
-              Until([&] { return !detached.IsValid(); }),
-          "Close CLI dismisses the floating terminal");
+              Until([&] { return !detached.IsValid(); }) &&
+              Enter(main, "printf '%s' \"$token\" > after", 1) &&
+              Until([&] { return Read(rightFixture.path / "after") == "right"; }),
+          "closing the floating left CLI leaves the right shell running");
     Check(WithWindow(main, [&](BWindow &) {
             return owner->StartFloating(fixture.path);
           }) && Until([&] {

@@ -14,8 +14,9 @@ constexpr uint32 kFocusFloating = 'tlfc';
 
 class FloatingTerminal : public BWindow {
 public:
-  FloatingTerminal(BRect frame, BMessenger receiver, int64 placement)
-      : BWindow(frame, "Listi: CLI", B_TITLED_WINDOW,
+  FloatingTerminal(BRect frame, BMessenger receiver, int lister,
+                   int64 placement)
+      : BWindow(frame, TerminalName(lister), B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         owner(receiver), placement(placement) {
     SetLayout(new BGroupLayout(B_VERTICAL, 0));
@@ -73,32 +74,118 @@ BRect FloatingFrame(BWindow *owner, const TerminalPanel &panel) {
 
 } // namespace
 
-TerminalDock::TerminalDock(BSplitView *split, BMessenger owner)
-    : split(split), owner(owner), slot(new BGroupView(B_VERTICAL, 0)) {
-  Docked();
-  split->AddChild(slot, 0.32f);
-  split->SetItemCollapsed(1, true);
+TerminalDock::TerminalDock(BSplitView *split, BView *workspace,
+                           BMessenger owner)
+    : split(split), owner(owner), band(new BGroupView(B_HORIZONTAL, 6)) {
+  split->AddChild(workspace, 0.68f);
+  split->SetCollapsible(0, false);
+  split->AddChild(band, 0.32f);
+  for (int lister = 0; lister < 2; ++lister) {
+    auto &session = sessions[lister];
+    session.panel = new TerminalPanel(owner, lister);
+    session.panel->SetPlacement(false, session.placement = ++generation);
+    band->GroupLayout()->AddView(session.panel);
+    session.panel->Hide();
+  }
+  UpdateVisibility();
 }
 
 TerminalDock::~TerminalDock() {
-  if (detached.LockTarget()) {
-    BLooper *looper;
-    detached.Target(&looper);
-    // Quit directly: requesting a normal window close would redock instead.
-    looper->Quit();
+  for (auto &session : sessions) {
+    if (session.detached.LockTarget()) {
+      BLooper *looper;
+      session.detached.Target(&looper);
+      // Quit directly: requesting a normal window close would redock instead.
+      looper->Quit();
+    }
   }
 }
 
-TerminalPanel *TerminalDock::Docked() {
-  if (!panel && !detached.IsValid()) {
-    panel = new TerminalPanel(owner);
-    panel->SetPlacement(false, ++placement);
-    slot->GroupLayout()->AddView(panel);
-  }
-  return panel;
+TerminalPanel *TerminalDock::Docked(int lister) const {
+  return sessions[lister].panel;
 }
 
-bool TerminalDock::FocusFloating() {
+bool TerminalDock::HasFocus() const {
+  for (const auto &session : sessions)
+    if (session.visible && session.panel->HasFocus())
+      return true;
+  return false;
+}
+
+int TerminalDock::FindSession(int64 requested) const {
+  for (int lister = 0; lister < 2; ++lister)
+    if (sessions[lister].placement == requested)
+      return lister;
+  return -1;
+}
+
+void TerminalDock::UpdateVisibility() {
+  split->SetItemCollapsed(split->GetLayout()->IndexOfView(band),
+                          !sessions[0].visible && !sessions[1].visible);
+}
+
+void TerminalDock::Show(int lister) {
+  auto &session = sessions[lister];
+  if (!session.visible) {
+    session.panel->Show();
+    session.visible = true;
+  }
+  UpdateVisibility();
+}
+
+void TerminalDock::SetSide(TerminalSide requested) {
+  if (side == requested)
+    return;
+  TerminalPanel *focused = nullptr;
+  for (auto &session : sessions)
+    if (session.panel && session.panel->HasFocus())
+      focused = session.panel;
+  const auto leading = [](TerminalSide position) {
+    return position == TerminalSide::Above || position == TerminalSide::Left;
+  };
+  if (leading(side) != leading(requested)) {
+    const int32 oldIndex = split->GetLayout()->IndexOfView(band);
+    const float weight = split->ItemWeight(oldIndex);
+    split->GetLayout()->RemoveView(band);
+    split->Window()->Sync();
+    split->AddChild(leading(requested) ? 0 : 1, band, weight);
+  }
+  side = requested;
+  const bool lateral = IsSideDock(side);
+  split->SetOrientation(lateral ? B_HORIZONTAL : B_VERTICAL);
+  band->GroupLayout()->SetOrientation(lateral ? B_VERTICAL : B_HORIZONTAL);
+  for (auto &session : sessions)
+    if (session.panel)
+      session.panel->SetDockSide(side);
+  UpdateVisibility();
+  if (focused)
+    focused->Focus();
+}
+
+bool TerminalDock::Move(int64 requested) {
+  const int lister = FindSession(requested);
+  if (lister < 0 || !sessions[lister].visible)
+    return false;
+  switch (side) {
+  case TerminalSide::Below:
+    SetSide(TerminalSide::Right);
+    break;
+  case TerminalSide::Right:
+    SetSide(TerminalSide::Above);
+    break;
+  case TerminalSide::Above:
+    SetSide(TerminalSide::Left);
+    break;
+  case TerminalSide::Left:
+    SetSide(TerminalSide::Below);
+    break;
+  }
+  sessions[lister].panel->Focus();
+  return true;
+}
+
+bool TerminalDock::FocusFloating(int lister) {
+  auto &detached = sessions[lister].detached;
   if (!detached.IsValid())
     return false;
   BMessage focus(kFocusFloating);
@@ -107,16 +194,18 @@ bool TerminalDock::FocusFloating() {
 }
 
 bool TerminalDock::Float(int64 requested) {
-  // IsItemCollapsed reflects the last layout pass. A direct open starts the
-  // PTY and moves its view in the same window message, before that pass.
-  if (!panel || requested != placement ||
-      (!panel->Active() && split->IsItemCollapsed(1)))
+  const int lister = FindSession(requested);
+  if (lister < 0)
+    return false;
+  auto &session = sessions[lister];
+  auto *panel = session.panel;
+  if (!panel || !session.visible)
     return false;
   auto *window = new FloatingTerminal(FloatingFrame(split->Window(), *panel),
-                                      owner, placement + 1);
+                                      owner, lister, generation + 1);
   // Remove through the layout; BView::RemoveSelf can report failure after
   // removal of the last layout item has already detached the view.
-  if (!slot->GroupLayout()->RemoveView(panel)) {
+  if (!band->GroupLayout()->RemoveView(panel)) {
     window->Quit();
     return false;
   }
@@ -124,24 +213,27 @@ bool TerminalDock::Float(int64 requested) {
   // Finish removing the old server views before creating their counterparts.
   split->Window()->Sync();
   if (!window->GetLayout()->AddView(panel)) {
-    slot->GroupLayout()->AddView(panel);
+    const int32 index = lister == 0 || !sessions[0].panel ? 0 : 1;
+    band->GroupLayout()->AddView(index, panel);
     window->Quit();
     return false;
   }
-  panel->SetPlacement(true, ++placement);
-  split->SetItemCollapsed(1, true);
+  panel->SetPlacement(true, session.placement = ++generation);
   panel->Focus();
-  detached = BMessenger(window);
-  panel = nullptr;
+  session.detached = BMessenger(window);
+  session.panel = nullptr;
+  session.visible = false;
+  UpdateVisibility();
   window->Show();
   return true;
 }
 
-bool TerminalDock::ReturnPanel() {
-  if (!detached.LockTarget())
+bool TerminalDock::ReturnPanel(int lister) {
+  auto &session = sessions[lister];
+  if (!session.detached.LockTarget())
     return false;
   BLooper *looper;
-  detached.Target(&looper);
+  session.detached.Target(&looper);
   auto *window = static_cast<FloatingTerminal *>(looper);
   auto *returning = window->Panel();
   if (!returning || !window->GetLayout()->RemoveView(returning)) {
@@ -149,33 +241,43 @@ bool TerminalDock::ReturnPanel() {
     return false;
   }
   window->Sync();
-  if (!slot->GroupLayout()->AddView(returning)) {
+  const int32 index = lister == 0 || !sessions[0].panel ? 0 : 1;
+  if (!band->GroupLayout()->AddView(index, returning)) {
     window->GetLayout()->AddView(returning);
     window->Unlock();
     return false;
   }
-  panel = returning;
-  panel->SetPlacement(false, ++placement);
-  detached = {};
+  session.panel = returning;
+  session.visible = true;
+  returning->SetDockSide(side);
+  returning->SetPlacement(false, session.placement = ++generation);
+  session.detached = {};
   window->Quit();
   return true;
 }
 
 bool TerminalDock::Dock(int64 requested) {
-  if (requested != placement || !ReturnPanel())
+  const int lister = FindSession(requested);
+  if (lister < 0 || !ReturnPanel(lister))
     return false;
-  split->SetItemCollapsed(1, false);
+  UpdateVisibility();
   split->Window()->Activate();
-  panel->Focus();
+  sessions[lister].panel->Focus();
   return true;
 }
 
 bool TerminalDock::Close(int64 requested) {
-  if (requested != placement || (!panel && !ReturnPanel()))
+  const int lister = FindSession(requested);
+  if (lister < 0)
     return false;
-  panel->Stop();
-  panel->SetPlacement(false, ++placement);
-  split->SetItemCollapsed(1, true);
+  auto &session = sessions[lister];
+  if (!session.visible && !ReturnPanel(lister))
+    return false;
+  session.panel->Stop();
+  session.panel->SetPlacement(false, session.placement = ++generation);
+  session.panel->Hide();
+  session.visible = false;
+  UpdateVisibility();
   return true;
 }
 

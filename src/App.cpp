@@ -1107,10 +1107,23 @@ public:
     view->AddItem(
         new BMenuItem("Compare folders...", new BMessage(kCompareFolders)));
     auto terminalMenu = new BMenu("Terminal here");
-    terminalMenu->AddItem(new BMenuItem(
-        "Below file panels", new BMessage(Listi::kTerminalBelow), 'T'));
-    terminalMenu->AddItem(new BMenuItem(
-        "Beside file panels", new BMessage(Listi::kTerminalBeside)));
+    terminalMenu->AddItem(
+        new BMenuItem("Active lister", new BMessage(kTerminal), 'T'));
+    terminalMenu->AddItem(
+        new BMenuItem("Left CLI", new BMessage(Listi::kLeftCLI)));
+    terminalMenu->AddItem(
+        new BMenuItem("Right CLI", new BMessage(Listi::kRightCLI)));
+    terminalMenu->AddSeparatorItem();
+    auto dockMenu = new BMenu("Dock position");
+    dockMenu->AddItem(new BMenuItem(
+        "Below file panels", new BMessage(Listi::kTerminalBelow)));
+    dockMenu->AddItem(new BMenuItem(
+        "Right of file panels", new BMessage(Listi::kTerminalBeside)));
+    dockMenu->AddItem(new BMenuItem(
+        "Above file panels", new BMessage(Listi::kTerminalAbove)));
+    dockMenu->AddItem(new BMenuItem(
+        "Left of file panels", new BMessage(Listi::kTerminalLeft)));
+    terminalMenu->AddItem(dockMenu);
     terminalMenu->AddItem(new BMenuItem(
         "Detached Listi CLI", new BMessage(Listi::kShowFloatingTerminal),
         'T', B_SHIFT_KEY));
@@ -1138,10 +1151,8 @@ public:
     split->SetCollapsible(0, false);
     split->SetCollapsible(1, false);
     terminalSplit = new BSplitView(B_VERTICAL, 6);
-    terminalSplit->AddChild(split, 0.68f);
-    terminalDock =
-        std::make_unique<Listi::TerminalDock>(terminalSplit, BMessenger(this));
-    terminalSplit->SetCollapsible(0, false);
+    terminalDock = std::make_unique<Listi::TerminalDock>(
+        terminalSplit, split, BMessenger(this));
     bank = new BGroupView(B_VERTICAL, 5);
     bank->SetName("workspace action buttons");
     auto shortcuts = new BStringView(
@@ -1508,11 +1519,8 @@ public:
       if (!actionArea->Pending() && archiveClipboardPending)
         CloseAction();
       RefreshBank();
-      if (!actionArea->Pending()) {
-        const auto *terminalPanel = terminalDock->Docked();
-        if (!terminalPanel || !terminalPanel->HasFocus())
-          FocusPage(source);
-      }
+      if (!actionArea->Pending() && !terminalDock->HasFocus())
+        FocusPage(source);
       break;
     case kInlineCancel:
       if (panes[source]->CancelSelectionGesture())
@@ -2176,69 +2184,77 @@ public:
     case kOpenPaths:
       service.SendMessage(m);
       break;
-    case kTerminal:
     case Listi::kTerminalBelow:
+      terminalDock->SetSide(Listi::TerminalSide::Below);
+      break;
     case Listi::kTerminalBeside:
+      terminalDock->SetSide(Listi::TerminalSide::Right);
+      break;
+    case Listi::kTerminalAbove:
+      terminalDock->SetSide(Listi::TerminalSide::Above);
+      break;
+    case Listi::kTerminalLeft:
+      terminalDock->SetSide(Listi::TerminalSide::Left);
+      break;
+    case kTerminal:
+    case Listi::kLeftCLI:
+    case Listi::kRightCLI:
     case Listi::kShowFloatingTerminal: {
-      if (terminalDock->FocusFloating())
+      const int lister = m->what == Listi::kLeftCLI    ? 0
+                         : m->what == Listi::kRightCLI ? 1
+                         : m->GetInt32("terminal lister", source);
+      if (lister < 0 || lister > 1)
         break;
-      auto *terminalPanel = terminalDock->Docked();
-      if (!terminalPanel)
+      auto *terminalPanel = terminalDock->Docked(lister);
+      if (!terminalPanel) {
+        terminalDock->FocusFloating(lister);
         break;
+      }
       const bool floating = m->what == Listi::kShowFloatingTerminal;
-      if (floating && terminalPanel->Active()) {
-        terminalDock->Float();
+      const bool hasSession = terminalPanel->Active();
+      const bool here = m->what == kTerminal;
+      const char *path = m->GetString("folder", panes[lister]->Path());
+      if (m->HasString("folder") &&
+          (m->GetInt64("session", -1) != terminalPanel->SessionId() ||
+           m->GetInt64("terminal placement", -1) !=
+               terminalPanel->Placement()))
         break;
-      }
-      const char *path = m->GetString("folder", panes[source]->Path());
-      if (!strcmp(path, "@disks") || Listi::IsVirtual(path)) {
-        Notice("Open a local folder first.");
-        break;
-      }
-      if (terminalPanel->Active() && terminalPanel->StartFolder() != path) {
-        if (!m->HasString("folder")) {
-          BMessage accepted(m->what);
-          accepted.AddString("folder", path);
-          accepted.AddInt64("session", terminalPanel->SessionId());
-          BString prompt("Close the current CLI and start a new shell in ");
-          prompt << path << "? Any running command will stop.";
-          AskInline(prompt.String(), "Start new CLI", accepted);
+      if (!hasSession || here) {
+        if (!strcmp(path, "@disks") || Listi::IsVirtual(path)) {
+          Notice("Open a local folder first.");
           break;
         }
-        if (m->GetInt64("session", -1) != terminalPanel->SessionId())
-          break;
-        terminalPanel->Stop();
-      }
-      if (!floating) {
-        const bool beside = m->what == Listi::kTerminalBeside;
-        terminalSplit->SetOrientation(beside ? B_HORIZONTAL : B_VERTICAL);
-        terminalPanel->SetDockSide(beside);
-      }
-      terminalSplit->SetItemCollapsed(1, false);
-      if (!terminalPanel->Active()) {
-        if (const int error = terminalPanel->Start(path)) {
-          terminalSplit->SetItemCollapsed(1, true);
-          BString detail("Could not open Listi CLI: ");
-          detail << strerror(error);
-          Notice(detail);
-          break;
+        if (hasSession && terminalPanel->StartFolder() != path) {
+          if (!m->HasString("folder")) {
+            BMessage accepted(m->what);
+            accepted.AddString("folder", path);
+            accepted.AddInt32("terminal lister", lister);
+            accepted.AddInt64("session", terminalPanel->SessionId());
+            accepted.AddInt64("terminal placement", terminalPanel->Placement());
+            BString prompt("Close the current CLI and start a new shell in ");
+            prompt << path << "? Any running command will stop.";
+            AskInline(prompt.String(), "Start new CLI", accepted);
+            break;
+          }
+          terminalPanel->Stop();
+        }
+        if (!terminalPanel->Active()) {
+          if (const int error = terminalPanel->Start(path)) {
+            BString detail("Could not open Listi CLI: ");
+            detail << strerror(error);
+            Notice(detail);
+            break;
+          }
         }
       }
-      if (!floating || !terminalDock->Float())
+      terminalDock->Show(lister);
+      if (!floating || !terminalDock->Float(terminalPanel->Placement()))
         terminalPanel->Focus();
       break;
     }
-    case Listi::kToggleTerminalSide: {
-      auto *panel = terminalDock->Docked();
-      if (panel && panel->Active() &&
-          panel->Placement() == m->GetInt64("terminal placement", -1)) {
-        const bool beside = terminalSplit->Orientation() != B_HORIZONTAL;
-        terminalSplit->SetOrientation(beside ? B_HORIZONTAL : B_VERTICAL);
-        panel->SetDockSide(beside);
-        panel->Focus();
-      }
+    case Listi::kToggleTerminalSide:
+      terminalDock->Move(m->GetInt64("terminal placement", -1));
       break;
-    }
     case Listi::kFloatTerminal:
       terminalDock->Float(m->GetInt64("terminal placement", -1));
       break;
@@ -2248,7 +2264,8 @@ public:
     case Listi::kCloseTerminal:
       if (terminalDock->Close(m->GetInt64("terminal placement", -1))) {
         Activate();
-        FocusPage(source);
+        if (!terminalDock->HasFocus())
+          FocusPage(source);
       }
       break;
     case Listi::kTerminalWindow:

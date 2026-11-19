@@ -70,17 +70,22 @@ in this alpha.
   workspaces. If the bank cannot fit, **Buttons** opens the same actions as
   a menu. The full bank returns when there is room. Menu commands and keyboard
   shortcuts remain available when the bank is hidden.
-- **Terminal here:** start an interactive shell in the active local folder.
-  Choose **Below file panels** or **Beside file panels** to keep the shell in
-  the main window. Use **Move right** or **Move below** on the open CLI to move the same shell without changing its working directory. **Detach CLI** moves that same shell to its own Listi window;
-  **Dock CLI** or closing the detached window returns it to the file panels.
-  Moving the CLI keeps running commands, shell state and scrollback. **Close
-  CLI** ends the shell. **Detached Listi CLI** (Command+Shift+T) opens or
-  brings forward the Listi-owned detached CLI. **External terminal window**
-  launches the separate terminal application configured in Settings.
-  For a single click from a closed CLI, add **CLI in its own window**
-  under **View > Workspace > Customize workspace…**. This optional button also
-  brings an existing detached CLI forward without starting another shell.
+- **Terminal here:** **Active lister** (Command+T) starts a shell in the active
+  local folder. Choose **Left CLI** or **Right CLI** to open or focus the shell
+  belonging to that file panel, even if the other panel is active. Both can run
+  together. Navigating a file panel does not change its shell's working
+  directory. Use **Terminal here** again from a different local folder to
+  replace its docked shell after confirmation.
+- **Dock position:** move the shared CLI dock below, right, above or left of the
+  file panels. The **Move** control on either docked CLI cycles these positions.
+  **Detach CLI** moves only that shell to its own window. **Dock CLI** or the
+  detached window's close button returns it to the dock. Moving a CLI preserves
+  running commands, shell state and scrollback. **Close CLI** ends only that
+  shell.
+- **Detached Listi CLI** (Command+Shift+T) opens or focuses the active lister's
+  CLI in its own window. To do this in one click, add **CLI in its own window**
+  under **View > Workspace > Customize workspace…**. **External terminal
+  window** launches the separate terminal application configured in Settings.
 - **Open with:** open one file with another application, or change the Haiku default for that file type.
 - **Properties:** inspect metadata and explicitly save supported local typed
   attributes or ordinary permissions; opening the window alone changes nothing.

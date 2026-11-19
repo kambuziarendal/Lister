@@ -4,6 +4,7 @@
 #include "TerminalPanel.h"
 
 class BSplitView;
+class BView;
 
 namespace Listi {
 
@@ -11,25 +12,37 @@ namespace Listi {
 // the file window; its controls send requests back to this owner.
 class TerminalDock {
 public:
-  TerminalDock(BSplitView *split, BMessenger owner);
+  TerminalDock(BSplitView *split, BView *workspace, BMessenger owner);
   ~TerminalDock();
 
-  TerminalPanel *Docked();
-  bool FocusFloating();
-  bool Float() { return Float(placement); }
+  TerminalPanel *Docked(int lister) const;
+  bool HasFocus() const;
+  bool FocusFloating(int lister);
   bool Float(int64 placement);
   bool Dock(int64 placement);
   bool Close(int64 placement);
+  void Show(int lister);
+  void SetSide(TerminalSide side);
+  bool Move(int64 placement);
 
 private:
-  bool ReturnPanel();
+  struct Session {
+    TerminalPanel *panel = nullptr;
+    BMessenger detached;
+    int64 placement = 0;
+    bool visible = false;
+  };
+
+  int FindSession(int64 placement) const;
+  bool ReturnPanel(int lister);
+  void UpdateVisibility();
 
   BSplitView *split;
   BMessenger owner;
-  BGroupView *slot;
-  TerminalPanel *panel = nullptr;
-  BMessenger detached;
-  int64 placement = 0;
+  BGroupView *band;
+  Session sessions[2];
+  TerminalSide side = TerminalSide::Below;
+  int64 generation = 0;
 };
 
 } // namespace Listi
