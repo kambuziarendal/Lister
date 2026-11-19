@@ -8,9 +8,11 @@
 #include <Application.h>
 #include <Button.h>
 #include <Clipboard.h>
+#include <GroupLayout.h>
 #include <GroupView.h>
 #include <Input.h>
 #include <LayoutBuilder.h>
+#include <Layout.h>
 #include <MenuBar.h>
 #include <MenuItem.h>
 #include <MessageRunner.h>
@@ -22,6 +24,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cctype>
 #include <deque>
 #include <map>
 #include <memory>
@@ -41,13 +44,57 @@ enum : uint32 {
   kLine = 'ieLn',
   kJump = 'ieJp',
   kHideBar = 'ieHb',
+  kClose = 'ieCl',
   kWrap = 'ieWr',
   kTick = 'ieTk',
-  kFocus = 'ieFc',
-  kCanQuit = 'ieCq'
+  kFocus = 'ieFc'
 };
+struct EditorShortcut {
+  char key;
+  uint32 action;
+  uint32 modifiers = 0;
+};
+
+constexpr EditorShortcut editorShortcuts[] = {
+    {'S', kSave}, {'W', kClose}, {'Z', kUndo},   {'Z', kRedo, B_SHIFT_KEY},
+    {'X', B_CUT}, {'C', B_COPY}, {'V', B_PASTE}, {'A', B_SELECT_ALL},
+    {'F', kFind}, {'G', kNext},  {'L', kLine}};
+
 std::mutex editorsLock;
-std::map<std::string, BMessenger> editors;
+class InspectorEditor;
+class EditorWindow;
+
+struct OpenEditor {
+  InspectorEditor *view;
+  BMessenger target;
+};
+std::map<std::string, OpenEditor> editors;
+
+// The embedded menu must not become the file window's keyboard menu.
+class EditorMenuBar : public BMenuBar {
+public:
+  bool embedded = false;
+
+  EditorMenuBar() : BMenuBar("editor menus") {}
+
+  void AttachedToWindow() override {
+    auto previous = Window()->KeyMenuBar();
+    BMenuBar::AttachedToWindow();
+    if (embedded)
+      Window()->SetKeyMenuBar(previous);
+  }
+};
+
+class BeforeEditorDispatch : public BMessageFilter {
+public:
+  explicit BeforeEditorDispatch(InspectorEditor *editor)
+      : BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE), editor(editor) {}
+
+  filter_result Filter(BMessage *message, BHandler **) override;
+
+private:
+  InspectorEditor *editor;
+};
 
 struct Change {
   int32 offset;
@@ -112,15 +159,19 @@ BStringView *FlexibleLabel(const char *name, const char *text) {
   return label;
 }
 
-class InspectorEditor : public BWindow {
+class InspectorEditor : public BGroupView {
   const std::string path, leaf;
   std::unique_ptr<Inspector::Document> document;
   Inspector::Syntax::Family language;
   EditorText *body;
   BGroupView *findBar, *lineBar;
   BTextControl *find, *replacement, *line;
-  BStringView *position, *feedback;
+  BStringView *position, *feedback, *location;
   BButton *saveButton;
+  EditorMenuBar *menu;
+  BHandler *closeTarget;
+  BeforeEditorDispatch *dispatch = nullptr;
+  Listi::ExplicitSubmit *submit[3] = {};
   BMenuItem *undoItem, *redoItem, *wrapItem, *saveItem;
   std::deque<Edit> undo, redo;
   size_t undoBytes = 0;
@@ -139,7 +190,10 @@ class InspectorEditor : public BWindow {
 
   void UpdateDirty() {
     dirty = Changed();
-    SetTitle(("Listi: " + leaf + (dirty ? " *" : "")).c_str());
+    if (IsEmbedded())
+      location->SetText((path + (dirty ? " *" : "")).c_str());
+    else if (Window())
+      Window()->SetTitle(("Listi: " + leaf + (dirty ? " *" : "")).c_str());
     saveButton->SetEnabled(dirty);
     saveItem->SetEnabled(dirty);
   }
@@ -408,27 +462,27 @@ class InspectorEditor : public BWindow {
     Status("");
   }
 
-  BMenuBar *BuildMenu() {
-    auto bar = new BMenuBar("editor menus");
+  EditorMenuBar *BuildMenu() {
+    auto bar = new EditorMenuBar;
+    bar->embedded = closeTarget != nullptr;
     auto file = new BMenu("File");
-    saveItem = new BMenuItem("Save", new BMessage(kSave), 'S');
+    saveItem = new BMenuItem("Save", new BMessage(kSave));
     file->AddItem(saveItem);
-    file->AddItem(new BMenuItem("Close", new BMessage(B_QUIT_REQUESTED), 'W'));
+    file->AddItem(new BMenuItem("Close", new BMessage(kClose)));
     auto edit = new BMenu("Edit");
-    undoItem = new BMenuItem("Undo", new BMessage(kUndo), 'Z');
-    redoItem = new BMenuItem("Redo", new BMessage(kRedo), 'Z', B_SHIFT_KEY);
+    undoItem = new BMenuItem("Undo", new BMessage(kUndo));
+    redoItem = new BMenuItem("Redo", new BMessage(kRedo));
     edit->AddItem(undoItem);
     edit->AddItem(redoItem);
     edit->AddSeparatorItem();
-    edit->AddItem(new BMenuItem("Cut", new BMessage(B_CUT), 'X'));
-    edit->AddItem(new BMenuItem("Copy", new BMessage(B_COPY), 'C'));
-    edit->AddItem(new BMenuItem("Paste", new BMessage(B_PASTE), 'V'));
-    edit->AddItem(new BMenuItem("Select all", new BMessage(B_SELECT_ALL), 'A'));
+    edit->AddItem(new BMenuItem("Cut", new BMessage(B_CUT)));
+    edit->AddItem(new BMenuItem("Copy", new BMessage(B_COPY)));
+    edit->AddItem(new BMenuItem("Paste", new BMessage(B_PASTE)));
+    edit->AddItem(new BMenuItem("Select all", new BMessage(B_SELECT_ALL)));
     auto search = new BMenu("Search");
-    search->AddItem(
-        new BMenuItem("Find and replace…", new BMessage(kFind), 'F'));
-    search->AddItem(new BMenuItem("Find next", new BMessage(kNext), 'G'));
-    search->AddItem(new BMenuItem("Go to line…", new BMessage(kLine), 'L'));
+    search->AddItem(new BMenuItem("Find and replace…", new BMessage(kFind)));
+    search->AddItem(new BMenuItem("Find next", new BMessage(kNext)));
+    search->AddItem(new BMenuItem("Go to line…", new BMessage(kLine)));
     auto view = new BMenu("View");
     wrapItem = new BMenuItem("Wrap lines", new BMessage(kWrap));
     view->AddItem(wrapItem);
@@ -439,13 +493,12 @@ class InspectorEditor : public BWindow {
 
 public:
   InspectorEditor(const std::string &file,
-                  std::unique_ptr<Inspector::Document> source, BWindow *owner)
-      : BWindow(BRect(110, 110, 870, 620), "Listi: Editor", B_TITLED_WINDOW,
-                B_AUTO_UPDATE_SIZE_LIMITS),
-        path(file), leaf(file.substr(file.rfind('/') + 1)),
-        document(std::move(source)),
-        language(Inspector::Syntax::Language(path, document->Text())) {
-    auto menu = BuildMenu();
+                  std::unique_ptr<Inspector::Document> source, BHandler *owner)
+      : BGroupView("inspector editor", B_VERTICAL, 0), path(file),
+        leaf(file.substr(file.rfind('/') + 1)), document(std::move(source)),
+        language(Inspector::Syntax::Language(path, document->Text())),
+        closeTarget(owner) {
+    menu = BuildMenu();
     body = new EditorText;
     body->SetFontAndColor(be_fixed_font);
     body->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
@@ -470,13 +523,6 @@ public:
     line = new BTextControl("editor line", "Line:", "", nullptr);
     for (auto field : {find, replacement, line})
       field->SetDivider(be_plain_font->StringWidth(field->Label()) + 8);
-    find->TextView()->AddFilter(
-        new Listi::ExplicitSubmit(BMessenger(this), BMessage(kNext)));
-    replacement->TextView()->AddFilter(
-        new Listi::ExplicitSubmit(BMessenger(this), BMessage(kReplace)));
-    line->TextView()->AddFilter(
-        new Listi::ExplicitSubmit(BMessenger(this), BMessage(kJump)));
-
     findBar = new BGroupView("editor find bar", B_VERTICAL, 4);
     BLayoutBuilder::Group<>(findBar, B_VERTICAL, 4)
         .SetInsets(8, 3, 8, 3)
@@ -500,7 +546,7 @@ public:
     feedback = FlexibleLabel("editor status", "");
     position = new BStringView("editor position", "Ln 1, Col 1");
     saveButton = Button("Save", kSave);
-    auto location = FlexibleLabel("editor path", path.c_str());
+    location = FlexibleLabel("editor path", path.c_str());
     location->SetToolTip(path.c_str());
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
         .Add(menu)
@@ -520,33 +566,86 @@ public:
     findBar->Hide();
     lineBar->Hide();
     UpdateDirty();
-    AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(kHideBar));
-    body->MakeFocus();
     body->recording = true;
-    BMessage tick(kTick);
-    timer = std::make_unique<BMessageRunner>(BMessenger(this), &tick, 250000);
-    if (owner)
-      CenterIn(owner->Frame());
-    MoveOnScreen();
+  }
+
+  void AddStandaloneShortcuts() {
+    for (int32 i = 0; i < menu->CountItems(); ++i) {
+      auto submenu = menu->SubmenuAt(i);
+      for (int32 j = 0; j < submenu->CountItems(); ++j) {
+        auto item = submenu->ItemAt(j);
+        auto message = item->Message();
+        if (message)
+          for (const auto &shortcut : editorShortcuts)
+            if (shortcut.action == message->what)
+              item->SetShortcut(shortcut.key, shortcut.modifiers);
+      }
+    }
   }
 
   ~InspectorEditor() override {
-    timer.reset();
     std::lock_guard<std::mutex> lock(editorsLock);
     auto found = editors.find(path);
-    if (found != editors.end() && found->second == BMessenger(this))
+    if (found != editors.end() && found->second.view == this)
       editors.erase(found);
   }
 
-  void DispatchMessage(BMessage *message, BHandler *target) override {
-    FinishEdit();
-    BWindow::DispatchMessage(message, target);
+  void AllAttached() override {
+    BGroupView::AllAttached();
+    BMessenger target(this);
+    auto fields = {find, replacement, line};
+    const uint32 actions[] = {kNext, kReplace, kJump};
+    int index = 0;
+    for (auto field : fields) {
+      submit[index] =
+          new Listi::ExplicitSubmit(target, BMessage(actions[index]));
+      field->TextView()->AddFilter(submit[index]);
+      ++index;
+    }
+    for (auto group : {findBar, lineBar})
+      for (int32 i = 0; i < group->CountChildren(); ++i)
+        if (auto button = dynamic_cast<BButton *>(group->ChildAt(i)))
+          button->SetTarget(target);
+    saveButton->SetTarget(target);
+    for (int32 i = 0; i < menu->CountItems(); ++i)
+      menu->SubmenuAt(i)->SetTargetForItems(target);
+    dispatch = new BeforeEditorDispatch(this);
+    Window()->AddCommonFilter(dispatch);
+    BMessage tick(kTick);
+    timer = std::make_unique<BMessageRunner>(target, &tick, 250000);
+    UpdateDirty();
+    body->MakeFocus();
   }
 
-  void MenusBeginning() override {
+  void DetachedFromWindow() override {
+    timer.reset();
+    Window()->RemoveCommonFilter(dispatch);
+    delete dispatch;
+    dispatch = nullptr;
+    int index = 0;
+    for (auto field : {find, replacement, line}) {
+      field->TextView()->RemoveFilter(submit[index]);
+      delete submit[index];
+      submit[index++] = nullptr;
+    }
+    BGroupView::DetachedFromWindow();
+  }
+
+  const std::string &Path() const { return path; }
+
+  bool IsEmbedded() const { return closeTarget != nullptr; }
+
+  void MakeStandalone() {
+    closeTarget = nullptr;
+    menu->embedded = false;
+    location->SetText(path.c_str());
+    AddStandaloneShortcuts();
+  }
+
+  void BeforeDispatch() {
     FinishEdit();
     bool canUndo = !undo.empty(), canRedo = !redo.empty();
-    auto text = dynamic_cast<BTextView *>(CurrentFocus());
+    auto text = FocusedText();
     if (text && text != body) {
       bool isRedo = false;
       bool available = text->UndoState(&isRedo) != B_UNDO_UNAVAILABLE;
@@ -555,10 +654,32 @@ public:
     }
     undoItem->SetEnabled(canUndo);
     redoItem->SetEnabled(canRedo);
-    BWindow::MenusBeginning();
   }
 
-  bool QuitRequested() override {
+  BTextView *FocusedText() const {
+    auto text = dynamic_cast<BTextView *>(Window()->CurrentFocus());
+    for (BView *view = text; view; view = view->Parent())
+      if (view == this)
+        return text;
+    return nullptr;
+  }
+
+  void Raise() {
+    if (Window()->IsMinimized())
+      Window()->Minimize(false);
+    Window()->Activate();
+    body->MakeFocus();
+  }
+
+  bool AllowQuit() {
+    if (!Changed())
+      return true;
+    Raise();
+    Status("Save your changes or close this editor before quitting Listi.");
+    return false;
+  }
+
+  bool AllowClose() {
     if (!Changed())
       return true;
     const std::string prompt = "Save changes to " + leaf + " before closing?";
@@ -570,14 +691,53 @@ public:
     return choice == 0 || (choice == 2 && Save());
   }
 
+  bool HandleKey(const BMessage &key) {
+    const char *bytes = key.GetString("bytes", "");
+    const int32 modifiers = key.GetInt32("modifiers", 0);
+    uint32 action = 0;
+    if (bytes[0] == B_ESCAPE && !(modifiers & B_COMMAND_KEY)) {
+      action = !IsEmbedded() || !findBar->IsHidden() || !lineBar->IsHidden()
+                   ? kHideBar
+                   : kClose;
+    } else if ((modifiers & (B_COMMAND_KEY | B_CONTROL_KEY | B_OPTION_KEY)) ==
+               B_COMMAND_KEY) {
+      const int32 raw = key.GetInt32("raw_char", bytes[0]);
+      const int command = std::toupper(static_cast<unsigned char>(raw));
+      if (command == 'Q')
+        return false;
+      const uint32 shift = modifiers & B_SHIFT_KEY;
+      for (const auto &shortcut : editorShortcuts)
+        if (shortcut.key == command && shortcut.modifiers == shift)
+          action = shortcut.action;
+      if (!action)
+        return IsEmbedded();
+    }
+    if (action == 0)
+      return false;
+    Window()->PostMessage(action, this);
+    return true;
+  }
+
   void MessageReceived(BMessage *m) override {
+    if (!HandleMessage(m))
+      BGroupView::MessageReceived(m);
+  }
+
+  bool HandleMessage(BMessage *m) {
     switch (m->what) {
+    case kClose:
+      if (closeTarget)
+        closeTarget->Looper()->PostMessage(kInspectorEmbeddedClose,
+                                           closeTarget);
+      else
+        Window()->PostMessage(B_QUIT_REQUESTED);
+      return true;
     case kSave:
       Save();
-      return;
+      return true;
     case kUndo:
     case kRedo: {
-      auto text = dynamic_cast<BTextView *>(CurrentFocus());
+      auto text = FocusedText();
       if (text && text != body) {
         bool isRedo = false;
         if (text->UndoState(&isRedo) != B_UNDO_UNAVAILABLE &&
@@ -585,106 +745,186 @@ public:
           text->Undo(be_clipboard);
       } else
         ApplyHistory(m->what == kRedo);
-      return;
+      return true;
     }
     case B_CUT:
     case B_COPY:
     case B_PASTE:
     case B_SELECT_ALL:
-      if (auto text = dynamic_cast<BTextView *>(CurrentFocus()))
-        PostMessage(m, text);
-      return;
+      if (auto text = FocusedText())
+        Window()->PostMessage(m, text);
+      return true;
     case kFind:
       ShowBar(findBar);
-      return;
+      return true;
     case kNext:
       FindNext();
-      return;
+      return true;
     case kReplace:
       Replace(false);
-      return;
+      return true;
     case kReplaceAll:
       Replace(true);
-      return;
+      return true;
     case kLine:
       ShowBar(lineBar);
-      return;
+      return true;
     case kJump:
       GoToLine();
-      return;
+      return true;
     case kHideBar:
       ShowBar(nullptr);
-      return;
+      return true;
     case kWrap:
       body->SetWordWrap(!body->DoesWordWrap());
       wrapItem->SetMarked(body->DoesWordWrap());
-      return;
+      return true;
     case kTick:
       Tick();
-      return;
+      return true;
     case kFocus:
-      if (IsMinimized())
-        Minimize(false);
-      Activate();
-      return;
-    case kCanQuit: {
-      const bool allowed = !Changed();
-      if (!allowed) {
-        if (IsMinimized())
-          Minimize(false);
-        Activate();
-        Status("Save your changes or close this editor before quitting Listi.");
-      }
-      BMessage reply(B_REPLY);
-      reply.AddBool("allowed", allowed);
-      m->SendReply(&reply);
-      return;
-    }
+      Raise();
+      return true;
     case B_COLORS_UPDATED:
       needsColour = true;
       break;
     }
-    BWindow::MessageReceived(m);
+    return false;
   }
 };
+
+filter_result BeforeEditorDispatch::Filter(BMessage *message, BHandler **) {
+  editor->BeforeDispatch();
+  if (message->what == B_KEY_DOWN && !editor->IsEmbedded() &&
+      message->GetString("bytes", "")[0] == B_ESCAPE &&
+      editor->HandleKey(*message))
+    return B_SKIP_MESSAGE;
+  return B_DISPATCH_MESSAGE;
 }
 
-void OpenInspectorEditor(const std::string &path, BWindow *owner) {
+class EditorWindow : public BWindow {
+public:
+  EditorWindow(BWindow *owner)
+      : BWindow(BRect(110, 110, 870, 620), "Listi: Editor", B_TITLED_WINDOW,
+                B_AUTO_UPDATE_SIZE_LIMITS) {
+    SetLayout(new BGroupLayout(B_VERTICAL));
+    if (owner)
+      CenterIn(owner->Frame());
+    MoveOnScreen();
+  }
+
+  void Mount(InspectorEditor *view) {
+    editor = view;
+    GetLayout()->AddView(editor);
+  }
+
+  bool QuitRequested() override { return editor->AllowClose(); }
+
+  void MessageReceived(BMessage *message) override {
+    if (!editor->HandleMessage(message))
+      BWindow::MessageReceived(message);
+  }
+
+private:
+  InspectorEditor *editor = nullptr;
+};
+
+InspectorEditor *CreateEditor(const std::string &path, BWindow *owner,
+                              BView *parent, BHandler *closeTarget) {
   try {
     std::unique_lock<std::mutex> lock(editorsLock);
     auto found = editors.find(path);
     if (found != editors.end()) {
-      BMessenger existing = found->second;
+      BMessenger existing = found->second.target;
       lock.unlock();
       existing.SendMessage(kFocus);
-      return;
+      return nullptr;
     }
     auto source = std::make_unique<Inspector::Document>(path);
-    auto editor = new InspectorEditor(path, std::move(source), owner);
-    editors.emplace(path, BMessenger(editor));
+    auto editor = new InspectorEditor(path, std::move(source), closeTarget);
+    EditorWindow *window = nullptr;
+    if (parent) {
+      if (auto layout = parent->GetLayout())
+        layout->AddView(editor);
+      else
+        parent->AddChild(editor);
+    } else {
+      window = new EditorWindow(owner);
+      editor->AddStandaloneShortcuts();
+      window->Mount(editor);
+    }
+    editors.emplace(path, OpenEditor{editor, BMessenger(editor)});
     lock.unlock();
-    editor->Show();
+    if (window)
+      window->Show();
+    return editor;
   } catch (const std::exception &e) {
     const std::string message =
         "Could not open " + path + " for editing.\n\n" + e.what();
     (new BAlert("Open editor", message.c_str(), "OK", nullptr, nullptr,
                 B_WIDTH_AS_USUAL, B_WARNING_ALERT))
         ->Go(nullptr);
+    return nullptr;
   }
+}
+} // namespace
+
+void OpenInspectorEditor(const std::string &path, BWindow *owner) {
+  CreateEditor(path, owner, nullptr, nullptr);
+}
+
+BView *OpenEmbeddedInspectorEditor(const std::string &path, BView *parent,
+                                   BHandler *closeTarget) {
+  return CreateEditor(path, parent->Window(), parent, closeTarget);
+}
+
+bool InspectorEditorAllowClose(BView *editor) {
+  return static_cast<InspectorEditor *>(editor)->AllowClose();
+}
+
+bool DetachInspectorEditor(BView *view) {
+  auto editor = static_cast<InspectorEditor *>(view);
+  if (!editor->IsEmbedded())
+    return false;
+  auto window = new EditorWindow(editor->Window());
+  {
+    std::lock_guard<std::mutex> lock(editorsLock);
+    editor->RemoveSelf();
+    editor->MakeStandalone();
+    window->Mount(editor);
+    editors.at(editor->Path()).target = BMessenger(editor);
+  }
+  window->Show();
+  return true;
+}
+
+bool HandleInspectorEditorKey(BView *focus, const BMessage &key) {
+  for (; focus; focus = focus->Parent())
+    if (auto editor = dynamic_cast<InspectorEditor *>(focus))
+      return editor->HandleKey(key);
+  return false;
 }
 
 bool InspectorEditorsAllowQuit() {
-  std::vector<BMessenger> windows;
+  std::vector<BMessenger> targets;
   {
     std::lock_guard<std::mutex> lock(editorsLock);
     for (const auto &entry : editors)
-      windows.push_back(entry.second);
+      targets.push_back(entry.second.target);
   }
-  for (auto &window : windows) {
-    BMessage query(kCanQuit), reply;
-    if (window.IsValid() &&
-        (window.SendMessage(&query, &reply, 500000, 500000) != B_OK ||
-         !reply.GetBool("allowed", false)))
+  for (auto &target : targets) {
+    if (!target.IsValid())
+      continue;
+    // Quit can originate in the same window that owns an embedded editor.
+    // Lock the target (recursive for that window) rather than send and wait.
+    if (target.LockTargetWithTimeout(500000) != B_OK)
+      return false;
+    BLooper *looper = nullptr;
+    auto editor = dynamic_cast<InspectorEditor *>(target.Target(&looper));
+    const bool allowed =
+        editor && editor->Looper() == looper && editor->AllowQuit();
+    looper->Unlock();
+    if (!allowed)
       return false;
   }
   return true;
