@@ -56,12 +56,19 @@ int main() {
     pane->MessageReceived(&changed);
     bar->GetRange(&low, &restored);
     passed = initial > 0 && filtered == 0 && restored == initial;
+    const auto revision = pane->SelectionRevision();
+    const bool preview = pane->MatchPattern("7?", false) == 10 && pane->Selected().empty();
+    const bool selected = pane->MatchPattern("7?", true) == 10 && pane->Selected().size() == 10;
+    filter->SetText("79");
+    pane->MessageReceived(&changed);
+    passed = passed && preview && selected && revision >= 0 && pane->SelectionRevision() != revision &&
+             pane->MatchPattern("*", false) == 1 && pane->Selected().size() == 1;
   }
   window->Quit();
   for (int i = 0; i < count; ++i)
     unlink((root + "/" + std::to_string(i)).c_str());
   rmdir(root.c_str());
   std::cout << (passed ? "PASS " : "FAIL ")
-            << "icon grid recalculates its scroll range on filter and clear\n";
+            << "icon grid filter, wildcard selection and preview invalidation\n";
   return passed ? 0 : 1;
 }

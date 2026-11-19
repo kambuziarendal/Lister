@@ -50,6 +50,7 @@ public:
   void Select(int mode);
   std::string FocusedFileType() const;
   bool SelectSameFileType();
+  size_t MatchPattern(const char *pattern, bool apply);
   void Pick(int index, bool extend, bool toggle);
   void RestoreSelection(const std::vector<std::string> &paths);
   void SetSelection(const std::vector<std::string> &paths,

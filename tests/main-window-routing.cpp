@@ -31,6 +31,7 @@ int main() {
     message.AddInt32("workspace", static_cast<int32>(value));
     window->MessageReceived(&message);
   };
+  assert(item(kSelectPattern)->IsEnabled());
   assert(item(kSwitch)->IsEnabled() && item(kCopy)->IsEnabled());
   send(kQuickView);
   assert(item(kQuickView)->IsMarked() && !item(kSwitch)->IsEnabled());

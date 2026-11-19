@@ -71,6 +71,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 constexpr uint32 kResumeArchiveEdits = 'ared';
+constexpr uint32 kPreviewPattern = 'sppv', kApplyPattern = 'spap';
 constexpr uint32 kEditWorkspace = 'ewsp', kSplitChanged = 'swgt',
                  kQuickView = 'qvpr';
 
@@ -490,6 +491,39 @@ class MainWindow : public BWindow {
       ShowBank(false);
     if (!actionArea->Ask(text, button, result, initial))
       queue->ErrorInfo("Finish or cancel the open question first.");
+  }
+  void SelectByPattern(const BMessage &request) {
+    auto *pane = panes[source];
+    const int64 revision = pane->SelectionRevision();
+    if (request.what == kSelectPattern) {
+      if (revision < 0) {
+        pane->ShowStatus("Load a folder before selecting by pattern.");
+        return;
+      }
+      BMessage preview(kPreviewPattern);
+      preview.AddInt32("pane", source);
+      preview.AddInt64("revision", revision);
+      AskInline("Match visible names, including folders. Use * or ? (case-sensitive).",
+                "Preview", preview, "*");
+      return;
+    }
+    if (revision < 0 || request.GetInt32("pane", -1) != source ||
+        request.GetInt64("revision", -1) != revision) {
+      pane->ShowStatus("Panel contents changed. Start Select by pattern again.");
+      return;
+    }
+    const char *pattern = request.GetString("name", "");
+    const size_t count = pane->MatchPattern(pattern, request.what == kApplyPattern);
+    if (count == 0) {
+      pane->ShowStatus("0 matches. Selection unchanged.");
+    } else if (request.what == kPreviewPattern) {
+      BMessage apply(request);
+      apply.what = kApplyPattern;
+      auto prompt = std::to_string(count) +
+                    (count == 1 ? " visible entry matches " : " visible entries match ") +
+                    pattern + ". Replace the selection?";
+      AskInline(prompt.c_str(), "Select", apply);
+    }
   }
   int source = 0;
   int64 clipboardSerial = 0;
@@ -1229,6 +1263,7 @@ public:
         new BMenuItem("None", new BMessage(kNone), 'A', B_SHIFT_KEY));
     select->AddItem(new BMenuItem("Invert", new BMessage(kInvert), 'I'));
     select->AddItem(new BMenuItem("Same file type", new BMessage(kSelectType)));
+    select->AddItem(new BMenuItem("By pattern…", new BMessage(kSelectPattern)));
     menu->AddItem(select);
     auto viewMenu = new BMenu("View");
     auto workspace = new BMenu("Workspace");
@@ -2249,6 +2284,11 @@ public:
       break;
     case kCompareFolders:
       OpenFolderCompare(panes[source]->Path(), panes[1 - source]->Path());
+      break;
+    case kSelectPattern:
+    case kPreviewPattern:
+    case kApplyPattern:
+      SelectByPattern(*m);
       break;
     case kSelectType:
       if (!panes[source]->SelectSameFileType())

@@ -31,7 +31,24 @@ int main() {
   check(model.Selected() == std::vector<std::string>{paths[0]}, "duplicate, parent and absent entries excluded");
   model.RestoreSelection({paths[1], paths[1]});
   check(model.Selected().size() == 2, "restore extends existing selection");
+  check(model.MatchPattern("*", false) == paths.size(), "wildcard excludes the parent row");
+  const auto beforePreview = model.Selected();
+  check(model.MatchPattern("item-0000?", false) == 10 &&
+            model.MatchPattern("ITEM-*", false) == 0 &&
+            model.MatchPattern("fixture/*", false) == 0,
+        "wildcard uses case-sensitive whole names, not paths");
+  check(model.Selected() == beforePreview, "preview leaves selection untouched");
+  check(model.MatchPattern("item-0000?", true) == 10 &&
+            model.Selected() == std::vector<std::string>(paths.begin(), paths.begin() + 10) &&
+            model.Focused()->path == paths.front(),
+        "confirmed pattern replaces selection and focuses the first match");
+  const auto matched = model.Selected();
+  check(model.MatchPattern("absent*", true) == 0 && model.Selected() == matched,
+        "zero matches preserve the current selection");
   model.Filter("item-00000");
+  check(model.MatchPattern("*", true) == 1 &&
+            model.Selected() == std::vector<std::string>{paths[0]},
+        "pattern selection respects the current literal filter");
   model.SetSelection(paths, paths[0]);
   check(model.Selected() == std::vector<std::string>{paths[0]}, "hidden entries excluded");
   model.SetSelection({}, "");

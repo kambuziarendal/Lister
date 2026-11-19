@@ -241,6 +241,14 @@ Reinstalling an older application package does not undo file operations.
 
 ## Navigation, selection and native tools
 
+**Select > By pattern** in the source build previews the number of visible
+names matching a case-sensitive shell pattern, for example `*.pdf`. It
+includes matching files, folders, links and visible dotfiles, never the
+parent row. Choose **Select** to replace the panel selection, or **Cancel**
+to keep it. Zero matches leave the selection alone. Changing the panel or
+its listing invalidates the preview. This command neither changes the
+literal name filter nor searches inside folders.
+
 Panels offer details, icon and thumbnail views, history, saved places and optional
 folder trees. Switching workspace retains the panel objects rather than
 restarting file work. **Select same file type** replaces the active panel's

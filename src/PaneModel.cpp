@@ -2,6 +2,7 @@
 #include "PaneModel.h"
 #include "NameFilter.h"
 #include <algorithm>
+#include <fnmatch.h>
 #include <limits>
 #include <strings.h>
 std::string FileTypeKey(const std::string &name) {
@@ -41,6 +42,22 @@ bool PaneModel::SelectSameFileType() {
       selection.insert(entry->path);
   anchor = focused;
   return true;
+}
+size_t PaneModel::MatchPattern(const char *pattern, bool apply) {
+  size_t matches = 0;
+  for (const auto *entry : visible) {
+    if (entry->parent || fnmatch(pattern, entry->name.c_str(), 0) != 0)
+      continue;
+    if (apply) {
+      if (matches == 0) {
+        selection.clear();
+        focused = anchor = entry->path;
+      }
+      selection.insert(entry->path);
+    }
+    ++matches;
+  }
+  return matches;
 }
 void PaneModel::Clear() {
   visible.clear();

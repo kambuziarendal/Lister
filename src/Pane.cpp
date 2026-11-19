@@ -455,6 +455,7 @@ void Pane::FocusFilter() {
   filter->TextView()->SelectAll();
 }
 void Pane::ClearRows() {
+  ++selectionRevision;
   entries.Clear();
   icons.Clear();
   list->Refresh();
@@ -463,6 +464,7 @@ void Pane::ClearRows() {
   columns->SyncSelection();
 }
 void Pane::ApplyFilter() {
+  ++selectionRevision;
   entries.Filter(einn ? "" : filter->Text());
   list->Refresh();
   grid->Update();
@@ -741,6 +743,12 @@ bool Pane::SelectSameFileType() {
     return false;
   SendSelection();
   return true;
+}
+size_t Pane::MatchPattern(const char *pattern, bool apply) {
+  const size_t count = entries.MatchPattern(pattern, apply);
+  if (apply && count > 0)
+    SendSelection();
+  return count;
 }
 void Pane::Select(int mode) {
   entries.Select(mode);

@@ -66,6 +66,7 @@ enum : uint32 {
   kEdit = 'edit',
   kAll = 'sall',
   kSelectType = 'styp',
+  kSelectPattern = 'spat',
   kCompareFolders = 'fcmp',
   kNone = 'snon',
   kInvert = 'sinv',

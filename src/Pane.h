@@ -42,6 +42,10 @@ public:
   void SetWorkspace(const Preferences &);
   void Select(int mode);
   bool SelectSameFileType();
+  int64 SelectionRevision() const {
+    return locationValid && !scanning ? selectionRevision : -1;
+  }
+  size_t MatchPattern(const char *pattern, bool apply);
   std::string SelectedFileType() const { return entries.FocusedFileType(); }
   std::vector<std::string> Selected() const;
   const char *Path() const { return path.String(); }
@@ -72,6 +76,7 @@ private:
   Preferences prefs;
   BString path = "/boot/home";
   PaneModel entries;
+  int64 selectionRevision = 0;
   std::vector<std::string> attributeColumns;
   bool attributeDetails = false;
   IconCache icons;
