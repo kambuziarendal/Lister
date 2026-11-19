@@ -6,6 +6,7 @@
 #include "SearchWorker.h"
 #include "SavedSearches.h"
 #include <GroupView.h>
+#include <MessageFilter.h>
 #include <MessageRunner.h>
 #include <MenuField.h>
 #include <MenuItem.h>
@@ -44,6 +45,35 @@ struct HitRow : BRow {
   }
 };
 class Results : public BColumnListView {
+  class ContextClick : public BMessageFilter {
+    Results *results;
+
+  public:
+    explicit ContextClick(Results *view)
+        : BMessageFilter(B_MOUSE_DOWN), results(view) {}
+
+    filter_result Filter(BMessage *message, BHandler **) override {
+      if (!(message->GetInt32("buttons", 0) & B_SECONDARY_MOUSE_BUTTON))
+        return B_DISPATCH_MESSAGE;
+      BPoint point;
+      if (message->FindPoint("where", &point) != B_OK)
+        return B_SKIP_MESSAGE;
+      const auto row = static_cast<HitRow *>(results->RowAt(point));
+      if (!row)
+        return B_SKIP_MESSAGE;
+
+      const SearchHit hit = row->hit;
+      BPopUpMenu menu("Search result actions", false, false);
+      menu.AddItem(new BMenuItem("Show original in panel", nullptr));
+      if (menu.Go(results->ScrollView()->ConvertToScreen(point), false, true,
+                  false))
+        results->ShowOriginal(hit);
+      return B_SKIP_MESSAGE;
+    }
+  };
+
+  BMessenger owner;
+  int32 pane;
   int64 sequence = 0;
   int32 order = 0;
   BColumn *columns[2];
@@ -61,9 +91,10 @@ class Results : public BColumnListView {
 
 public:
   BMessenger receiver;
-  Results()
+  Results(BMessenger target, int32 which)
       : BColumnListView("search results", B_WILL_DRAW | B_NAVIGABLE,
-                        B_FANCY_BORDER) {
+                        B_FANCY_BORDER),
+        owner(target), pane(which) {
     // Haiku starts an unjoined native sort thread even on initial attachment.
     // It can outlive a rapidly closed window/tab. Sort only on our UI looper.
     SetSortingEnabled(false);
@@ -74,6 +105,17 @@ public:
     AddColumn(columns[1], 1);
     SetSelectionMode(B_SINGLE_SELECTION_LIST);
     SetInvocationMessage(new BMessage(kShow));
+    ScrollView()->AddFilter(new ContextClick(this));
+  }
+
+  void ShowOriginal(const SearchHit &hit) {
+    // The receiving pane rechecks identity after its asynchronous scan, too.
+    BMessage reveal(kRevealSearch);
+    reveal.AddInt32("pane", pane);
+    reveal.AddString("path", hit.path.c_str());
+    reveal.AddInt64("device", hit.device);
+    reveal.AddInt64("node", hit.node);
+    owner.SendMessage(&reveal);
   }
   void Add(const SearchHit &hit) {
     auto row = new HitRow(hit, sequence++);
@@ -359,7 +401,7 @@ public:
     show = new BButton("show original",
                        compact ? "Show original" : "Show original in panel",
                        new BMessage(kShow));
-    results = new Results;
+    results = new Results(target, which);
     orderMenu = new BPopUpMenu("result order");
     const char *orders[] = {"As found", "Name ↑", "Name ↓", "Folder ↑", "Folder ↓"};
     for (int32 i = 0; i < 5; ++i) {
@@ -760,15 +802,8 @@ public:
     }
     case kShow: {
       auto row = static_cast<HitRow *>(results->CurrentSelection());
-      if (!row)
-        break;
-      // The receiving pane rechecks identity after its asynchronous scan, too.
-      BMessage reveal(kRevealSearch);
-      reveal.AddInt32("pane", pane);
-      reveal.AddString("path", row->hit.path.c_str());
-      reveal.AddInt64("device", row->hit.device);
-      reveal.AddInt64("node", row->hit.node);
-      owner.SendMessage(&reveal);
+      if (row)
+        results->ShowOriginal(row->hit);
       break;
     }
     case B_COLORS_UPDATED:
