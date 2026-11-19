@@ -41,6 +41,7 @@ constexpr uint32 kLoad = 'pimg', kReady = 'pird', kFrame = 'pifr',
                  kFileAction = 'pifa', kPrevious = 'pipv', kNext = 'pinx', kPlay = 'pipl';
 
 constexpr uint32 kPhotoMenu = 'pipm';
+constexpr uint32 kDetachEditor = 'pidt', kDoneEditing = 'pide';
 
 // Native JPEG translation writes a bitmap header followed by rows. Decode
 // directly into the final bitmap, not a second image-sized memory stream.
@@ -392,6 +393,10 @@ ImagePreview::ImagePreview(bool standalone)
   photoActions->SetToolTip("Image size, zoom and camera details. Scroll to zoom; drag to pan.");
   next = addButton("Next", kNext);
   play = addButton("Play preview", kPlay);
+  detachEditor = addButton("Detach", kDetachEditor);
+  detachEditor->SetToolTip("Move the editor to its own window");
+  doneEditing = addButton("Done", kDoneEditing);
+  doneEditing->SetToolTip("Close the editor and return to preview");
   closeQuickView = addButton("×", kCloseQuickView);
   closeQuickView->ResizeTo(closeQuickView->Bounds().Height(), closeQuickView->Bounds().Height());
   closeQuickView->SetName("close quick view");
@@ -407,6 +412,8 @@ ImagePreview::~ImagePreview() {
 void ImagePreview::AttachedToWindow() {
   closeQuickView->SetTarget(Window());
   fileAction->SetTarget(this);
+  detachEditor->SetTarget(this);
+  doneEditing->SetTarget(this);
   StartWatching(BMessenger(be_app), 'isav');
   previous->SetTarget(this);
   photoActions->SetTarget(this);
@@ -417,7 +424,7 @@ void ImagePreview::AttachedToWindow() {
     return;
   loader = new Loader(BMessenger(this), generation, replies);
   loader->Run();
-  if (!path.empty())
+  if (!path.empty() && !editor)
     Request(1);
 }
 void ImagePreview::DetachedFromWindow() {
@@ -431,9 +438,18 @@ void ImagePreview::DetachedFromWindow() {
   replies->Clear();
   BView::DetachedFromWindow();
 }
-void ImagePreview::ShowFile(const std::string &p) {
+bool ImagePreview::ShowFile(const std::string &p) {
+  if (editor) {
+    // Selection and listing updates can arrive while a draft is open.
+    // Keep the document pinned, but restore the newest preview on exit.
+    if (path == p)
+      pendingFile.reset();
+    else
+      pendingFile = p;
+    return path == p;
+  }
   if (path == p)
-    return;
+    return true;
   path = p;
   photoView = {};
   draggingPhoto = false;
@@ -444,6 +460,51 @@ void ImagePreview::ShowFile(const std::string &p) {
   kind = Inspector::Kind::Unknown;
   playing = false;
   Request(1);
+  return true;
+}
+bool ImagePreview::BeginEditing(const std::string &p) {
+  if (p.empty() || Listi::IsVirtual(p))
+    return false;
+  if (editor && (path == p || !CloseEditor()))
+    return path == p;
+  if (standalone) {
+    OpenInspectorEditor(p, Window());
+    return true;
+  }
+  editor = OpenEmbeddedInspectorEditor(p, this, this);
+  if (!editor)
+    return false;
+  path = p;
+  pendingFile.reset();
+  ++*generation;
+  replies->Clear();
+  if (!textScroll->IsHidden(textScroll))
+    textScroll->Hide();
+  delete bitmap;
+  bitmap = nullptr;
+  UpdateControls();
+  return true;
+}
+bool ImagePreview::CloseEditor() {
+  if (!editor)
+    return true;
+  if (!InspectorEditorAllowClose(editor))
+    return false;
+  editor->RemoveSelf();
+  delete editor;
+  RemoveEditor();
+  return true;
+}
+void ImagePreview::RemoveEditor() {
+  editor = nullptr;
+  const auto nextFile = std::move(pendingFile);
+  pendingFile.reset();
+  if (nextFile && *nextFile != path) {
+    ShowFile(*nextFile);
+  } else {
+    kind = Inspector::Kind::Unknown;
+    Request(1);
+  }
 }
 void ImagePreview::Request(int requestedPage, bool playback) {
   ready = false;
@@ -476,8 +537,9 @@ void ImagePreview::UpdateControls() {
     else if (!visible && !view->IsHidden(view))
       view->Hide();
   };
-  const bool pdf = kind == Inspector::Kind::Pdf;
-  const bool media = kind == Inspector::Kind::Audio || kind == Inspector::Kind::Video;
+  const bool pdf = !editor && kind == Inspector::Kind::Pdf;
+  const bool media =
+      !editor && (kind == Inspector::Kind::Audio || kind == Inspector::Kind::Video);
   const bool sourceText = kind == Inspector::Kind::Text || kind == Inspector::Kind::Code ||
                           kind == Inspector::Kind::Markdown || kind == Inspector::Kind::Html;
   const bool unknown = kind == Inspector::Kind::Unknown && !bitmap;
@@ -487,19 +549,30 @@ void ImagePreview::UpdateControls() {
   fileAction->SetLabel(label);
   fileAction->ResizeToPreferred();
   fileAction->SetEnabled(media || canEdit);
-  show(fileAction, ready && !path.empty() && (sourceText || unknown || (media && local)));
-  fileAction->MoveTo(std::max(0.f, Bounds().right - fileAction->Bounds().Width() - 8), 3);
+  show(fileAction, !editor && ready && !path.empty() &&
+                       (sourceText || unknown || (media && local)));
+  show(detachEditor, editor);
+  show(doneEditing, editor);
   previous->SetEnabled(pdf && page > 1);
   next->SetEnabled(pdf && page != lastPage);
   show(previous, pdf);
-  show(photoActions, kind == Inspector::Kind::Image && bitmap);
+  show(photoActions, !editor && kind == Inspector::Kind::Image && bitmap);
   show(next, pdf);
   show(play, media);
   play->SetLabel(playing ? "Stop preview" : "Play preview");
+  LayoutControls();
   Invalidate();
 }
 void ImagePreview::MessageReceived(BMessage *m) {
   switch (m->what) {
+  case kDetachEditor:
+    if (editor && DetachInspectorEditor(editor))
+      RemoveEditor();
+    return;
+  case kDoneEditing:
+  case kInspectorEmbeddedClose:
+    CloseEditor();
+    return;
   case kPhotoMenu:
     if (kind == Inspector::Kind::Image && bitmap)
       PhotoMenu();
@@ -519,7 +592,7 @@ void ImagePreview::MessageReceived(BMessage *m) {
     return;
   }
   case B_OBSERVER_NOTICE_CHANGE:
-    if (m->GetInt32(B_OBSERVE_WHAT_CHANGE, 0) == 'isav' &&
+    if (!editor && m->GetInt32(B_OBSERVE_WHAT_CHANGE, 0) == 'isav' &&
         !path.empty() && path == m->GetString("path", ""))
       Request(1);
     return;
@@ -537,7 +610,7 @@ void ImagePreview::MessageReceived(BMessage *m) {
       (new BAlert("MediaPlayer", "Could not open this file in Haiku MediaPlayer.",
                   "OK"))->Go(nullptr);
     } else if (canEdit && !bitmap) {
-      OpenInspectorEditor(path, Window());
+      BeginEditing(path);
     }
     return;
   }
@@ -705,12 +778,26 @@ void ImagePreview::SetQuickViewCloseVisible(bool visible) {
   FrameResized(Bounds().Width(), Bounds().Height());
 }
 
-void ImagePreview::FrameResized(float width, float height) {
+void ImagePreview::FrameResized(float, float) {
+  LayoutControls();
+  Invalidate();
+}
+
+void ImagePreview::LayoutControls() {
+  const float width = Bounds().Width(), height = Bounds().Height();
   const float closeLeft = width - closeQuickView->Bounds().Width() - 5;
   closeQuickView->MoveTo(std::max(0.f, closeLeft), 3);
   const float actionsRight = closeQuickView->IsHidden(closeQuickView) ? width : closeLeft;
   photoActions->MoveTo(std::max(0.f, actionsRight - photoActions->Bounds().Width() - 8), 3);
   fileAction->MoveTo(std::max(0.f, actionsRight - fileAction->Bounds().Width() - 8), 3);
+  const float doneLeft = actionsRight - doneEditing->Bounds().Width() - 8;
+  doneEditing->MoveTo(std::max(0.f, doneLeft), 3);
+  const float detachLeft = doneLeft - detachEditor->Bounds().Width() - 5;
+  detachEditor->MoveTo(std::max(0.f, detachLeft), 3);
+  if (editor) {
+    editor->MoveTo(0, 35);
+    editor->ResizeTo(width, std::max(0.f, height - 35));
+  }
   textScroll->MoveTo(8, 35);
   textScroll->ResizeTo(std::max(32.f, width - 16), std::max(32.f, height - 70));
   text->SetTextRect(text->Bounds().OffsetToCopy(0, 0).InsetByCopy(4, 3));
@@ -718,17 +805,19 @@ void ImagePreview::FrameResized(float width, float height) {
   previous->MoveTo(12, buttonTop);
   next->MoveTo(20 + previous->Bounds().Width(), buttonTop);
   play->MoveTo(12, buttonTop);
-  Invalidate();
 }
 void ImagePreview::Draw(BRect) {
   SetHighUIColor(B_DOCUMENT_TEXT_COLOR);
-  BString title(closeQuickView->IsHidden(closeQuickView) ? "Inspector" : "Quick view");
+  BString title(editor ? "Edit"
+                      : closeQuickView->IsHidden(closeQuickView) ? "Inspector" : "Quick view");
   float right = Bounds().right;
-  for (auto button : {photoActions, fileAction, closeQuickView})
+  for (auto button : {photoActions, fileAction, closeQuickView, detachEditor, doneEditing})
     if (!button->IsHidden(button))
       right = std::min(right, button->Frame().left);
   TruncateString(&title, B_TRUNCATE_END, std::max(0.f, right - 16));
   DrawString(title, BPoint(12, 22));
+  if (editor)
+    return;
   BRect area = Bounds().InsetByCopy(12, 12);
   area.top += 22;
   area.bottom = previous->IsHidden(previous) && play->IsHidden(play)

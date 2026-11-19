@@ -5,6 +5,7 @@
 #include <View.h>
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <string>
 class BBitmap;
 class BitmapMailbox;
@@ -25,11 +26,17 @@ public:
   void MouseMoved(BPoint, uint32, const BMessage *) override;
   void MouseUp(BPoint) override;
   void SetQuickViewCloseVisible(bool visible);
-  void ShowFile(const std::string &);
+  bool ShowFile(const std::string &);
+  bool HasEditor() const { return editor != nullptr; }
+  bool BeginEditing(const std::string &);
+  bool CloseEditor();
+  const std::string &File() const { return path; }
 
 private:
   void Request(int page, bool playback = false);
   void UpdateControls();
+  void RemoveEditor();
+  void LayoutControls();
   BRect PhotoArea() const;
   void PhotoMenu();
   void ZoomPhoto(double factor, BPoint anchor);
@@ -47,12 +54,15 @@ private:
   BScrollView *textScroll;
   BButton *previous, *next, *play;
   BButton *fileAction, *closeQuickView;
+  BButton *detachEditor, *doneEditing;
+  BView *editor = nullptr;
   bool ready = false, canEdit = false;
   Inspector::Kind kind = Inspector::Kind::Unknown;
   const bool standalone;
   int page = 1, lastPage = 0;
   bool playing = false;
   std::string path, caption = "Select a file to inspect";
+  std::optional<std::string> pendingFile;
 };
 
 namespace Listi {
