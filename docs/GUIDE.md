@@ -280,7 +280,7 @@ content detection. `.jpg` and `.jpeg` remain distinct.
 (**Files > Add to Shelf**), or right-click the selection and choose **Add to Shelf**. **Copy path as text** copies the address rather than file references; multiple paths are separated by newlines. Open **Listi > Show Shelf** to see their names,
 original folders and status. You can also drop local entries onto the list.
 Select one or more rows and click **Remove from Shelf** to remove just those
-references. **Clear Shelf** removes every reference. Neither action deletes or
+references. **Actions > Clear Shelf** removes every reference. Neither action deletes or
 moves the original files. Closing and reopening the Shelf keeps its contents;
 quitting Listi clears the working Shelf.
 
@@ -300,12 +300,12 @@ row and choose **Relink...** to point it at a file or folder you recognize,
 then save again to keep that change. On filesystems without a supported
 identity proof, reloaded paths require explicit relinking.
 
-**Copy all...** and **Move all...** act on the whole Shelf, not just
+In the Shelf window’s **Actions** menu, **Copy all...** and **Move all...** act on the whole Shelf, not just
 highlighted rows. Choose a destination folder and follow progress in
 Operations. Copy leaves the originals and the Shelf references in place.
 Relink or remove unavailable references before submitting another job.
 
-**Create archive...** opens the archive dialog for the whole Shelf. Choose
+**Actions > Create archive...** opens the archive dialog for the whole Shelf. Choose
 the destination, archive name and format. Use **Change format...** if the
 format options are hidden. Each entry appears at the top level under its
 original name. If two entries have the same name, remove one reference

@@ -526,7 +526,6 @@ public:
         .Add(new BButton("Refresh", new BMessage(kRefreshShelf)))
         .Add(relink)
         .Add(remove)
-        .Add(clear)
         .AddGlue()
         .End()
         .End();
