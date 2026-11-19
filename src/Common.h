@@ -78,6 +78,7 @@ enum : uint32 {
   kFilter = 'fltr',
   kFilterChanged = 'flch',
   kClearFilter = 'flcl',
+  kInlineCancel = 'ican',
   kFilterDone = 'fldn',
   kTerminal = 'term',
   kPreferences = 'pref',

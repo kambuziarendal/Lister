@@ -3,6 +3,7 @@
 #define main listi_application_entry
 #include "../src/App.cpp"
 #undef main
+#include <List.h>
 #include <cassert>
 #include <cctype>
 
@@ -31,6 +32,30 @@ int main() {
     message.AddInt32("workspace", static_cast<int32>(value));
     window->MessageReceived(&message);
   };
+  // Exercise the installed common filter, not a standalone key mapping.
+  Listi::WindowKeyFilter *keys = nullptr;
+  auto *filters = window->CommonFilterList();
+  for (int32 i = 0; filters && i < filters->CountItems(); ++i) {
+    auto *filter = static_cast<BMessageFilter *>(filters->ItemAt(i));
+    if ((keys = dynamic_cast<Listi::WindowKeyFilter *>(filter)))
+      break;
+  }
+  assert(keys);
+  auto key = [&](BView *focus, const char *bytes, int32 modifiers) {
+    focus->MakeFocus();
+    assert(window->CurrentFocus() == focus);
+    BMessage message(B_KEY_DOWN);
+    message.AddString("bytes", bytes);
+    message.AddInt32("modifiers", modifiers);
+    BHandler *target = focus;
+    return keys->Filter(&message, &target);
+  };
+  auto *files = window->FindView("files");
+  auto *filter = dynamic_cast<BTextControl *>(window->FindView("filter"));
+  assert(files && filter);
+  assert(key(files, "d", B_COMMAND_KEY) == B_DISPATCH_MESSAGE);
+  assert(key(filter->TextView(), "d", B_COMMAND_KEY) == B_SKIP_MESSAGE);
+  assert(key(filter->TextView(), "f", B_COMMAND_KEY) == B_DISPATCH_MESSAGE);
   assert(item(kSelectPattern)->IsEnabled());
   assert(item(kSwitch)->IsEnabled() && item(kCopy)->IsEnabled());
   send(kQuickView);
