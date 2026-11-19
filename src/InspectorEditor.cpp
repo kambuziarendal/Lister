@@ -703,9 +703,9 @@ public:
                B_COMMAND_KEY) {
       const int32 raw = key.GetInt32("raw_char", bytes[0]);
       const int command = std::toupper(static_cast<unsigned char>(raw));
-      if (command == 'Q')
-        return false;
       const uint32 shift = modifiers & B_SHIFT_KEY;
+      if (command == 'Q' || (IsEmbedded() && command == 'P' && shift))
+        return false;
       for (const auto &shortcut : editorShortcuts)
         if (shortcut.key == command && shortcut.modifiers == shift)
           action = shortcut.action;
