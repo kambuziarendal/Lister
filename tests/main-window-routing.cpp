@@ -1,9 +1,22 @@
 // SPDX-License-Identifier: MIT
 // Exercise the actual window and menu without writing real user preferences.
-#define main listi_application_entry
-#include "../src/App.cpp"
-#undef main
+#include "../src/Common.h"
+#include "../src/MainWindow.h"
+#include "../src/Pane.h"
+#include "../src/PanelTools.h"
+#include "../src/PaneSidebar.h"
+#include "../src/SavedPlaces.h"
+#include "../src/SavedSearches.h"
+#include "../src/WindowKeyFilter.h"
+#include <Application.h>
+#include <MenuBar.h>
+#include <MenuItem.h>
+#include <TextControl.h>
+#include <TextView.h>
+#include <Window.h>
 #include <List.h>
+#include <ListView.h>
+#include <StringItem.h>
 #include <cassert>
 #include <cctype>
 #include <fstream>
@@ -11,7 +24,7 @@
 
 int main() {
   BApplication app("application/x-vnd.Listi-MainWindowRoutingTest");
-  auto *window = new MainWindow(Preferences{}, BMessenger{}, {}, false, {}, false);
+  auto *window = CreateMainWindow(Preferences{}, BMessenger{}, {}, false, {}, false);
   auto *menu = dynamic_cast<BMenuBar *>(window->FindView("menu"));
   assert(menu);
   auto item = [&](uint32 action) {
@@ -80,6 +93,32 @@ int main() {
   assert(left && right);
   using Page = Listi::PanelPage;
   auto *original = left->Page(Page::Files);
+  auto *leftPane = static_cast<Pane *>(original);
+  auto *rightPane = static_cast<Pane *>(right->Page(Page::Files));
+  const SidebarMode originalRight = rightPane->Sidebar();
+  auto changeSidebar = [&](SidebarMode mode) {
+    BMessage change(kSidebarMode);
+    change.AddInt32("mode", static_cast<int32>(mode));
+    leftPane->MessageReceived(&change);
+  };
+  Listi::SavedPlaces places;
+  places.Add("Home shortcut", "/boot/home");
+  leftPane->SetPlaces(places, true);
+  changeSidebar(SidebarMode::Favorites);
+  auto *sidebar = leftPane->FindView("navigation sidebar");
+  auto *favorites = dynamic_cast<BListView *>(leftPane->FindView("favorite destinations"));
+  assert(sidebar && favorites && !favorites->IsHidden(sidebar));
+  auto *shortcut = dynamic_cast<BStringItem *>(favorites->ItemAt(0));
+  assert(shortcut && std::string(shortcut->Text()) == "Home shortcut");
+  changeSidebar(SidebarMode::Shelf);
+  auto *shelf = leftPane->FindView("sidebar shelf");
+  assert(shelf && !shelf->IsHidden(sidebar) && favorites->IsHidden(sidebar));
+  changeSidebar(SidebarMode::Hidden);
+  assert(sidebar->IsHidden(sidebar) && leftPane->SidebarCanBeRestored());
+  BMessage restore(kRestoreSidebar);
+  leftPane->MessageReceived(&restore);
+  assert(leftPane->Sidebar() == SidebarMode::Shelf && !shelf->IsHidden(sidebar));
+  assert(rightPane->Sidebar() == originalRight);
   auto *tabs = left->FindView("panel tabs");
   assert(tabs && tabs->IsHidden(tabs));
   auto select = [&](Page page) {

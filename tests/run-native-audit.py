@@ -21,7 +21,7 @@ archive-folder-operations transfer-races archive-ambiguity archive-volumes
 sevenzip-backend archive-passwords archive-jobs ar-writer arj-writer rar-store
 cab-writer lha-writer preferences-state message-store-faults main-window-routing application-services settings-window
 workspace-layout workspace-editor miller-columns navigation-history selection-model type-to-select
-pane-filter selection-summary selection-sort saved-places saved-searches file-search
+pane-filter selection-summary selection-sort saved-places saved-searches saved-navigation-controller file-search
 live-search flat-view file-clipboard clipboard-text-file file-drop image-convert
 inspector-content inspector-document inspector-editor inspector-photo
 terminal-session terminal-dock bulk-rename bulk-rename-window shelf shelf-collections
@@ -101,9 +101,7 @@ def run():
     for name in names:
         print("TEST", name, flush=True)
         inputs = objects
-        if name == "main-window-routing":
-            inputs = [p for p in all_objects if p.name != "App.o"]
-        elif name == "virtual-operation-faults":
+        if name == "virtual-operation-faults":
             inputs = [SRC / "VirtualOperation.cpp", SRC / "VirtualFile.cpp"]
         binary = OUTPUT / name
         subprocess.run([
