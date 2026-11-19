@@ -50,12 +50,17 @@ void WorkspaceLayout::Load(const BMessage &m) {
   for (int pane = 0; pane < 2; ++pane) {
     const bool shown =
         m.GetBool(workbenchKeys[pane], m.GetBool(treeKeys[pane], true));
-    const bool favorite = m.GetBool(favoriteKeys[pane], false);
-    // The legacy switch remains authoritative after an older app changes it.
-    if (!shown)
-      smidjaSidebar[pane] = SidebarMode::Hidden;
-    else if (favorite)
-      smidjaSidebar[pane] = SidebarMode::Favorites;
+    const auto legacy = m.GetBool(favoriteKeys[pane], false)
+                            ? SidebarMode::Favorites : SidebarMode::FolderTree;
+    const auto loadMode = [&](const char *key, SidebarMode fallback) {
+      const int32 value = m.GetInt32(key, pane, static_cast<int32>(fallback));
+      return IsVisibleSidebar(value) ? static_cast<SidebarMode>(value) : fallback;
+    };
+    smidjaRestore[pane] = loadMode("smidjaSidebarMode", legacy);
+    smidjaSidebar[pane] = shown ? smidjaRestore[pane] : SidebarMode::Hidden;
+    askrRestore[pane] = loadMode("askrSidebarMode", SidebarMode::FolderTree);
+    askrSidebar[pane] = m.GetBool("askrSidebarVisible", pane, true)
+                            ? askrRestore[pane] : SidebarMode::Hidden;
   }
   preview = m.GetBool("preview", false);
   smidjaPreview =
@@ -124,6 +129,15 @@ void WorkspaceLayout::Archive(BMessage &m) const {
   }
   m.AddBool("leftTree", paneTree[0]);
   m.AddBool("rightTree", paneTree[1]);
+  for (int pane = 0; pane < 2; ++pane) {
+    const bool askrVisible = askrSidebar[pane] != SidebarMode::Hidden;
+    m.AddBool("askrSidebarVisible", askrVisible);
+    m.AddInt32("askrSidebarMode", static_cast<int32>(
+        askrVisible ? askrSidebar[pane] : askrRestore[pane]));
+    m.AddInt32("smidjaSidebarMode", static_cast<int32>(
+        smidjaSidebar[pane] != SidebarMode::Hidden ? smidjaSidebar[pane]
+                                                  : smidjaRestore[pane]));
+  }
   m.AddBool("smidjaLeftFavorites", smidjaSidebar[0] == SidebarMode::Favorites);
   m.AddBool("smidjaRightFavorites", smidjaSidebar[1] == SidebarMode::Favorites);
   // Older versions show a tree in place of favorites, without changing files.

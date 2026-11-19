@@ -122,6 +122,8 @@ class MainWindow : public BWindow {
   std::shared_ptr<Listi::Shelf> shelf = std::make_shared<Listi::Shelf>();
   BMessenger shelfWindow;
   void RefreshShelf() {
+    for (auto pane : panes)
+      pane->RefreshShelf();
     if (shelfWindow.IsValid()) {
       BMessage refresh(Listi::kRefreshShelf);
       shelfWindow.SendMessage(&refresh, (BHandler *)nullptr, 0);
@@ -1112,8 +1114,8 @@ public:
     view->AddSeparatorItem();
     view->AddItem(new BMenuItem("Settings…", new BMessage(kPreferences), ','));
     menu->AddItem(view);
-    panes[0] = new Pane(0, prefs);
-    panes[1] = new Pane(1, prefs);
+    panes[0] = new Pane(0, prefs, shelf);
+    panes[1] = new Pane(1, prefs, shelf);
     split = new WorkspaceSplit();
     splitterSize = split->SplitterSize();
     for (int pane = 0; pane < 2; ++pane) {
@@ -1334,6 +1336,10 @@ public:
       break;
     case Listi::kRefreshShelf:
       RefreshShelf();
+      break;
+    case Listi::kShelfChanged:
+      for (auto pane : panes)
+        pane->RefreshShelf();
       break;
     case Listi::kSubmitShelfTransfer: {
       auto job = Listi::DecodeSubmittedJob(
@@ -1754,6 +1760,11 @@ public:
         options.fileType = panes[owner]->SelectedFileType();
         options.sort = panes[owner]->Sorting();
         options.view = panes[owner]->CurrentView();
+        options.restoreSidebar = panes[owner]->SidebarCanBeRestored();
+        options.addShortcut =
+            options.directory && selected.size() == 1 && placesWritable &&
+            !placesSaving && !places.Find(selected.front()) &&
+            places.Items().size() < Listi::SavedPlaces::Limit;
         const auto choice = ShowContextMenu(screen, options);
         const uint32 action = choice.what;
         if (!action)
@@ -1763,6 +1774,11 @@ public:
             destination != panes[1 - owner]->Path())
           throw std::runtime_error(
               "The panel changed. Open the file menu again.");
+        if (action == kRestoreSidebar) {
+          BMessage restore(kRestoreSidebar);
+          panes[owner]->MessageReceived(&restore);
+          break;
+        }
         if (choice.folder) {
           struct stat folderAfter {};
           if (folderLocal && (stat(folder.c_str(), &folderAfter) ||
@@ -1792,6 +1808,16 @@ public:
           if (fileSnapshotError)
             std::rethrow_exception(fileSnapshotError);
           Listi::ReadFileClipboard(snapshot);
+        }
+        if (action == kAddShortcut) {
+          if (!options.addShortcut)
+            break;
+          BMessage request(kPlaceAction);
+          request.AddInt32("action", 0);
+          request.AddString("path", selected.front().c_str());
+          request.AddInt32("pane", owner);
+          MessageReceived(&request);
+          break;
         }
         if (action == kCopy || action == kMove || action == kCreateLink) {
           struct stat after {};

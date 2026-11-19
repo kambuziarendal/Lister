@@ -50,7 +50,9 @@ std::string RefPath(const entry_ref &ref, bool traverse) {
   return path.Path();
 }
 
-size_t AddDrop(Shelf &shelf, const BMessage &drop) {
+} // namespace
+
+size_t AddShelfDrop(Shelf &shelf, const BMessage &drop) {
   type_code type;
   int32 count;
   if (drop.GetInfo("refs", &type, &count) != B_OK || type != B_REF_TYPE ||
@@ -79,6 +81,7 @@ size_t AddDrop(Shelf &shelf, const BMessage &drop) {
   return shelf.Add(paths, expected);
 }
 
+namespace {
 const char *StateLabel(ShelfState state) {
   switch (state) {
   case ShelfState::Missing:
@@ -168,6 +171,11 @@ class ShelfWindow : public BWindow {
                       return entry.path == *selected.begin() &&
                              entry.DisplayState() != ShelfState::Ready;
                     }));
+  }
+
+  void ShelfChanged() {
+    BMessage changed(kShelfChanged);
+    owner.SendMessage(&changed, (BHandler *)nullptr, 0);
   }
 
   void Render() {
@@ -321,8 +329,9 @@ class ShelfWindow : public BWindow {
   }
 
   void Add(const BMessage &message) {
-    const auto added = AddDrop(*shelf, message);
+    const auto added = AddShelfDrop(*shelf, message);
     Render();
+    ShelfChanged();
     Status(added ? "Added " + std::to_string(added) + " to the Shelf."
                  : "Already on the Shelf.");
   }
@@ -430,6 +439,7 @@ class ShelfWindow : public BWindow {
                   ShelfNodeStamp{int64(st.st_ino), int64(st.st_crtim.tv_sec),
                                  int32(st.st_crtim.tv_nsec)});
     Render();
+    ShelfChanged();
     Status("Reference relinked. Save the collection to keep this change.");
   }
 
@@ -546,6 +556,7 @@ public:
       case kResolveFinished:
         resolving = false;
         Render();
+        ShelfChanged();
         if (const char *error = message->GetString("error", nullptr))
           Status(error);
         else if (const char *loaded = message->GetString("loaded", nullptr))
@@ -580,11 +591,13 @@ public:
       case kRemove:
         shelf->Remove(Selected());
         Render();
+        ShelfChanged();
         Status("Removed references only. Original files were not changed.");
         return;
       case kClear:
         shelf->Clear();
         Render();
+        ShelfChanged();
         Status("Shelf cleared. Original files were not changed.");
         return;
       case kPickCopy:

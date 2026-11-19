@@ -7,7 +7,7 @@
 #include <algorithm>
 namespace {
 void FolderActions(BMenu &menu, bool local, bool archive, PaneSort sort,
-                   int view) {
+                   int view, bool restoreSidebar) {
   auto add = [&](const char *label, uint32 what, bool enabled) {
     auto message = new BMessage(what);
     message->AddBool("folderContext", true);
@@ -44,6 +44,8 @@ void FolderActions(BMenu &menu, bool local, bool archive, PaneSort sort,
     views->AddItem(item);
   }
   menu.AddItem(views);
+  if (restoreSidebar)
+    add("Show sidebar", kRestoreSidebar, true);
   menu.AddSeparatorItem();
   add("New folder...", kMkdir, local || archive);
   add("Paste here", kClipboardPaste, local || archive);
@@ -74,6 +76,8 @@ void FileActions(BMenu &menu, const ContextMenuOptions &options) {
     menu.AddItem(item);
   };
   add("Open", kInvoke, single);
+  if (single && directory)
+    add("Add to shortcuts…", kAddShortcut, options.addShortcut);
   if (!directory) {
     add("Open with...", kOpenWith, single && local);
     add("View", kView, single);
@@ -140,7 +144,7 @@ ContextAction ShowContextMenu(BPoint point, const ContextMenuOptions &options) {
   ContextSelector(folder, true, options.selected != 0);
   FileActions(files, options);
   FolderActions(folder, options.folderLocal, options.folderArchive,
-                options.sort, options.view);
+                options.sort, options.view, options.restoreSidebar);
   // Reserve an anchor that fits either menu. Switching context near an edge
   // must not move the selector under the pointer or lose the original owner.
   float fileWidth, fileHeight, folderWidth, folderHeight;

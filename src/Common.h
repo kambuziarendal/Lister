@@ -23,6 +23,8 @@ enum : uint32 {
   kBack = 'back',
   kForward = 'frwd',
   kPlaceAction = 'plac',
+  kAddShortcut = 'padd',
+  kRestoreSidebar = 'sbrs',
   kPlaceAccepted = 'pacc',
   kSavePlaces = 'psav',
   kPlacesSaved = 'psvd',

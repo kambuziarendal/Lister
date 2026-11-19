@@ -51,15 +51,30 @@ inline const char *ViewModeLabel(int32 mode) {
   return mode >= 0 && mode < ViewModeCount ? labels[mode] : "Details";
 }
 
-enum class SidebarMode : int32 { Hidden = 0, FolderTree = 1, Favorites = 2 };
+// The first three values retain the existing meanings.
+enum class SidebarMode : int32 {
+  Hidden = 0, FolderTree = 1, Favorites = 2, ShortcutsAndTree = 3, Shelf = 4
+};
 constexpr SidebarMode SidebarModes[] = {
-    SidebarMode::Hidden, SidebarMode::FolderTree, SidebarMode::Favorites};
+    SidebarMode::Hidden, SidebarMode::FolderTree, SidebarMode::Favorites,
+    SidebarMode::ShortcutsAndTree, SidebarMode::Shelf};
+inline bool IsVisibleSidebar(int32 mode) {
+  return mode >= static_cast<int32>(SidebarMode::FolderTree) &&
+         mode <= static_cast<int32>(SidebarMode::Shelf);
+}
+inline bool SidebarHasTree(SidebarMode mode) {
+  return mode == SidebarMode::FolderTree || mode == SidebarMode::ShortcutsAndTree;
+}
 inline const char *SidebarModeLabel(SidebarMode mode) {
   switch (mode) {
   case SidebarMode::FolderTree:
-    return "Folder tree";
+    return "File tree";
   case SidebarMode::Favorites:
-    return "Favorite destinations";
+    return "Shortcuts";
+  case SidebarMode::ShortcutsAndTree:
+    return "Shortcuts above tree";
+  case SidebarMode::Shelf:
+    return "Shelf";
   default:
     return "Hidden";
   }
@@ -96,6 +111,9 @@ struct WorkspaceLayout {
         mode >= 0 && mode < ViewModeCount ? mode : -1;
   }
   bool paneTree[2] = {false, false};
+  SidebarMode askrSidebar[2] = {SidebarMode::FolderTree, SidebarMode::FolderTree};
+  SidebarMode askrRestore[2] = {SidebarMode::FolderTree, SidebarMode::FolderTree};
+  SidebarMode smidjaRestore[2] = {SidebarMode::FolderTree, SidebarMode::FolderTree};
   SidebarMode smidjaSidebar[2] = {SidebarMode::FolderTree,
                                  SidebarMode::FolderTree};
   bool preview = false;
@@ -106,16 +124,29 @@ struct WorkspaceLayout {
   }
   bool IsEinn() const { return workspace == Workspace::einn; }
   bool IsSmidja() const { return workspace == Workspace::smidja; }
+  bool HasConfigurableSidebar() const {
+    return workspace == Workspace::askr || IsSmidja();
+  }
   SidebarMode Sidebar(int pane) const {
-    return IsSmidja() ? smidjaSidebar[pane]
-                      : paneTree[pane] ? SidebarMode::FolderTree
-                                       : SidebarMode::Hidden;
+    if (HasConfigurableSidebar())
+      return IsSmidja() ? smidjaSidebar[pane] : askrSidebar[pane];
+    return paneTree[pane] ? SidebarMode::FolderTree : SidebarMode::Hidden;
+  }
+  SidebarMode RestoreSidebar(int pane) const {
+    return IsSmidja() ? smidjaRestore[pane] : askrRestore[pane];
   }
   void SetSidebar(int pane, SidebarMode mode) {
-    if (IsSmidja())
-      smidjaSidebar[pane] = mode;
-    else
+    if (!HasConfigurableSidebar()) {
       paneTree[pane] = mode == SidebarMode::FolderTree;
+      return;
+    }
+    auto &current = (IsSmidja() ? smidjaSidebar : askrSidebar)[pane];
+    auto &restore = (IsSmidja() ? smidjaRestore : askrRestore)[pane];
+    if (current != SidebarMode::Hidden)
+      restore = current;
+    current = mode;
+    if (mode != SidebarMode::Hidden)
+      restore = mode;
   }
   bool Preview() const { return IsSmidja() ? smidjaPreview : preview; }
   void SetPreview(bool value) {

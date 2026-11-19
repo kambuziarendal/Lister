@@ -178,10 +178,11 @@ class WorkspaceEditor : public BWindow {
     layout.inspectorLeft = SelectedChoice(previewZone) == 1;
     layout.treeRight = SelectedChoice(treeZone) == 1;
     layout.filterBottom = SelectedChoice(filterZone) == 1;
-    layout.smidjaSidebar[0] =
-        static_cast<SidebarMode>(SelectedChoice(leftSidebar));
-    layout.smidjaSidebar[1] =
-        static_cast<SidebarMode>(SelectedChoice(rightSidebar));
+    const auto workspace = layout.workspace;
+    layout.workspace = Workspace::smidja;
+    layout.SetSidebar(0, static_cast<SidebarMode>(SelectedChoice(leftSidebar)));
+    layout.SetSidebar(1, static_cast<SidebarMode>(SelectedChoice(rightSidebar)));
+    layout.workspace = workspace;
     layout.buttons = showBank->Value() == B_CONTROL_ON;
     layout.command = showCommand->Value() == B_CONTROL_ON;
     layout.adaptive = adaptive->Value() == B_CONTROL_ON;
@@ -337,7 +338,9 @@ class WorkspaceEditor : public BWindow {
     filterZone = Choice("Name filter:", {"Above file list", "Below file list"});
     const auto sidebarChoices = {SidebarModeLabel(SidebarMode::Hidden),
                                  SidebarModeLabel(SidebarMode::FolderTree),
-                                 SidebarModeLabel(SidebarMode::Favorites)};
+                                 SidebarModeLabel(SidebarMode::Favorites),
+                                 SidebarModeLabel(SidebarMode::ShortcutsAndTree),
+                                 SidebarModeLabel(SidebarMode::Shelf)};
     leftSidebar = Choice("Smiðja first sidebar:", sidebarChoices);
     rightSidebar = Choice("Smiðja second sidebar:", sidebarChoices);
     adaptive =

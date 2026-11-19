@@ -18,14 +18,17 @@ class MillerColumns;
 class BCardView;
 class BGroupView;
 class BSplitView;
+class BScrollView;
+class BListView;
 class BMenuField;
 class BMenu;
 class BMenuItem;
 class FavoriteList;
+namespace Listi { class Shelf; }
 class BMessageRunner;
 class Pane : public BView {
 public:
-  Pane(int32 id, const Preferences &);
+  Pane(int32 id, const Preferences &, std::shared_ptr<Listi::Shelf> = {});
   ~Pane();
   void AttachedToWindow() override;
   void Draw(BRect) override;
@@ -66,6 +69,9 @@ public:
   int32 PaneOverride() const {
     return prefs.HasPaneMode(id) ? prefs.PaneMode(id) : -1;
   }
+  bool SidebarCanBeRestored() const;
+  void SidebarContext(BView *target, BPoint point);
+  void RefreshShelf();
   SidebarMode Sidebar() const { return prefs.Sidebar(id); }
   void FolderModes(const std::map<std::string, int32> &modes) {
     prefs.folderModes = modes;
@@ -86,8 +92,11 @@ private:
   FolderTree *tree;
   BCardView *sidebar;
   FavoriteList *favorites;
+  BScrollView *favoriteScroll;
+  BListView *shelfList;
+  std::shared_ptr<Listi::Shelf> shelf;
   BMenuItem *sidebarMenuItem = nullptr;
-  bool sidebarMenuSmidja = false;
+  bool sidebarMenuConfigurable = false;
   SidebarMode visibleSidebar = SidebarMode::FolderTree;
   bool einn = false;
   BCardView *cards;
@@ -102,6 +111,7 @@ private:
   int32 LocationMode() const;
   void UpdateSidebar();
   void UpdateSidebarMenu();
+  void AddSidebarModes(BMenu &, bool hiddenLabel = false);
   void PublishDisplay(bool folder = false, bool forget = false);
   BMenu *placesMenu;
   Listi::SavedPlaces places;
