@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <fs_attr.h>
+#include <fs_info.h>
 #include <limits.h>
 #include <map>
 #include <memory>
@@ -79,6 +80,36 @@ struct Runner {
   const Job *guardedJob = nullptr;
   std::string guardedSource;
   std::map<std::string, size_t> outcomeIndex;
+  struct BackingDevice {
+    std::string path;
+    NodeIdentity node;
+  };
+  std::map<dev_t, BackingDevice> backingDevices;
+  void CheckDestinationDevice(dev_t volume) {
+    auto it = backingDevices.find(volume);
+    if (it == backingDevices.end()) {
+      fs_info info{};
+      if (fs_stat_dev(volume, &info))
+        throw std::runtime_error("The destination volume is no longer available.");
+      BackingDevice backing;
+      if (strncmp(info.device_name, "/dev/disk/", 10) == 0)
+        backing.path = info.device_name;
+      it = backingDevices.emplace(volume, std::move(backing)).first;
+    }
+    auto &backing = it->second;
+    if (backing.path.empty())
+      return; // Not a disk-backed filesystem.
+    // A disconnected BFS volume can still report successful stat and fsync
+    // calls against cached files. Check the backing device in devfs instead.
+    struct stat st;
+    if (stat(backing.path.c_str(), &st) ||
+        (backing.node.device >= 0 &&
+         (backing.node.device != st.st_dev || backing.node.inode != st.st_ino)))
+      throw std::runtime_error(
+          "Destination device disconnected or changed. Copy not confirmed; "
+          "check the destination after reconnecting.");
+    backing.node = {st.st_dev, st.st_ino};
+  }
   size_t mutations = 0;
   EntryOutcome &Outcome(const std::string &src, const std::string &dst = {}) {
     auto index = outcomeIndex.emplace(src, result.outcomes.size());
@@ -152,6 +183,7 @@ struct Runner {
   void Done(const std::string &src, const std::string &dst,
             const struct stat &expected) {
     ++mutations;
+    CheckDestinationDevice(expected.st_dev);
     struct stat committed;
     if (lstat(dst.c_str(), &committed) || expected.st_dev != committed.st_dev ||
         expected.st_ino != committed.st_ino || expected.st_mode != committed.st_mode ||
@@ -304,6 +336,7 @@ struct Runner {
     if (recorded == copied.end())
       throw std::runtime_error(source + ": no committed copy; source retained");
     const auto &copy = recorded->second;
+    CheckDestinationDevice(copy.committed.st_dev);
     RequireSameMoveVolume(sourceVolume, copy.committed.st_dev);
     struct stat now;
     if (lstat(copy.destination.c_str(), &now) || !SameEntry(copy.committed, now)) {
@@ -427,6 +460,7 @@ struct Runner {
         if (lstat(dst.c_str(), &before) || !S_ISDIR(before.st_mode))
           throw std::runtime_error(dst + ": new destination folder changed");
       }
+      CheckDestinationDevice(before.st_dev);
       copyDirectories.emplace_back(dst, before);
       struct DirectoryScope {
         DirectoryStack &stack;
@@ -485,6 +519,7 @@ struct Runner {
     if (fstat(out.n, &stagingIdentity))
       Fail(tmp);
     try {
+      CheckDestinationDevice(stagingIdentity.st_dev);
       if (S_ISLNK(st.st_mode)) {
         char link[PATH_MAX];
         ssize_t n = readlink(src.c_str(), link, sizeof(link) - 1);
@@ -531,6 +566,7 @@ struct Runner {
         if (fchmod(out.n, st.st_mode & 07777))
           Fail(tmp);
         struct timespec times[2] = {st.st_atim, st.st_mtim};
+        CheckDestinationDevice(stagingIdentity.st_dev);
         if (futimens(out.n, times) || fsync(out.n))
           Fail(tmp);
       }
@@ -542,6 +578,7 @@ struct Runner {
       if (lstat(tmp.c_str(), &staged) || staged.st_dev != stagingIdentity.st_dev ||
           staged.st_ino != stagingIdentity.st_ino)
         throw std::runtime_error(tmp + ": staging file changed");
+      CheckDestinationDevice(stagingIdentity.st_dev);
       Commit(tmp, dst, existed, before);
       Done(src, dst, staged);
     } catch (...) {
