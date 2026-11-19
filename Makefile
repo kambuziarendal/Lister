@@ -1,9 +1,11 @@
 VERSION := 0.35.0
-.PHONY: all test package clean
+.PHONY: all test audit package clean
 all:
 	$(MAKE) -C src
-test: all
-	@set -e; for app in src/objects.*-release/Listi; do "$$app" --self-test; done
+test:
+	$(MAKE) -C src listi-self-test
+audit: all
+	python3 tests/run-native-audit.py $(TESTS)
 package: all
 	sh packaging/package.sh $(VERSION)
 clean:

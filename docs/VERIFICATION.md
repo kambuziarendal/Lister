@@ -4,35 +4,50 @@ Listi is alpha software that works directly on files. Tests provide evidence for
 specific cases, not proof that every filesystem, server or archive variant is
 safe. Use disposable fixtures and independent backups.
 
-## Built-in self-test
+## Native regression audit and smoke test
 
 Build inside Haiku x86_64 with the dependencies listed in the
-[README](../README.md#build-from-source), then run:
+[README](../README.md#build-from-source), using a disposable test profile with Haiku's
+`app_server` running. The full audit exercises optional features too: install
+the p7zip native engine, LHA and ARJ tools and the package providing
+`cmd:pdftoppm` for archive and preview coverage.
+
+From a clean checkout:
+
+```sh
+make audit >native-audit.log 2>&1
+```
+
+This builds the application, links and runs all cases in the runner's required
+list, and finally runs the build-tree `Listi --self-test`. Check the exit
+status of **make**; a build error, missing required case or object, failed
+assertion, timeout or failed self-test makes the audit fail. The log records
+the selected set, compiler version, OS, system packages and Git revision and
+working-tree status. Use a clean Git checkout (with Git installed) for
+version-pinned evidence. An exported source tree reports its revision as
+unknown. Keep the log even on failure; tests after the first failure have
+not run. A case passing means the executable exited successfully; any optional
+subchecks it explicitly skipped are not verified. This is not an installed-package
+or network qualification.
+
+For a quick iteration, or to rerun selected cases:
 
 ```sh
 make test
+make audit TESTS="selection-model search-filters"
 ```
 
-This builds the application and invokes `--self-test` on the release executable
-under `src/objects.*-release/Listi`. It is not the entire native test suite.
+`make test` builds and runs only the built-in smoke test. A focused audit still
+ends with the self-test but does not qualify the full suite. To check the
+failure path in a disposable checkout, request `TESTS=no-such-case`; make
+must exit nonzero. To exercise a failing executable without touching any
+existing assertion, create `tests/intentional-failure.cpp` containing only
+`int main() { return 1; }` and select `TESTS=intentional-failure`; this
+must also exit nonzero without printing a final pass.
 
-## Focused native tests
-
-The `tests/` tree contains tests for file operations and transfer races, queue
-behaviour, archives and passwords, directory delivery, search, comparison,
-clipboard, attributes, navigation and settings.
-
-After a native build, with Haiku's `app_server` available:
-
-```sh
-python3 tests/run-native-audit.py
-```
-
-Selected tests can be requested by name, for example:
-
-```sh
-python3 tests/run-native-audit.py selection-model search-filters
-```
+After building, `python3 tests/run-native-audit.py [case ...]` is equivalent
+to the audit step without the application rebuild. It asks the native build
+for its exact target, objects, compiler, include and link flags.
 
 For Shelf collections, run:
 
@@ -48,13 +63,8 @@ process. Unmount the fixture and check for `missing`. After remounting it on
 the same device path, check for `ready` again using the current absolute file
 path. Use the full path to the test binary in `build/native-audit-tests`.
 
-The runner currently expects objects under
-`src/objects.x86_64-cc13-release`. A different compiler/object-directory name
-requires adjusting that path. Some tests require optional packages or prepared
-synthetic fixtures; inspect the selected test before running it.
-
 Network integration tests require disposable local services and explicit fixture
-setup. They are not all run by `make test`. Diagnostic probes under
+setup. These are not part of the default `make audit` set. Diagnostic probes under
 [`tests/probes`](../tests/probes/) have historical reproduction exit meanings and
 must not be mistaken for normal passing regressions.
 

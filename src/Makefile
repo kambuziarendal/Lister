@@ -14,3 +14,13 @@ COMPILER_FLAGS = -std=c++17 -Wno-multichar
 SYSTEM_INCLUDE_PATHS = /boot/system/develop/headers/samba-4.0 /boot/system/develop/headers/private/interface /boot/system/develop/headers/private/shared
 DEVEL_DIRECTORY := $(shell findpaths -r makefile_engine B_FIND_PATH_DEVELOP_DIRECTORY)
 include $(DEVEL_DIRECTORY)/etc/makefile-engine
+
+.PHONY: listi-self-test listi-audit-config
+listi-self-test: $(TARGET)
+	cd .. && "$(abspath $(TARGET))" --self-test
+
+# Keep configuration in the native build, including the exact (not globbed) object list.
+listi-audit-config:
+	@printf '%s\n' 'listi:target=$(TARGET)' 'listi:compiler=$(C++)' \
+		'listi:objects=$(strip $(OBJS))' 'listi:flags=$(strip $(INCLUDES) $(CXXFLAGS))' \
+		'listi:libraries=$(strip $(LINK_PATHS) $(LINK_LIBS) $(LINKER_FLAGS))'

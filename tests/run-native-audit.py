@@ -1,30 +1,126 @@
-# Run after make on Haiku with app_server available. Optional args select tests.
-# The Open-with test additionally requires its signed synthetic receiver fixture.
+#!/usr/bin/env python3
+"""Link native regression cases against the current Haiku build and run them."""
 from pathlib import Path
+import platform
+import re
+import shlex
+import shutil
 import subprocess
-src=Path(__file__).resolve().parents[1];out=src/'build/native-audit-tests';out.mkdir(parents=True,exist_ok=True)
-objects=list((src/'src/objects.x86_64-cc13-release').glob('*.o'))
-objects=[str(p) for p in objects if p.name not in ['App.o','SelfTest.o','VirtualTest.o'] and not p.name.startswith('_')]
-# Link actual native implementation, not Linux surrogates.
-names=['file-operation-faults','worker-lifecycle','virtual-operation-faults','archive-read-scope','operation-queue','archive-move-scaling','directory-delivery','search-filters','archive-local-move-faults','archive-local-move','same-file-type','folder-compare','archive-editor-faults','archive-editor','archive-move-faults','archive-move','archive-folder-operations','transfer-races','archive-ambiguity','archive-volumes','sevenzip-backend','archive-passwords','archive-jobs','ar-writer','arj-writer','rar-store','cab-writer','lha-writer','preferences-state','main-window-routing','settings-window','workspace-layout','workspace-editor','miller-columns','navigation-history','selection-model','pane-filter','selection-summary','selection-sort','saved-places','saved-searches','file-search','live-search','flat-view','file-clipboard','clipboard-text-file','file-drop','image-convert','inspector-content','inspector-document','inspector-editor','inspector-photo','terminal-session','terminal-dock','bulk-rename','bulk-rename-window','shelf','shelf-collections','shelf-collections-window','named-entry','file-properties','attribute-columns','attribute-columns-ui','properties-faults','attribute-copy','job-snapshot','icon-cache','audit-io','theme-text']
 import sys
-if len(sys.argv)>1: names=sys.argv[1:]
-for name in names:
- print('TEST',name,flush=True)
- testObjects=[str(src/'src/VirtualOperation.cpp'),str(src/'src/VirtualFile.cpp')] if name=='virtual-operation-faults' else objects
- cmd=['g++','-std=c++17','-O2','-Wno-multichar','-Isrc','-I/boot/system/develop/headers/private/interface','-I/boot/system/develop/headers/private/shared',str(src/'tests'/f'{name}.cpp'),*testObjects,'-lbe','-lshared','-ltranslation','-lmedia','-lcolumnlistview','-ltracker','-o',str(out/name)]
- if name=='main-window-routing': cmd += [str(src/'src/objects.x86_64-cc13-release'/obj) for obj in ['SelfTest.o','VirtualTest.o']]
- if name in ['archive-move-faults','archive-editor-faults']: cmd += ['-Wl,--wrap=rename']
- if name=='archive-local-move-faults': cmd += ['-Wl,--wrap=rename','-Wl,--wrap=unlink']
- if name=='file-operation-faults': cmd += ['-Wl,--wrap=mkstemp','-Wl,--wrap=write','-Wl,--wrap=unlink','-Wl,--wrap=_ZN5BNode10RemoveAttrEPKc']
- if name=='inspector-document': cmd += ['-Wl,--wrap=fsync']
- if name=='bulk-rename': cmd += ['-Wl,--wrap=renameat','-Wl,--wrap=fstatat']
- if name=='clipboard-text-file': cmd += ['-Wl,--wrap=write']
- if name=='archive-move-scaling': cmd += ['-Wl,--wrap=lstat']
- if name in ['directory-delivery','operation-queue','flat-view']: cmd += ['-Wl,--wrap=_ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl']
- if name in ['folder-compare','flat-view']: cmd += ['-Wl,--wrap=opendir']
- if name=='properties-faults': cmd += ['-Wl,--wrap=_ZN5BNode9WriteAttrEPKcjlPKvm','-Wl,--wrap=_ZN5BNode4SyncEv','-Wl,--wrap=fsync']
- subprocess.run(cmd,cwd=src,check=True)
- subprocess.run([str(out/name)],cwd=src,check=True,timeout=90)
-subprocess.run([str(src/'src/objects.x86_64-cc13-release/Listi'),'--self-test'],check=True,timeout=120)
-print('NATIVE TESTS COMPLETE',flush=True)
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+OUTPUT = ROOT / "build/native-audit-tests"
+REQUIRED = """
+file-operation-faults worker-lifecycle virtual-operation-faults archive-read-scope
+operation-queue archive-move-scaling directory-delivery search-filters
+archive-local-move-faults archive-local-move same-file-type folder-compare
+archive-editor-faults archive-editor archive-move-faults archive-move
+archive-folder-operations transfer-races archive-ambiguity archive-volumes
+sevenzip-backend archive-passwords archive-jobs ar-writer arj-writer rar-store
+cab-writer lha-writer preferences-state message-store-faults main-window-routing settings-window
+workspace-layout workspace-editor miller-columns navigation-history selection-model
+pane-filter selection-summary selection-sort saved-places saved-searches file-search
+live-search flat-view file-clipboard clipboard-text-file file-drop image-convert
+inspector-content inspector-document inspector-editor inspector-photo
+terminal-session terminal-dock bulk-rename bulk-rename-window shelf shelf-collections
+shelf-collections-window named-entry file-properties attribute-columns
+attribute-columns-ui properties-faults attribute-copy job-snapshot icon-cache
+audit-io theme-text
+""".split()
+
+WRAPS = {
+    "archive-move-faults": ['rename'],
+    "archive-editor-faults": ['rename'],
+    "archive-local-move-faults": ['rename', 'unlink'],
+    "file-operation-faults": ['mkstemp', 'write', 'unlink', '_ZN5BNode10RemoveAttrEPKc'],
+    "message-store-faults": ["mkstemp", "write", "close", "fsync", "rename"],
+    "inspector-document": ['fsync'],
+    "bulk-rename": ['renameat', 'fstatat'],
+    "clipboard-text-file": ['write'],
+    "archive-move-scaling": ['lstat'],
+    "directory-delivery": ['_ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl'],
+    "operation-queue": ['_ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl'],
+    "flat-view": ['_ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl', 'opendir'],
+    "folder-compare": ['opendir'],
+    "properties-faults": ['_ZN5BNode9WriteAttrEPKcjlPKvm', '_ZN5BNode4SyncEv', 'fsync'],
+}
+
+
+def build_configuration():
+    result = subprocess.run(
+        ["make", "-s", "--no-print-directory", "listi-audit-config"],
+        cwd=SRC, check=True, stdout=subprocess.PIPE, text=True,
+    )
+    config = {}
+    for line in result.stdout.splitlines():
+        if line.startswith("listi:"):
+            field, value = line[6:].split("=", 1)
+            config[field] = value
+    for field in ("target", "compiler", "objects", "flags", "libraries"):
+        if not config.get(field):
+            raise ValueError(f"Native build configuration lacks {field}")
+    return config
+
+
+def git_version():
+    if not shutil.which("git") or not (ROOT / ".git").exists():
+        return "unknown (not a Git checkout or git unavailable)"
+    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    changes = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True)
+    return revision + (" (dirty)" if changes else " (clean)")
+
+
+def run():
+    names = sys.argv[1:] or REQUIRED
+    for name in names:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name) or not (ROOT / "tests" / f"{name}.cpp").is_file():
+            raise ValueError(f"Missing or invalid native test: {name}")
+    config = build_configuration()
+    compiler = shlex.split(config["compiler"])
+    version = subprocess.check_output([*compiler, "--version"], text=True).splitlines()[0]
+    print("Commit:", git_version())
+    print("System:", platform.platform(), platform.machine())
+    print("Compiler:", version)
+    print("Executable:", config["target"])
+    print("Selected:", " ".join(names), "+ Listi --self-test")
+    print("Case status is process exit status; fixture SKIP messages are not executed coverage.")
+    packages = Path("/boot/system/packages")
+    # Versioned package filenames record the installed environment, including optional backends.
+    print("System packages:", " ".join(sorted(p.name for p in packages.glob("*.hpkg"))) or "unknown",
+          flush=True)
+
+    app = SRC / config["target"]
+    all_objects = [SRC / item for item in shlex.split(config["objects"])]
+    for path in [app, *all_objects]:
+        if not path.is_file():
+            raise ValueError(f"Missing native build product: {path}; run make audit to build first")
+    objects = [p for p in all_objects if p.name not in {"App.o", "SelfTest.o", "VirtualTest.o"}]
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        print("TEST", name, flush=True)
+        inputs = objects
+        if name == "main-window-routing":
+            inputs = [p for p in all_objects if p.name != "App.o"]
+        elif name == "virtual-operation-faults":
+            inputs = [SRC / "VirtualOperation.cpp", SRC / "VirtualFile.cpp"]
+        binary = OUTPUT / name
+        subprocess.run([
+            *compiler, *shlex.split(config["flags"]), ROOT / "tests" / f"{name}.cpp",
+            *inputs, *shlex.split(config["libraries"]),
+            *(f"-Wl,--wrap={symbol}" for symbol in WRAPS.get(name, [])),
+            "-o", binary,
+        ], cwd=SRC, check=True)
+        subprocess.run([binary], cwd=ROOT, check=True, timeout=90)
+        print("PASS", name, flush=True)
+    print("TEST Listi --self-test", flush=True)
+    subprocess.run([app, "--self-test"], cwd=ROOT, check=True, timeout=120)
+    print(f"PASS Listi --self-test; {len(names)} selected native cases exited successfully", flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        run()
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
+        sys.exit(f"Native audit failed: {error}")
