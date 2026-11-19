@@ -43,11 +43,15 @@ int main() {
   assert(keys);
   auto key = [&](BView *focus, const char *bytes, int32 modifiers) {
     focus->MakeFocus();
-    assert(window->CurrentFocus() == focus);
+    auto *targetView = window->CurrentFocus();
+    auto *ancestor = targetView;
+    while (ancestor && ancestor != focus)
+      ancestor = ancestor->Parent();
+    assert(ancestor == focus);
     BMessage message(B_KEY_DOWN);
     message.AddString("bytes", bytes);
     message.AddInt32("modifiers", modifiers);
-    BHandler *target = focus;
+    BHandler *target = targetView;
     return keys->Filter(&message, &target);
   };
   auto *files = window->FindView("files");
