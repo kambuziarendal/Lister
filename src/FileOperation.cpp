@@ -530,6 +530,11 @@ struct Runner {
         if (unlink(tmp.c_str()) || symlink(link, tmp.c_str()) ||
             lstat(tmp.c_str(), &stagingIdentity))
           Fail(tmp);
+        // BNode opens the link itself, including a dangling link.
+        Attributes(src, tmp);
+        struct timespec times[2] = {st.st_atim, st.st_mtim};
+        if (utimensat(AT_FDCWD, tmp.c_str(), times, AT_SYMLINK_NOFOLLOW))
+          Fail(tmp);
       } else {
         FD in(open(src.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK));
         if (in.n < 0)

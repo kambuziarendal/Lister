@@ -77,6 +77,37 @@ int main() {
             stored == "original" && taggedNode.GetAttrInfo(emptyName, &info) == B_OK &&
             info.size == 0 && info.type == B_RAW_TYPE,
         "refused empty attribute leaves original destination and source metadata intact");
+  // A same-volume folder merge stages its children before removing them.
+  // Haiku links can have their own attributes even when their target is absent.
+  const std::string linkFolder = base + "/links";
+  const std::string mergedFolder = dest + "/links";
+  const std::string originalLink = linkFolder + "/broken";
+  const std::string movedLink = mergedFolder + "/broken";
+  mkdir(linkFolder.c_str(), 0755);
+  mkdir(mergedFolder.c_str(), 0755);
+  check(symlink("not-present", originalLink.c_str()) == 0,
+        "create a dangling symbolic link");
+  BNode linkNode(originalLink.c_str());
+  check(linkNode.WriteAttr("Listi:number", B_INT32_TYPE, 0, &number,
+                           sizeof(number)) == sizeof(number),
+        "attach a typed attribute to the symbolic link itself");
+  struct timespec linkTimes[2] = {{1100000000, 0}, {1200000000, 0}};
+  check(utimensat(AT_FDCWD, originalLink.c_str(), linkTimes, AT_SYMLINK_NOFOLLOW) == 0,
+        "set the time on the symbolic link itself");
+  auto linkMerge = Listi::Run({Listi::Action::Move, {linkFolder}, dest}, {});
+  BNode movedNode(movedLink.c_str());
+  int32 movedNumber = 0;
+  char linkText[64];
+  ssize_t length = readlink(movedLink.c_str(), linkText, sizeof(linkText));
+  struct stat movedStat;
+  check(linkMerge.completed == 1 && linkMerge.errors.empty() &&
+            lstat(movedLink.c_str(), &movedStat) == 0 &&
+            movedStat.st_mtim.tv_sec == linkTimes[1].tv_sec &&
+            length > 0 && std::string(linkText, length) == "not-present" &&
+            movedNode.ReadAttr("Listi:number", B_INT32_TYPE, 0, &movedNumber,
+                               sizeof(movedNumber)) == sizeof(movedNumber) &&
+            movedNumber == number && access(linkFolder.c_str(), F_OK) != 0,
+        "merged move preserves a dangling link and its typed metadata");
   Listi::Job cleanup;cleanup.action=Listi::Action::Delete;cleanup.sources={base};
   auto removed=Listi::Run(cleanup,{});
   check(removed.errors.empty(),"owned fixture cleaned");
