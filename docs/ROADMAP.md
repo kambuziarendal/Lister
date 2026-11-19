@@ -14,7 +14,7 @@ interfaces. Coverage, responsiveness and resource use must be demonstrated task
 by task. This is a direction, not a claim that the alpha already matches or
 outperforms Directory Opus, Tracker or Dolphin.
 
-The latest downloadable GitHub alpha is [0.35.0](https://github.com/kambuziarendal/listi/releases/tag/v0.35.0). See the [feature tour](FEATURES.md) for what you can try today. The ideas below are not a release schedule.
+The current [test candidate](../README.md#install) is available for Haiku x86_64. See the [feature tour](FEATURES.md) for what you can try today. The ideas below are not a release schedule.
 
 ## Optional by design
 
@@ -153,7 +153,7 @@ See the [workflow guide](GUIDE.md) for the controls and limitations.
 
 ## Feature directions and current foundations
 
-“Available now” means included in the 0.35.0 alpha. A related foundation is not a finished feature.
+In this historical comparison, “Available now” means included in the 0.35.0 alpha. A related foundation is not a finished feature.
 
 | Direction | Available now | Planned or exploratory work |
 |---|---|---|

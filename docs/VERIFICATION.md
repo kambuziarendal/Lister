@@ -4,6 +4,12 @@ Listi is alpha software that works directly on files. Tests provide evidence for
 specific cases, not proof that every filesystem, server or archive variant is
 safe. Use disposable fixtures and independent backups.
 
+## 0.36.1-3 package results
+
+The [candidate HPKG](https://github.com/kambuziarendal/listi/releases/tag/v0.36.1-3) was installed on Haiku R1/beta6 x86_64 in a VM. The installed executable matched the tested build. All 71 native test cases and 58 built-in checks passed. Additional checks covered a full destination disk, folder changes during copy, rename and undo, and restoring files with colliding names from Trash.
+
+The installed app refused a move between disks. During an explicit copy, disconnecting the virtual USB device late in the write left the job pending for over 100 seconds, even after cancellation was requested. It did not report success. After cold restart, the original, an unrelated destination file and an earlier completed copy matched their expected bytes. Physical USB hardware has not been tested.
+
 ## 0.35.0 package results
 
 The [published HPKG](https://github.com/kambuziarendal/listi/releases/tag/v0.35.0) is the exact package tested on Haiku R1~beta6 hrev59866+79, x86_64, with GCC 13.3.0. Its tag identifies the source; the default branch includes newer documentation than the copy inside the package.

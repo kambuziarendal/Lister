@@ -1,6 +1,6 @@
 # Workflow guide
 
-This reference covers the [0.35.0 alpha for Haiku x86_64](https://github.com/kambuziarendal/listi/releases/tag/v0.35.0). New to Listi? Start with the [feature tour](FEATURES.md). Try file operations on disposable copies and keep independent backups.
+This reference covers the [0.36.1-3 test candidate for Haiku x86_64](https://github.com/kambuziarendal/listi/releases/tag/v0.36.1-3). New to Listi? Start with the [feature tour](FEATURES.md). Try file operations on disposable copies and keep independent backups.
 
 ## Small features at a glance
 

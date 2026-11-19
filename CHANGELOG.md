@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.36.1 (unreleased)
+## [0.36.1-3 test candidate](https://github.com/kambuziarendal/listi/releases/tag/v0.36.1-3)
 
 - In Smiðja, switching a file panel to Search no longer leaves a hidden
   file available for editing in Inspector or Quick view.
@@ -17,7 +17,7 @@
 - A local disk copy no longer confirms a cached result when its backing disk
   has disappeared before publication.
 
-## 0.36.0 (unreleased)
+## 0.36.0 (included in 0.36.1-3; not released separately)
 
 - Smiðja can keep search results and previews in temporary panel tabs without navigating away from a file list.
 - Open the layout editor directly from Settings, or move the running shell from its own header.
