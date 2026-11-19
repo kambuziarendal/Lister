@@ -10,6 +10,7 @@
 #include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
+#include <set>
 #include <stdexcept>
 #include <unistd.h>
 namespace Listi {
@@ -148,6 +149,7 @@ std::vector<ArchiveEditRecord> ListArchiveEdits(const std::string &root) {
   Require(raw, "Cannot list archive edit sessions.");
   std::unique_ptr<DIR, int (*)(DIR *)> dir(raw, closedir);
   std::vector<ArchiveEditRecord> records;
+  std::set<std::pair<std::string, std::string>> retired;
   for (;;) {
     errno = 0;
     auto e = readdir(raw);
@@ -161,20 +163,35 @@ std::vector<ArchiveEditRecord> ListArchiveEdits(const std::string &root) {
     try {
       PrivateDirectory(path);
       struct stat record;
-      if (lstat(Join(path, "session").c_str(), &record) && errno == ENOENT)
-        continue; // Unpublished or explicitly retired session.
-      Regular(Join(path, "session"));
-      auto m = LoadMessageStore(Join(path, "session"));
+      auto journal = Join(path, "session");
+      const bool inactive = lstat(journal.c_str(), &record) && errno == ENOENT;
+      if (inactive) {
+        // A retired journal can itself supersede an earlier interrupted edit.
+        journal = Join(path, "previous-session");
+        if (lstat(journal.c_str(), &record) && errno == ENOENT)
+          continue; // Never published.
+      }
+      Regular(journal);
+      auto m = LoadMessageStore(journal);
       Require(m.GetInt32("version", 0) == 1,
               "Unsupported archive edit recovery record.");
       const std::string member = m.GetString("member", "");
       Require(ParseLocation(member).Archive(), "Invalid archive edit recovery record.");
-      records.push_back({path, member, {}});
+      const std::string previous = m.GetString("predecessor", "");
+      if (!previous.empty() && previous != e->d_name)
+        retired.emplace(member, previous);
+      if (!inactive)
+        records.push_back({path, member, {}});
     } catch (const std::runtime_error &e) {
       // Preserve this copy and report its location without hiding other edits.
       records.push_back({path, {}, e.what()});
     }
   }
+  // A crash after publishing a replacement but before retiring its predecessor
+  // can leave both journals on disk. The replacement is authoritative.
+  records.erase(std::remove_if(records.begin(), records.end(), [&](const auto &r) {
+                  return retired.count({r.member, LocationLeaf(r.directory)}) != 0;
+                }), records.end());
   std::sort(records.begin(), records.end(),
             [](const auto &a, const auto &b) { return a.member < b.member; });
   return records;
@@ -183,6 +200,12 @@ void ArchiveEditSession::ValidateDirectory() const {
   Require(Identity(directoryIdentity, PrivateDirectory(directory)) &&
               Identity(workIdentity, PrivateDirectory(Join(directory, "work"))),
           "Archive working folder was replaced. No archive update was made.");
+}
+void ArchiveEditSession::RequireActive() const {
+  for (const auto &record : ListArchiveEdits(ParentLocation(directory)))
+    if (record.member == member && record.directory == directory)
+      return;
+  throw std::runtime_error("This edit is no longer active. Working copy was retained.");
 }
 void ArchiveEditSession::ValidateArchive() const {
   for (const auto &entry : target.expectedArchiveSets)
@@ -197,6 +220,8 @@ void ArchiveEditSession::Persist() {
   m.AddInt32("version", 1);
   m.AddString("member", member.c_str());
   m.AddInt32("permissions", permissions);
+  if (!predecessor.empty())
+    m.AddString("predecessor", predecessor.c_str());
   auto job = EncodeJob(target, 0);
   m.AddMessage("target", &job);
   SaveMessageStore(Join(directory, "session"), m);
@@ -213,6 +238,7 @@ ArchiveEditSession::Resume(const std::string &directory) {
   Require(m.GetInt32("version", 0) == 1,
           "Invalid archive edit recovery record.");
   s->member = m.GetString("member", "");
+  s->predecessor = m.GetString("predecessor", "");
   auto location = ParseLocation(s->member);
   Require(location.Archive() && location.path != "/",
           "Invalid archive edit member.");
@@ -251,8 +277,15 @@ ArchiveEditSession::Open(const std::string &member, const std::string &root,
     if (record.member == member)
       return Resume(record.directory);
   Require(records.size() < 256, "Too many retained archive edits. Keep needed files and remove old edit folders.");
+  return Create(member, root, {}, hooks);
+}
+std::shared_ptr<ArchiveEditSession>
+ArchiveEditSession::Create(const std::string &member, const std::string &root,
+                           const std::string &predecessor, const Hooks &hooks) {
+  const auto location = ParseLocation(member);
   auto s = std::shared_ptr<ArchiveEditSession>(new ArchiveEditSession);
   s->member = member;
+  s->predecessor = predecessor;
   s->target = PrepareArchiveEditTarget(
       location.archive, ParseLocation(ParentLocation(member)).path);
   TransferControl control;
@@ -291,6 +324,9 @@ ArchiveEditSession::Open(const std::string &member, const std::string &root,
     Require(!fsync(output.n), "Cannot flush editor working file.");
     s->ValidateArchive();
     Snapshot(s->working, Join(s->directory, "saved"), hooks);
+    FlushDirectory(work);
+    // Make the parent entry durable before publishing a discoverable journal.
+    FlushDirectory(root);
     s->Persist();
   } catch (...) {
     // No editor has seen these files yet. Preserve a published journal (e.g.
@@ -313,25 +349,19 @@ std::shared_ptr<ArchiveEditSession>
 ArchiveEditSession::StartFresh(const Hooks &hooks) {
   ValidateDirectory();
   Check(hooks);
-  Regular(Join(directory, "session"));
+  RequireActive();
   const auto journal = Join(directory, "session"),
              previous = Join(directory, "previous-session");
   Require(
       access(previous.c_str(), F_OK) && errno == ENOENT,
       "This edit has already been retired. Reopen the current member instead.");
-  Require(!rename(journal.c_str(), previous.c_str()),
-          "Cannot retire the previous edit. Working copy was retained.");
-  try {
-    FlushDirectory(directory);
-    return Open(member, ParentLocation(directory), hooks);
-  } catch (...) {
-    if (rename(previous.c_str(), journal.c_str()))
-      throw std::runtime_error(
-          "Could not restart this edit or restore its journal. Both working "
-          "copy and previous-session metadata were retained at: " +
-          directory);
-    throw;
-  }
+  // Do not hide the only recoverable draft while extracting a replacement.
+  // Publish the complete replacement first. Its journal identifies the old
+  // one even when a shutdown interrupts the final housekeeping rename.
+  auto fresh = Create(member, ParentLocation(directory), LocationLeaf(directory), hooks);
+  // Retirement is only housekeeping now; a failure cannot undo publication.
+  (void)rename(journal.c_str(), previous.c_str());
+  return fresh;
 }
 bool ArchiveEditSession::ChangedBytes() {
   ValidateDirectory();
@@ -368,6 +398,7 @@ bool ArchiveEditSession::Save(const Hooks &hooks) {
   Check(hooks);
   if (!ChangedBytes())
     return false;
+  RequireActive();
   // Snapshot a stable editor save. Later editor writes never become part of
   // this archive transaction, and are detected by the next observation cycle.
   std::string pattern = Join(directory, "save-XXXXXX");

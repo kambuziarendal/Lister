@@ -193,7 +193,23 @@ int main() {
     check(rejects([&] { session->Save(); }),
           "recovery never silently rebases a stale archive snapshot");
     auto oldWorking = session->WorkingFile();
-    session = session->StartFresh();
+    // Restart can wait on an archive read or password prompt. Until it
+    // publishes its replacement, the existing draft must remain discoverable.
+    const auto oldDirectory = session->Directory();
+    bool checkedDuringRestart = false, missingDraft = false;
+    Hooks duringRestart;
+    duringRestart.proceed = [&] {
+      checkedDuringRestart = true;
+      bool found = false;
+      for (const auto &record : ListArchiveEdits(sessions))
+        if (record.member == m && record.directory == oldDirectory)
+          found = true;
+      missingDraft |= !found;
+      return true;
+    };
+    session = session->StartFresh(duringRestart);
+    check(checkedDuringRestart && !missingDraft,
+          "restart keeps the original journal discoverable until publication");
     check(session->WorkingFile() != oldWorking &&
               bytes(oldWorking) == "local changes" &&
               bytes(session->WorkingFile()) == "original",
@@ -202,6 +218,53 @@ int main() {
     check(ArchiveEditSession::Open(m, sessions)->Directory() ==
               session->Directory(),
           "reopen selects fresh session, not retired conflicting edit");
+    // Simulate interrupted retirement after the replacement journal reached
+    // disk. Only the published replacement may resume for this member.
+    check(rename(Join(oldDirectory, "previous-session").c_str(),
+                 Join(oldDirectory, "session").c_str()) == 0,
+          "restore unretired predecessor journal for recovery test");
+    int visible = 0;
+    for (const auto &record : ListArchiveEdits(sessions))
+      if (record.member == m)
+        ++visible;
+    check(visible == 1 &&
+              ArchiveEditSession::Open(m, sessions)->Directory() == session->Directory() &&
+              bytes(oldWorking) == "local changes",
+          "interrupted retirement selects the new session and keeps the old draft");
+    const auto intermediate = session;
+    session = session->StartFresh();
+    visible = 0;
+    for (const auto &record : ListArchiveEdits(sessions))
+      if (record.member == m)
+        ++visible;
+    check(visible == 1 && ArchiveEditSession::Open(m, sessions)->Directory() == session->Directory(),
+          "another restart does not revive an unretired older journal");
+    check(rename(Join(intermediate->Directory(), "previous-session").c_str(),
+                 Join(intermediate->Directory(), "session").c_str()) == 0,
+          "restore unretired intermediate journal for stale-handle checks");
+    writeFile(intermediate->WorkingFile(), "draft in retired editor");
+    check(rejects([&] { intermediate->Save(); }) &&
+              rejects([&] { intermediate->StartFresh(); }) &&
+              bytes(m) == "original" &&
+              bytes(intermediate->WorkingFile()) == "draft in retired editor",
+          "a superseded live handle cannot publish or replace the current edit");
+    // Two editors can have identically named documents without sharing a
+    // working file. Changing one must not silently rebase the other's draft.
+    mkdir((root + "/in/other").c_str(), 0700);
+    writeFile(root + "/in/other/edit.txt", "original sibling");
+    a = archive("zip");
+    auto add = PrepareArchiveCopy(Job{Action::Copy, {root + "/in/other"}, a});
+    check(Run(add, {}).completed == 1, "created same-basename sibling fixture");
+    const auto firstMember = member(a);
+    const auto otherMember = ChildLocation(ChildLocation(a, "other"), "edit.txt");
+    auto first = ArchiveEditSession::Open(firstMember, sessions);
+    auto other = ArchiveEditSession::Open(otherMember, sessions);
+    writeFile(first->WorkingFile(), "first edit");
+    writeFile(other->WorkingFile(), "sibling draft");
+    check(first->Save() && rejects([&] { other->Save(); }) &&
+              bytes(firstMember) == "first edit" && bytes(otherMember) == "original sibling" &&
+              bytes(other->WorkingFile()) == "sibling draft",
+          "same-basename edits keep separate working copies and reject stale writeback");
     a = archive("tar");
     m = member(a);
     session = ArchiveEditSession::Open(m, sessions);
