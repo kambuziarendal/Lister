@@ -12,6 +12,12 @@ These changes are not in the downloadable 0.32.1 alpha.
   that can move between a panel and its own window expand the native workflows.
 - Merging a moved folder retains a source folder if removing it would discard
   BFS metadata. Upload verification checks the staged file before publication.
+- Select by pattern previews the number of matching visible names before
+  replacing the selection. It does not change the panel filter.
+- Local directory scans with icons deliver a small first batch so the panel
+  can start drawing before the next regular batch is ready.
+- Partial and interrupted jobs no longer display full progress as if they
+  completed successfully.
 
 ## [0.32.1 alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.32.1)
 
