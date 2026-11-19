@@ -22,6 +22,10 @@ Choose **View > Workspace**, open the source and destination folders, then selec
 
 See the [feature tour](docs/FEATURES.md) for screenshots or the [workflow guide](docs/GUIDE.md) for shortcuts, archives and network locations.
 
+## Development and testing
+
+The developer uses large language models (LLMs) to help write code and design and run tests. Much of the hands-on testing takes place on a ThinkPad X1 Carbon (6th Gen) running Haiku R1/beta6 directly on the hardware, not in a VM. Much of the automated stress testing runs in Haiku VMs with LLM assistance. The [verification notes](docs/VERIFICATION.md) distinguish test environments: the USB disconnect test so far used a virtual device, not a physical drive.
+
 ## Build from source
 
 On Haiku x86_64:
@@ -33,4 +37,4 @@ make
 
 Run `make test` for the built-in self-test or `make package` to create an HPKG in `dist/`. See [testing and known limits](docs/VERIFICATION.md) for the full native audit.
 
-[Changelog](CHANGELOG.md) · [Roadmap](docs/ROADMAP.md) · [Report a bug](https://github.com/kambuziarendal/listi/issues) · [Licence](LICENSE)
+[Changelog](CHANGELOG.md) · [Roadmap](docs/ROADMAP.md) · [Report a bug](https://github.com/kambuziarendal/listi/issues) · [MIT licence](LICENSE) · [Third-party licences and the RAR restriction](docs/LICENSING.md)
