@@ -6,12 +6,10 @@
 #include "FileDetails.h"
 #include "FileGrid.h"
 #include "FileOperation.h"
-#include "FolderTree.h"
+#include "PaneSidebar.h"
 #include "ImagePreview.h"
 #include "MillerColumns.h"
 #include "NameFilter.h"
-#include "Shelf.h"
-#include "ShelfWindow.h"
 #include "Trash.h"
 #include "VirtualFile.h"
 #include <Bitmap.h>
@@ -20,7 +18,6 @@
 #include <Directory.h>
 #include <Entry.h>
 #include <LayoutBuilder.h>
-#include <ListView.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <MessageFilter.h>
@@ -28,10 +25,10 @@
 #include <NodeMonitor.h>
 #include <Path.h>
 #include <PopUpMenu.h>
+#include <ScrollBar.h>
 #include <ScrollView.h>
 #include <SplitView.h>
 #include <StringForSize.h>
-#include <StringItem.h>
 #include <TextView.h>
 #include <Window.h>
 #include <algorithm>
@@ -65,162 +62,11 @@ public:
     return B_DISPATCH_MESSAGE;
   }
 };
-constexpr uint32 kExpireProgress = 'expr', kToggleTree = 'ttre',
-                 kSidebarMode = 'psbr', kFavoriteNavigate = 'fnav',
-                 kRecentNavigate = 'rnav',
-                 kRemoveShortcut = 'prms', kRemoveShelfEntry = 'sfre',
-                 kSidebarShelfDrop = 'sfsd',
-                 kActivityFrame = 'actf', kCheckScanDelivery = 'scdl',
-                 kColumnNavigate = 'mnav';
+constexpr uint32 kExpireProgress = 'expr', kActivityFrame = 'actf',
+                 kCheckScanDelivery = 'scdl', kColumnNavigate = 'mnav';
 constexpr int32 kRememberViewItem = ViewModeCount + 1;
 constexpr int32 kForgetViewItem = ViewModeCount + 2;
 
-class SidebarItem : public BStringItem {
-public:
-  SidebarItem(const char *label, const std::string &path)
-      : BStringItem(label), path(path) {}
-
-  const std::string path;
-};
-
-class SidebarInput : public BMessageFilter {
-public:
-  explicit SidebarInput(Pane *pane) : BMessageFilter(B_MOUSE_DOWN), pane(pane) {}
-
-  filter_result Filter(BMessage *message, BHandler **target) override {
-    if (!(message->GetInt32("buttons", 0) & B_SECONDARY_MOUSE_BUTTON))
-      return B_DISPATCH_MESSAGE;
-    if (auto view = dynamic_cast<BView *>(*target)) {
-      if (pane->SidebarContext(view, message->GetPoint("where", {})))
-        return B_SKIP_MESSAGE;
-    }
-    return B_DISPATCH_MESSAGE;
-  }
-
-private:
-  Pane *pane;
-};
-
-void InstallSidebarInput(Pane *pane, BView *view) {
-  view->AddFilter(new SidebarInput(pane));
-  for (auto child = view->ChildAt(0); child; child = child->NextSibling())
-    InstallSidebarInput(pane, child);
-}
-
-void ClearSidebarItems(BListView &list) {
-  while (auto item = list.RemoveItem(int32(0)))
-    delete item;
-}
-
-class PlacesMenu : public BMenu {
-public:
-  explicit PlacesMenu(Pane *owner) : BMenu("Places"), pane(owner) {}
-
-  void AttachedToWindow() override {
-    BMenu::AttachedToWindow();
-    // Menu tracking polls GetMouse. Leave mouse-down delivery to this view
-    // instead of letting the tracking thread consume it from the queue.
-    SetEventMask(EventMask(), B_NO_POINTER_HISTORY);
-  }
-
-  void MouseDown(BPoint point) override {
-    const auto event = Window()->CurrentMessage();
-    if (event && (event->GetInt32("buttons", 0) & B_SECONDARY_MOUSE_BUTTON)) {
-      for (int32 i = 0; i < CountItems(); ++i) {
-        const auto item = ItemAt(i);
-        const auto message = item->Message();
-        if (!item->Frame().Contains(point) || !message ||
-            message->what != kNavigate || !message->GetBool("place", false))
-          continue;
-
-        BMessage remove(kRemoveShortcut);
-        remove.AddString("path", message->GetString("path", ""));
-        const char escape = B_ESCAPE;
-        KeyDown(&escape, 1);
-        BMessenger(pane).SendMessage(&remove, (BHandler *)nullptr, 0);
-        return;
-      }
-    }
-    BMenu::MouseDown(point);
-  }
-
-private:
-  Pane *pane;
-};
-
-class ShelfSidebarList : public BListView {
-public:
-  explicit ShelfSidebarList(Pane *owner) : BListView("sidebar shelf"), pane(owner) {}
-  ~ShelfSidebarList() override { ClearSidebarItems(*this); }
-
-  void MessageReceived(BMessage *message) override {
-    if (message->WasDropped()) {
-      BMessage drop(*message);
-      drop.what = kSidebarShelfDrop;
-      pane->MessageReceived(&drop);
-    } else {
-      BListView::MessageReceived(message);
-    }
-  }
-
-private:
-  Pane *pane;
-};
-} // namespace
-
-class DestinationList : public BListView {
-public:
-  DestinationList(Pane *owner, const char *name, uint32 navigateMessage)
-      : BListView(name), pane(owner), navigateMessage(navigateMessage) {}
-  ~DestinationList() override { Clear(); }
-
-  void Clear() {
-    ClearSidebarItems(*this);
-  }
-
-  void MouseDown(BPoint point) override {
-    const auto event = Window()->CurrentMessage();
-    const bool primary =
-        event && event->GetInt32("buttons", 0) == B_PRIMARY_MOUSE_BUTTON &&
-        event->GetInt32("clicks", 1) == 1;
-    const int32 clicked = IndexOf(point);
-    BListView::MouseDown(point);
-    if (primary && clicked >= 0 && clicked == CurrentSelection())
-      OpenSelection();
-  }
-
-  void KeyDown(const char *bytes, int32 length) override {
-    if (length == 1 && bytes[0] == B_TAB)
-      Window()->PostMessage(kSwitch);
-    else if (length == 1 && bytes[0] == B_ENTER)
-      OpenSelection();
-    else
-      BListView::KeyDown(bytes, length);
-  }
-
-  bool GetToolTipAt(BPoint point, BToolTip **tip) override {
-    if (navigateMessage == kRecentNavigate) {
-      auto item = dynamic_cast<SidebarItem *>(ItemAt(IndexOf(point)));
-      SetToolTip(item ? item->path.c_str() : nullptr);
-    }
-    return BListView::GetToolTipAt(point, tip);
-  }
-
-private:
-  Pane *pane;
-  uint32 navigateMessage;
-
-  void OpenSelection() {
-    auto item = dynamic_cast<SidebarItem *>(ItemAt(CurrentSelection()));
-    if (!item)
-      return;
-    BMessage open(navigateMessage);
-    open.AddString("path", item->path.c_str());
-    Window()->PostMessage(&open, pane);
-  }
-};
-
-namespace {
 class GridScroll : public BScrollView {
   FileGrid *grid;
   Pane *pane;
@@ -259,9 +105,10 @@ public:
   }
 };
 }
-Pane::Pane(int32 number, const Preferences &p, std::shared_ptr<Listi::Shelf> sharedShelf)
+Pane::Pane(int32 number, const Preferences &p,
+           std::shared_ptr<Listi::Shelf> sharedShelf)
     : BView("pane", B_WILL_DRAW | B_SUPPORTS_LAYOUT | B_FULL_UPDATE_ON_RESIZE),
-      id(number), prefs(p), shelf(std::move(sharedShelf)),
+      id(number), prefs(p),
       generation(std::make_shared<std::atomic<int64>>(0)) {
   SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
   auto menu = new BPopUpMenu("Go");
@@ -271,11 +118,6 @@ Pane::Pane(int32 number, const Preferences &p, std::shared_ptr<Listi::Shelf> sha
   for (int i = 0; i < 6; i++)
     menu->AddItem(new BMenuItem(names[i], new BMessage(codes[i])));
   menu->AddSeparatorItem();
-  placesMenu = new PlacesMenu(this);
-  menu->AddItem(placesMenu);
-  auto field = new BMenuField("go", "", menu);
-  menu->SetRadioMode(false);
-  menu->SetLabelFromMarked(false);
   edit = new BTextControl("path", "", path, new BMessage(kNavigate));
   back = new BButton("back", "<", new BMessage(kBack));
   forward = new BButton("forward", ">", new BMessage(kForward));
@@ -326,31 +168,11 @@ Pane::Pane(int32 number, const Preferences &p, std::shared_ptr<Listi::Shelf> sha
   modes->SetLabelFromMarked(false);
   display = new BMenuField("display mode", "", modes);
   modes->AddSeparatorItem();
-  sidebar = new BCardView("navigation sidebar");
-  sidebar->SetExplicitMinSize(BSize(110, 96));
-  sidebar->SetExplicitPreferredSize(BSize(170, 300));
-  tree = new FolderTree(this);
-  favorites =
-      new DestinationList(this, "favorite destinations", kFavoriteNavigate);
-  favoriteScroll =
-      new BScrollView("favorite destinations scroll", favorites, 0, false, true);
-  favoriteScroll->SetExplicitMinSize(BSize(0, 32));
-  auto navigation = new BGroupView(B_VERTICAL, 3);
-  navigation->GroupLayout()->AddView(favoriteScroll, 0.35f);
-  navigation->GroupLayout()->AddView(tree, 0.65f);
-  favoriteScroll->Hide();
-  sidebar->AddChild(navigation);
-  shelfList = new ShelfSidebarList(this);
-  auto shelfScroll =
-      new BScrollView("sidebar shelf scroll", shelfList, 0, false, true);
-  sidebar->AddChild(shelfScroll);
-  recentFolders = new DestinationList(this, "recent folders", kRecentNavigate);
-  auto recentScroll =
-      new BScrollView("recent folders scroll", recentFolders, 0, false, true);
-  sidebar->AddChild(recentScroll);
-  InstallSidebarInput(this, sidebar);
-  sidebar->CardLayout()->SetVisibleItem(0);
-  UpdatePlaces();
+  sidebar = new PaneSidebar(*this, id, *menu, *modes, history,
+                            std::move(sharedShelf));
+  auto field = new BMenuField("go", "", menu);
+  menu->SetRadioMode(false);
+  menu->SetLabelFromMarked(false);
   content = new BSplitView(B_HORIZONTAL, 4);
   contentSplitterSize = content->SplitterSize();
   content->AddChild(sidebar);
@@ -402,7 +224,6 @@ void Pane::AttachedToWindow() {
   edit->TextView()->AddFilter(new PaneInput(this, false));
   auto field = dynamic_cast<BMenuField *>(FindView("go"));
   field->Menu()->SetTargetForItems(this);
-  placesMenu->SetTargetForItems(this);
   scanDelivery = std::make_shared<DirectoryScanDelivery>();
   scanner = CreateDirectoryScanner(BMessenger(this), generation, scanDelivery);
   scanner->Run();
@@ -517,7 +338,7 @@ void Pane::SetDisplayMode(int32 value) {
     grid->SetMode(mode);
     grid->SyncSelection();
   }
-  UpdateSidebar();
+  sidebar->UpdateMode(prefs);
   if (focus)
     FocusList();
   auto menu = display->Menu();
@@ -546,21 +367,7 @@ void Pane::FocusList() {
   else
     grid->MakeFocus(true);
 }
-void Pane::ToggleTreeFocus() {
-  auto focused = Window()->CurrentFocus();
-  while (focused && focused != sidebar)
-    focused = focused->Parent();
-  if (focused)
-    FocusList();
-  else if (SidebarHasTree(visibleSidebar))
-    tree->FindView("folder tree")->MakeFocus();
-  else if (visibleSidebar == SidebarMode::Favorites)
-    favorites->MakeFocus();
-  else if (visibleSidebar == SidebarMode::Shelf)
-    shelfList->MakeFocus();
-  else if (visibleSidebar == SidebarMode::RecentFolders)
-    recentFolders->MakeFocus();
-}
+void Pane::ToggleTreeFocus() { sidebar->ToggleFocus(); }
 void Pane::FocusFilter() {
   if (einn)
     return;
@@ -634,164 +441,14 @@ void Pane::SetWorkspace(const Preferences &settings) {
   UpdateActivityAppearance();
   InvalidateActivityBorder();
 }
-void Pane::AddSidebarModes(BMenu &choices, bool menuField) {
-  for (auto option : SidebarModes) {
-    if (option == SidebarMode::Shelf && !shelf)
-      continue;
-    auto message = new BMessage(kSidebarMode);
-    message->AddInt32("mode", static_cast<int32>(option));
-    auto item = new BMenuItem(option == SidebarMode::Hidden && !menuField
-                                  ? "Hide sidebar" : SidebarModeLabel(option),
-                              message);
-    item->SetTarget(this);
-    item->SetMarked(option == Sidebar());
-    choices.AddItem(item);
-  }
-}
 bool Pane::SidebarCanBeRestored() const {
   return prefs.HasConfigurableSidebar() && Sidebar() == SidebarMode::Hidden;
 }
-void Pane::UpdateSidebarMenu() {
-  auto menu = display->Menu();
-  if (!sidebarMenuItem || sidebarMenuConfigurable != prefs.HasConfigurableSidebar()) {
-    if (sidebarMenuItem) {
-      menu->RemoveItem(sidebarMenuItem);
-      delete sidebarMenuItem;
-    }
-    sidebarMenuConfigurable = prefs.HasConfigurableSidebar();
-    if (sidebarMenuConfigurable) {
-      auto choices = new BMenu("Sidebar");
-      AddSidebarModes(*choices, true);
-      sidebarMenuItem = new BMenuItem(choices);
-    } else {
-      sidebarMenuItem = new BMenuItem("Folder tree", new BMessage(kToggleTree));
-      sidebarMenuItem->SetTarget(this);
-    }
-    menu->AddItem(sidebarMenuItem);
-  }
-  if (sidebarMenuConfigurable) {
-    auto choices = sidebarMenuItem->Submenu();
-    for (int32 i = 0; i < choices->CountItems(); ++i)
-      choices->ItemAt(i)->SetMarked(
-          choices->ItemAt(i)->Message()->GetInt32("mode", -1) ==
-          static_cast<int32>(Sidebar()));
-  } else {
-    sidebarMenuItem->SetMarked(visibleSidebar == SidebarMode::FolderTree);
-    sidebarMenuItem->SetEnabled(!prefs.SinglePane() && mode != MillerMode);
-  }
-}
-bool Pane::SidebarContext(BView *target, BPoint point) {
-  if (!prefs.HasConfigurableSidebar() || visibleSidebar == SidebarMode::Hidden)
-    return false;
-  const BPoint screen = target->ConvertToScreen(point);
-  BPopUpMenu choices("Sidebar actions", false, false);
-  auto add = [&](const char *label, BMessage *message, bool enabled = true) {
-    auto item = new BMenuItem(label, message);
-    item->SetEnabled(enabled);
-    choices.AddItem(item);
-  };
-  BListView *rows = target == favorites ? favorites :
-                    target == shelfList ? shelfList : nullptr;
-  if (rows) {
-    auto entry = dynamic_cast<SidebarItem *>(rows->ItemAt(rows->IndexOf(point)));
-    if (entry) {
-      auto remove = new BMessage(rows == favorites ? kRemoveShortcut : kRemoveShelfEntry);
-      remove->AddString("path", entry->path.c_str());
-      add(rows == favorites ? "Remove shortcut" : "Remove from Shelf", remove,
-          rows != favorites || placesWritable);
-    }
-  }
-  if (SidebarHasTree(visibleSidebar)) {
-    const auto folder = tree->PathAt(screen);
-    if (!folder.empty()) {
-      auto shortcut = new BMessage(kAddShortcut);
-      shortcut->AddString("path", folder.c_str());
-      add("Add to shortcuts…", shortcut,
-          placesWritable && !places.Find(folder) &&
-              places.Items().size() < Listi::SavedPlaces::Limit);
-    }
-  }
-  if (visibleSidebar == SidebarMode::Shelf) {
-    add("Add selected files to Shelf", new BMessage(Listi::kAddToShelf),
-        !Selected().empty() && !scanning);
-    add("Open Shelf…", new BMessage(Listi::kShowShelf));
-  }
-  if (choices.CountItems() != 0)
-    choices.AddSeparatorItem();
-  AddSidebarModes(choices);
-  if (auto picked = choices.Go(screen, false, true, false))
-    if (picked->Message())
-      MessageReceived(picked->Message());
-  return true;
-}
-void Pane::RefreshShelf() {
-  if (!shelf || visibleSidebar != SidebarMode::Shelf)
-    return;
-  std::string selected;
-  if (auto item = dynamic_cast<SidebarItem *>(shelfList->ItemAt(shelfList->CurrentSelection())))
-    selected = item->path;
-  ClearSidebarItems(*shelfList);
-  for (const auto &entry : shelf->Snapshot().entries) {
-    const auto slash = entry.path.find_last_of('/');
-    std::string label = entry.path.substr(slash + 1);
-    switch (entry.DisplayState()) {
-    case Listi::ShelfState::Missing: label += " (Unavailable)"; break;
-    case Listi::ShelfState::Replaced: label += " (Replaced)"; break;
-    case Listi::ShelfState::Ambiguous: label += " (Needs relink)"; break;
-    case Listi::ShelfState::Ready: break;
-    }
-    shelfList->AddItem(new SidebarItem(label.c_str(), entry.path));
-    if (entry.path == selected)
-      shelfList->Select(shelfList->CountItems() - 1);
-  }
-  if (shelfList->CountItems() == 0) {
-    auto empty = new BStringItem("Shelf is empty");
-    empty->SetEnabled(false);
-    shelfList->AddItem(empty);
-  }
-}
-void Pane::UpdateSidebar() {
-  SidebarMode wanted = Sidebar();
-  if (einn || (!prefs.HasConfigurableSidebar() && mode == MillerMode))
-    wanted = SidebarMode::Hidden;
-  if (wanted != visibleSidebar) {
-    auto focused = Window() ? Window()->CurrentFocus() : nullptr;
-    while (focused && focused != sidebar)
-      focused = focused->Parent();
-    if (focused)
-      FocusList();
-    if (wanted == SidebarMode::Hidden) {
-      sidebar->Hide();
-    } else {
-      const bool showFavorites = wanted == SidebarMode::Favorites ||
-                                 wanted == SidebarMode::ShortcutsAndTree;
-      const bool showTree = SidebarHasTree(wanted);
-      if (showFavorites == favoriteScroll->IsHidden(favoriteScroll))
-        showFavorites ? favoriteScroll->Show() : favoriteScroll->Hide();
-      if (showTree == tree->IsHidden(tree))
-        showTree ? tree->Show() : tree->Hide();
-      int32 card = 0;
-      if (wanted == SidebarMode::Shelf)
-        card = 1;
-      else if (wanted == SidebarMode::RecentFolders)
-        card = 2;
-      sidebar->CardLayout()->SetVisibleItem(card);
-      if (visibleSidebar == SidebarMode::Hidden)
-        sidebar->Show();
-    }
-    visibleSidebar = wanted;
-    if (SidebarHasTree(visibleSidebar))
-      tree->ShowPath(path.String());
-    RefreshShelf();
-    RefreshRecentFolders();
-  }
-  UpdateSidebarMenu();
-}
+void Pane::RefreshShelf() { sidebar->RefreshShelf(); }
 void Pane::Apply(const Preferences &p) {
   prefs = p;
   SetWorkspace(p);
-  if (SidebarHasTree(visibleSidebar))
-    tree->ShowPath(path.String());
+  sidebar->ShowTreePath();
   list->Apply(p);
   grid->SetFont(&p.font);
   grid->Update();
@@ -834,78 +491,11 @@ void Pane::SetStatus(const char *text) {
   status->SetToolTip(text);
 }
 void Pane::SetPlaces(const Listi::SavedPlaces &value, bool writable) {
-  places = value;
-  placesWritable = writable;
-  favorites->Clear();
-  for (const auto &place : places.Items())
-    favorites->AddItem(new SidebarItem(place.name.c_str(), place.path));
-  if (places.Items().empty()) {
-    auto empty = new BStringItem("No saved places");
-    empty->SetEnabled(false);
-    favorites->AddItem(empty);
-  }
-  UpdatePlaces();
-}
-void Pane::UpdatePlaces() {
-  while (auto item = placesMenu->RemoveItem(int32(0)))
-    delete item;
-  const char *labels[] = {"Save this place...", "Rename this saved place...",
-                          "Forget this saved place..."};
-  bool saved = places.Find(path.String()) != nullptr;
-  for (int32 i = 0; i < 3; ++i) {
-    auto message = new BMessage(kPlaceAction);
-    message->AddInt32("action", i);
-    auto item = new BMenuItem(labels[i], message);
-    item->SetEnabled(placesWritable && (i ? saved
-                                          : locationValid && !saved &&
-                                                places.Items().size() <
-                                                    Listi::SavedPlaces::Limit));
-    placesMenu->AddItem(item);
-  }
-  placesMenu->AddSeparatorItem();
-  int32 current = -1;
-  int32 index = 0;
-  for (const auto &place : places.Items()) {
-    auto message = new BMessage(kNavigate);
-    message->AddString("path", place.path.c_str());
-    message->AddBool("place", true);
-    auto item = new BMenuItem(place.name.c_str(), message);
-    if (place.path == path.String()) {
-      current = index;
-      item->SetMarked(true);
-    }
-    placesMenu->AddItem(item);
-    ++index;
-  }
-  if (current >= 0)
-    favorites->Select(current);
-  else
-    favorites->DeselectAll();
-  if (Window())
-    placesMenu->SetTargetForItems(this);
+  sidebar->SetPlaces(value, writable);
 }
 void Pane::UpdateNavigation() {
   back->SetEnabled(history.Back() >= 0);
   forward->SetEnabled(history.Forward() >= 0);
-}
-void Pane::RefreshRecentFolders() {
-  if (visibleSidebar != SidebarMode::RecentFolders)
-    return;
-  recentFolders->Clear();
-  for (const auto &folder : history.RecentFolders()) {
-    auto label = Listi::LocationLeaf(folder);
-    if (label.empty())
-      label = folder;
-    recentFolders->AddItem(new SidebarItem(label.c_str(), folder));
-    if (locationValid && path == folder.c_str())
-      recentFolders->Select(recentFolders->CountItems() - 1);
-  }
-  if (recentFolders->CountItems() == 0) {
-    auto empty = new BStringItem("No recent folders");
-    empty->SetEnabled(false);
-    recentFolders->AddItem(empty);
-  }
-  recentFolders->ScrollTo(0, 0);
 }
 void Pane::StartNavigation(const std::string &request, int target, bool trash) {
   stop_watching(this);
@@ -927,7 +517,7 @@ void Pane::StartNavigation(const std::string &request, int target, bool trash) {
   edit->SetText(path);
   scanning = true;
   locationValid = false;
-  UpdatePlaces();
+  sidebar->UpdateLocation();
   refreshPending = false;
   serial++;
   history.Begin(serial, request, target, trash);
@@ -1165,12 +755,12 @@ void Pane::MessageReceived(BMessage *m) {
   case kToggleTree: {
     if (prefs.IsSmidja() || prefs.SinglePane() || mode == MillerMode)
       break;
-    tree->Reset();
+    sidebar->ResetTree();
     const auto choice = Sidebar() == SidebarMode::FolderTree
                             ? SidebarMode::Hidden
                             : SidebarMode::FolderTree;
     prefs.SetSidebar(id, choice);
-    UpdateSidebar();
+    sidebar->UpdateMode(prefs);
     PublishDisplay();
     break;
   }
@@ -1183,71 +773,8 @@ void Pane::MessageReceived(BMessage *m) {
         (choice != static_cast<int32>(SidebarMode::Hidden) && !IsVisibleSidebar(choice)))
       break;
     prefs.SetSidebar(id, static_cast<SidebarMode>(choice));
-    UpdateSidebar();
+    sidebar->UpdateMode(prefs);
     PublishDisplay();
-    break;
-  }
-  case kAddShortcut:
-  case kRemoveShortcut: {
-    const char *destination = m->GetString("path", "");
-    const bool removing = m->what == kRemoveShortcut;
-    if (placesWritable && destination[0] &&
-        removing == (places.Find(destination) != nullptr)) {
-      BMessage request(kPlaceAction);
-      request.AddInt32("action", removing ? 2 : 0);
-      request.AddString("path", destination);
-      request.AddInt32("pane", id);
-      Window()->PostMessage(&request);
-    }
-    break;
-  }
-  case Listi::kAddToShelf:
-    if (visibleSidebar == SidebarMode::Shelf) {
-      Activate();
-      Window()->PostMessage(Listi::kAddToShelf);
-    }
-    break;
-  case Listi::kShowShelf:
-    Window()->PostMessage(Listi::kShowShelf);
-    break;
-  case kRemoveShelfEntry:
-    if (shelf && visibleSidebar == SidebarMode::Shelf) {
-      shelf->Remove({m->GetString("path", "")});
-      Window()->PostMessage(Listi::kRefreshShelf);
-    }
-    break;
-  case kSidebarShelfDrop:
-    if (shelf && visibleSidebar == SidebarMode::Shelf) {
-      try {
-        Listi::AddShelfDrop(*shelf, *m);
-        Window()->PostMessage(Listi::kRefreshShelf);
-      } catch (const std::exception &error) {
-        SetStatus(error.what());
-      }
-    }
-    break;
-  case kFavoriteNavigate: {
-    if (visibleSidebar != SidebarMode::Favorites &&
-        visibleSidebar != SidebarMode::ShortcutsAndTree)
-      break;
-    const char *destination = m->GetString("path", "");
-    if (!places.Find(destination))
-      break;
-    Activate();
-    if (path != destination || !locationValid)
-      Navigate(destination);
-    break;
-  }
-  case kRecentNavigate: {
-    if (visibleSidebar != SidebarMode::RecentFolders)
-      break;
-    const char *destination = m->GetString("path", "");
-    const auto &recent = history.RecentFolders();
-    if (std::find(recent.begin(), recent.end(), destination) == recent.end())
-      break;
-    Activate();
-    if (path != destination || !locationValid)
-      Navigate(destination);
     break;
   }
   case kShowAttributeColumn:
@@ -1336,20 +863,6 @@ void Pane::MessageReceived(BMessage *m) {
     Activate();
     FocusList();
     break;
-  case kPlaceAction: {
-    if (!placesWritable)
-      break;
-    int32 action = m->GetInt32("action", 0);
-    if ((action == 0 && (!locationValid || places.Find(path.String()))) ||
-        (action != 0 && !places.Find(path.String())))
-      break;
-    BMessage request(*m);
-    request.AddString("path", path);
-    request.AddInt32("pane", id);
-    Window()->PostMessage(&request);
-    Activate();
-    break;
-  }
   case kRevealSearch: {
     Listi::SearchHit hit{m->GetString("path", ""), m->GetInt64("device", -1),
                          m->GetInt64("node", -1)};
@@ -1535,14 +1048,11 @@ void Pane::MessageReceived(BMessage *m) {
     scanTimer.reset();
     path = m->GetString("path", path);
     locationValid = !m->HasString("error");
-    UpdatePlaces();
     history.Complete(serial, path.String(), locationValid);
     UpdateNavigation();
-    RefreshRecentFolders();
     SetDisplayMode(LocationMode());
     edit->SetText(path);
-    if (SidebarHasTree(visibleSidebar))
-      tree->ShowPath(path.String());
+    sidebar->UpdateLocation();
     const char *error;
     if (m->FindString("error", &error) == B_OK) {
       ClearRows();
@@ -1595,7 +1105,8 @@ void Pane::MessageReceived(BMessage *m) {
     SetSource(active);
     break;
   default:
-    BView::MessageReceived(m);
+    if (!sidebar->HandleCommand(*m))
+      BView::MessageReceived(m);
     break;
   }
 }

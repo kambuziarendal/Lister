@@ -13,17 +13,12 @@
 #include <View.h>
 class FileDetails;
 class FileGrid;
-class FolderTree;
+class PaneSidebar;
 class MillerColumns;
 class BCardView;
 class BGroupView;
 class BSplitView;
-class BScrollView;
-class BListView;
 class BMenuField;
-class BMenu;
-class BMenuItem;
-class DestinationList;
 namespace Listi { class Shelf; }
 class BMessageRunner;
 class Pane : public BView {
@@ -70,7 +65,7 @@ public:
     return prefs.HasPaneMode(id) ? prefs.PaneMode(id) : -1;
   }
   bool SidebarCanBeRestored() const;
-  bool SidebarContext(BView *target, BPoint point);
+  bool LocationValid() const { return locationValid; }
   void RefreshShelf();
   SidebarMode Sidebar() const { return prefs.Sidebar(id); }
   void FolderModes(const std::map<std::string, int32> &modes) {
@@ -89,15 +84,7 @@ private:
   FileDetails *list;
   FileGrid *grid;
   MillerColumns *columns;
-  FolderTree *tree;
-  BCardView *sidebar;
-  DestinationList *favorites, *recentFolders;
-  BScrollView *favoriteScroll;
-  BListView *shelfList;
-  std::shared_ptr<Listi::Shelf> shelf;
-  BMenuItem *sidebarMenuItem = nullptr;
-  bool sidebarMenuConfigurable = false;
-  SidebarMode visibleSidebar = SidebarMode::FolderTree;
+  PaneSidebar *sidebar;
   bool einn = false;
   BCardView *cards;
   BGroupView *header, *filterRow;
@@ -109,21 +96,14 @@ private:
   int32 mode = 0;
   void SetDisplayMode(int32);
   int32 LocationMode() const;
-  void UpdateSidebar();
-  void UpdateSidebarMenu();
-  void AddSidebarModes(BMenu &, bool menuField = false);
   void PublishDisplay(bool folder = false, bool forget = false);
-  BMenu *placesMenu;
-  Listi::SavedPlaces places;
-  bool placesWritable = true, locationValid = false;
-  void UpdatePlaces();
+  bool locationValid = false;
   BTextControl *edit;
   BButton *back, *forward;
   Listi::NavigationHistory history;
   void StartNavigation(const std::string &, int target = -1,
                        bool trash = false);
   void UpdateNavigation();
-  void RefreshRecentFolders();
   BTextControl *filter;
   BButton *clearFilter;
   BStringView *status;
