@@ -1,9 +1,6 @@
 # Workflow guide
 
-This guide describes the **0.35.0 source build**. The latest downloadable
-[0.32.1 alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.32.1)
-predates the current inspector and several other workflows. Test changes with
-disposable copies and keep independent backups.
+This reference covers the [0.35.0 alpha for Haiku x86_64](https://github.com/kambuziarendal/listi/releases/tag/v0.35.0). New to Listi? Start with the [feature tour](FEATURES.md). Try file operations on disposable copies and keep independent backups.
 
 ## Small features at a glance
 
@@ -241,7 +238,7 @@ Reinstalling an older application package does not undo file operations.
 
 ## Navigation, selection and native tools
 
-**Select > By pattern** in the source build previews the number of visible
+**Select > By pattern** previews the number of visible
 names matching a case-sensitive shell pattern, for example `*.pdf`. It
 includes matching files, folders, links and visible dotfiles, never the
 parent row. Choose **Select** to replace the panel selection, or **Cancel**

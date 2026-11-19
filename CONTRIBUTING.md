@@ -23,7 +23,7 @@ checks do not replace native compilation or regression tests.
 
 ## Bugs and testing
 
-Include the Listi and Haiku versions, reproduction steps and whether files were
+For a release package, include the tag and whether its checksum matched. Include the Listi and Haiku versions, reproduction steps and whether files were
 affected. Use disposable fixtures and independent backups when testing file
 operations. Never attach passwords, private files or personal filenames to a
 public issue. For the inspector, say whether you used Quick view, the panel

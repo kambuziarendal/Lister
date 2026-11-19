@@ -6,6 +6,10 @@ illustrate workflows rather than verifying the current build.
 
 | File | Capture version | What it shows |
 |---|---|---|
+| `listi-favourites-0.33.0.png` | 0.33.0 | Independent favourites and tree sidebars |
+| `listi-shell-0.33.0.png` | 0.33.0 | Live shell beside the panels |
+| `listi-pdf-0.33.0.png` | 0.33.0 | PDF page navigation in the inspector |
+| `listi-pattern-0.35.0.png` | 0.35.0 | Wildcard match count before selection |
 | `listi-quick-view-0.35.0.png` | 0.35.0 source | Photograph in Quick view beside the active panel |
 | `listi-source-editor-0.35.0.png` | 0.35.0 source | Native source editor with syntax colouring |
 | `listi-smidja-preview-0.31.0.png` | 0.31.0 | Smiðja/Workbench with image preview |

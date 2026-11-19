@@ -16,7 +16,7 @@ Its interface uses Haiku controls, system colours, MIME icons and Layout Kit.
   See the [shortcut reference](../README.md#basic-workflow).
 - **Optional by design.** Useful defaults come first. Advanced views, inspectors,
   rules and integrations should be opt-in rather than required for ordinary
-  browsing. The development build uses fixed module positions and an
+  browsing. The 0.35.0 alpha uses fixed module positions and an
   ordered bank of existing actions. Profiles contain layout state, not paths,
   credentials, selections, running jobs or pending confirmations. Configurability must not
   disable safety checks or hide operation targets.
@@ -32,7 +32,7 @@ Its interface uses Haiku controls, system colours, MIME icons and Layout Kit.
 - Regular copies use temporary sibling files. Symlinks are copied as links rather
   than followed recursively. Moves check source identities before cleanup;
   concurrent external changes and partial moves remain important limitations.
-- File reads, launches and settings writes use a service looper. Layout Kit
+- File reads, launches and settings writes use the service looper in `src/ApplicationServices.cpp`. Layout Kit
   arranges controls rather than relying on fixed widget coordinates.
 - Haiku's private ColumnListView dependency is isolated in `src/Pane.cpp`.
   Changes to that OS interface may require a rebuild.

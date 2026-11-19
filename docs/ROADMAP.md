@@ -14,9 +14,7 @@ interfaces. Coverage, responsiveness and resource use must be demonstrated task
 by task. This is a direction, not a claim that the alpha already matches or
 outperforms Directory Opus, Tracker or Dolphin.
 
-The latest downloadable GitHub alpha is [0.32.1](https://github.com/kambuziarendal/listi/releases/tag/v0.32.1).
-The [README](../README.md) and [workflow guide](GUIDE.md) also describe the
-0.35.0 source build. The ideas below are not a release schedule.
+The latest downloadable GitHub alpha is [0.35.0](https://github.com/kambuziarendal/listi/releases/tag/v0.35.0). See the [feature tour](FEATURES.md) for what you can try today. The ideas below are not a release schedule.
 
 ## Optional by design
 
@@ -71,8 +69,9 @@ are session information, not a persistent audit log or an undo mechanism.
 
 ## Priorities after 0.32.0
 
-### Implemented in the 0.35.0 source build
+### Implemented in the 0.35.0 alpha
 
+- **Wildcard selection:** preview the number of visible matches before replacing the selection, without changing the filter.
 - **Direct Paste:** ordinary Paste in a local file panel now accepts file
   references, text and images. Text and images open a filename prompt; Paste
   in an editable field retains its normal meaning.
@@ -102,8 +101,7 @@ See the [workflow guide](GUIDE.md) for the controls and limitations.
 
 ### Next workflows, in priority order
 
-1. **Faster selection and paired navigation.** Add wildcard selection with a
-   visible match count, separate from the literal filter. In Tvískipt, offer
+1. **Paired navigation.** In Tvískipt, offer
    linked browsing relative to two independently chosen roots. If the peer
    subfolder is missing, show that and leave the other panel in place; never
    create or synchronise files just because someone navigates. Follow with
@@ -155,8 +153,7 @@ See the [workflow guide](GUIDE.md) for the controls and limitations.
 
 ## Feature directions and current foundations
 
-“Available now” means implemented in the 0.35.0 source build, not necessarily
-in the 0.32.1 download. A related foundation is not a finished feature.
+“Available now” means included in the 0.35.0 alpha. A related foundation is not a finished feature.
 
 | Direction | Available now | Planned or exploratory work |
 |---|---|---|
@@ -204,7 +201,7 @@ must not replay old file jobs or store credentials in plain layout files.
 
 Quick view, the separate viewer and the panel inspector share file readers.
 They show images, readable source, PDF pages and supported audio/video; viewing
-does not execute scripts or change the original file. The 0.35.0 source adds zoom/pan,
+does not execute scripts or change the original file. The 0.35.0 alpha adds zoom/pan,
 JPEG camera details and a separate, offline GPS display. Text editing is an
 explicit action on complete local files with guarded saves. Future format
 support should preserve those boundaries and distinguish unsupported metadata

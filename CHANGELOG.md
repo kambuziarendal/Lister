@@ -1,9 +1,8 @@
 # Changelog
 
-## Unreleased: 0.35.0 development candidate
+## [0.35.0 alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.35.0)
 
-The candidate package is `Listi-0.35.0-1-x86_64.hpkg`. It is not a public
-release. The downloadable alpha remains [0.32.1](#0321-alpha).
+Download `Listi-0.35.0-1-x86_64.hpkg` and its checksum from the release. See [what was tested](docs/VERIFICATION.md#0350-package-results).
 
 - Quick view follows the active selection across workspaces. The inspector adds
   local photo controls, optional camera details and explicit short media previews.

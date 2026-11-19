@@ -4,6 +4,14 @@ Listi is alpha software that works directly on files. Tests provide evidence for
 specific cases, not proof that every filesystem, server or archive variant is
 safe. Use disposable fixtures and independent backups.
 
+## 0.35.0 package results
+
+The [published HPKG](https://github.com/kambuziarendal/listi/releases/tag/v0.35.0) is the exact package tested on Haiku R1~beta6 hrev59866+79, x86_64, with GCC 13.3.0. Its tag identifies the source; the default branch includes newer documentation than the copy inside the package.
+
+- All 71 default native audit cases passed. The build-tree self-test and the installed self-test each passed 58 of 58 checks; the executables matched byte for byte.
+- The installed GUI switched through all four workspaces. A two-panel copy preserved the expected bytes. Selecting `*.txt` previewed two matches; copying the selection transferred only those two entries and left all originals intact.
+- This was one disposable VM, not a physical-device pilot, an extended soak test, a same-version upgrade test or a fresh real-server network test.
+
 ## Native regression audit and smoke test
 
 Build inside Haiku x86_64 with the dependencies listed in the
