@@ -335,7 +335,7 @@ programs or guarantee power-loss atomicity.
 *Properties, captured in 0.10.0 with synthetic data; cropped to the native window.*
 
 **Files > Open with...** offers installed native applications for one local
-regular file. **Open once** does not change associations. To change what Haiku uses for other files of the displayed type, select an application and use the separate type-default button. This changes the Haiku association, not just Listi, and does not open the file. A file with its own preferred application keeps that override. If the type is unknown, use **Open once** instead. Remote/archive members
+regular file. **Open once** does not change associations. To change what Haiku uses for other files of the displayed type, select an application and choose **Set type default**. This changes the Haiku association, not just Listi, and does not open the file. A file with its own preferred application keeps that override. If the type is unknown, use **Open once** instead. Remote/archive members
 must be copied locally for that dialog; ordinary archive Edit has its own
 save-back workflow described below.
 
