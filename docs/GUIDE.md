@@ -115,9 +115,17 @@ still work without changing any settings.
   standard grid. Resizing does not choose another folder or file view. Stacked
   panels with a preview and both toolbars need more vertical space; side-by-side
   panels are a better fit for shorter screens.
-- **Smiðja sidebars:** choose a folder tree, favourite destinations, or no
-  sidebar independently for each file panel under **Modules**. To change one
-  panel directly, use **Sidebar** in its display menu.
+- **Askr and Smiðja sidebars:** right-click a sidebar or open **Sidebar** in the
+  panel's display menu to choose **File tree**, **Shortcuts**, **Shortcuts
+  above tree**, **Shelf**, or **Hide sidebar**. To bring a hidden sidebar back
+  in its last mode, right-click an empty area of the file panel and choose
+  **Show sidebar**. Choices are remembered separately for each sidebar.
+  Right-click a folder in the file panel or tree and choose **Add to shortcuts…**.
+  Right-click a shortcut in the sidebar and choose **Remove shortcut**.
+  Shortcuts and the **Places** menu share the same saved destinations.
+  The **Shelf** sidebar shows the same references as the Shelf window. Drop
+  files onto it, or right-click to add the selected files, remove a reference
+  or open the Shelf window for transfer, archive and collection actions.
 - **Smiðja preview:** select a file to inspect an image, plain text, source
   code, Markdown or HTML source, a PDF page, or audio/video supported by the
   installed decoders. Use the page buttons for PDFs or **Play preview** for a

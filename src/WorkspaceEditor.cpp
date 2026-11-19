@@ -178,11 +178,10 @@ class WorkspaceEditor : public BWindow {
     layout.inspectorLeft = SelectedChoice(previewZone) == 1;
     layout.treeRight = SelectedChoice(treeZone) == 1;
     layout.filterBottom = SelectedChoice(filterZone) == 1;
-    const auto workspace = layout.workspace;
-    layout.workspace = Workspace::smidja;
-    layout.SetSidebar(0, static_cast<SidebarMode>(SelectedChoice(leftSidebar)));
-    layout.SetSidebar(1, static_cast<SidebarMode>(SelectedChoice(rightSidebar)));
-    layout.workspace = workspace;
+    layout.SetSidebar(Workspace::smidja, 0,
+                      static_cast<SidebarMode>(SelectedChoice(leftSidebar)));
+    layout.SetSidebar(Workspace::smidja, 1,
+                      static_cast<SidebarMode>(SelectedChoice(rightSidebar)));
     layout.buttons = showBank->Value() == B_CONTROL_ON;
     layout.command = showCommand->Value() == B_CONTROL_ON;
     layout.adaptive = adaptive->Value() == B_CONTROL_ON;

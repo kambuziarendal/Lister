@@ -91,8 +91,8 @@ public:
     if (!(message->GetInt32("buttons", 0) & B_SECONDARY_MOUSE_BUTTON))
       return B_DISPATCH_MESSAGE;
     if (auto view = dynamic_cast<BView *>(*target)) {
-      pane->SidebarContext(view, message->GetPoint("where", {}));
-      return B_SKIP_MESSAGE;
+      if (pane->SidebarContext(view, message->GetPoint("where", {})))
+        return B_SKIP_MESSAGE;
     }
     return B_DISPATCH_MESSAGE;
   }
@@ -290,8 +290,8 @@ Pane::Pane(int32 number, const Preferences &p, std::shared_ptr<Listi::Shelf> sha
       new BScrollView("favorite destinations scroll", favorites, 0, false, true);
   favoriteScroll->SetExplicitMinSize(BSize(0, 32));
   auto navigation = new BGroupView(B_VERTICAL, 3);
-  navigation->AddChild(favoriteScroll, 0.35f);
-  navigation->AddChild(tree, 0.65f);
+  navigation->GroupLayout()->AddView(favoriteScroll, 0.35f);
+  navigation->GroupLayout()->AddView(tree, 0.65f);
   favoriteScroll->Hide();
   sidebar->AddChild(navigation);
   shelfList = new ShelfSidebarList(this);
@@ -628,9 +628,10 @@ void Pane::UpdateSidebarMenu() {
     sidebarMenuItem->SetEnabled(!prefs.SinglePane() && mode != MillerMode);
   }
 }
-void Pane::SidebarContext(BView *target, BPoint point) {
+bool Pane::SidebarContext(BView *target, BPoint point) {
   if (!prefs.HasConfigurableSidebar() || visibleSidebar == SidebarMode::Hidden)
-    return;
+    return false;
+  const BPoint screen = target->ConvertToScreen(point);
   BPopUpMenu choices("Sidebar actions", false, false);
   auto add = [&](const char *label, BMessage *message, bool enabled = true) {
     auto item = new BMenuItem(label, message);
@@ -648,6 +649,16 @@ void Pane::SidebarContext(BView *target, BPoint point) {
           rows != favorites || placesWritable);
     }
   }
+  if (SidebarHasTree(visibleSidebar)) {
+    const auto folder = tree->PathAt(screen);
+    if (!folder.empty()) {
+      auto shortcut = new BMessage(kAddShortcut);
+      shortcut->AddString("path", folder.c_str());
+      add("Add to shortcuts…", shortcut,
+          placesWritable && !places.Find(folder) &&
+              places.Items().size() < Listi::SavedPlaces::Limit);
+    }
+  }
   if (visibleSidebar == SidebarMode::Shelf) {
     add("Add selected files to Shelf", new BMessage(Listi::kAddToShelf),
         !Selected().empty() && !scanning);
@@ -656,9 +667,10 @@ void Pane::SidebarContext(BView *target, BPoint point) {
   if (choices.CountItems() != 0)
     choices.AddSeparatorItem();
   AddSidebarModes(choices);
-  if (auto picked = choices.Go(target->ConvertToScreen(point), false, true, false))
+  if (auto picked = choices.Go(screen, false, true, false))
     if (picked->Message())
       MessageReceived(picked->Message());
+  return true;
 }
 void Pane::RefreshShelf() {
   if (!shelf || visibleSidebar != SidebarMode::Shelf)
@@ -702,9 +714,9 @@ void Pane::UpdateSidebar() {
       const bool showFavorites = wanted == SidebarMode::Favorites ||
                                  wanted == SidebarMode::ShortcutsAndTree;
       const bool showTree = SidebarHasTree(wanted);
-      if (showFavorites == favoriteScroll->IsHidden(favoriteScroll->Parent()))
+      if (showFavorites == favoriteScroll->IsHidden(favoriteScroll))
         showFavorites ? favoriteScroll->Show() : favoriteScroll->Hide();
-      if (showTree == tree->IsHidden(tree->Parent()))
+      if (showTree == tree->IsHidden(tree))
         showTree ? tree->Show() : tree->Hide();
       sidebar->CardLayout()->SetVisibleItem(wanted == SidebarMode::Shelf ? 1 : 0);
       if (visibleSidebar == SidebarMode::Hidden)
@@ -1098,11 +1110,14 @@ void Pane::MessageReceived(BMessage *m) {
     PublishDisplay();
     break;
   }
+  case kAddShortcut:
   case kRemoveShortcut: {
     const char *destination = m->GetString("path", "");
-    if (placesWritable && places.Find(destination)) {
+    const bool removing = m->what == kRemoveShortcut;
+    if (placesWritable && destination[0] &&
+        removing == (places.Find(destination) != nullptr)) {
       BMessage request(kPlaceAction);
-      request.AddInt32("action", 2);
+      request.AddInt32("action", removing ? 2 : 0);
       request.AddString("path", destination);
       request.AddInt32("pane", id);
       Window()->PostMessage(&request);

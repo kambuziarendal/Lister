@@ -16,6 +16,7 @@ public:
   void AttachedToWindow() override;
   void MessageReceived(BMessage *) override;
   void ShowPath(const std::string &);
+  std::string PathAt(BPoint screen) const;
   void NavigateSelection(const std::string &);
   void ExpandPath(const std::string &);
   void Reset();

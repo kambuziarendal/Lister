@@ -125,6 +125,13 @@ void FolderTree::AttachedToWindow() {
   reader = new TreeReader(BMessenger(this), generation);
   reader->Run();
 }
+std::string FolderTree::PathAt(BPoint screen) const {
+  const BPoint point = list->ConvertFromScreen(screen);
+  if (!list->Bounds().Contains(point))
+    return {};
+  const auto item = dynamic_cast<TreeItem *>(list->ItemAt(list->IndexOf(point)));
+  return item && item->IsEnabled() ? item->path : std::string();
+}
 void FolderTree::NavigateSelection(const std::string &path) {
   BMessage m(kNavigate);
   m.AddString("path", path.c_str());

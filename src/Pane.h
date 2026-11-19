@@ -70,7 +70,7 @@ public:
     return prefs.HasPaneMode(id) ? prefs.PaneMode(id) : -1;
   }
   bool SidebarCanBeRestored() const;
-  void SidebarContext(BView *target, BPoint point);
+  bool SidebarContext(BView *target, BPoint point);
   void RefreshShelf();
   SidebarMode Sidebar() const { return prefs.Sidebar(id); }
   void FolderModes(const std::map<std::string, int32> &modes) {
@@ -111,7 +111,7 @@ private:
   int32 LocationMode() const;
   void UpdateSidebar();
   void UpdateSidebarMenu();
-  void AddSidebarModes(BMenu &, bool hiddenLabel = false);
+  void AddSidebarModes(BMenu &, bool menuField = false);
   void PublishDisplay(bool folder = false, bool forget = false);
   BMenu *placesMenu;
   Listi::SavedPlaces places;

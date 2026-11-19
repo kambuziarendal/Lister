@@ -136,12 +136,16 @@ struct WorkspaceLayout {
     return IsSmidja() ? smidjaRestore[pane] : askrRestore[pane];
   }
   void SetSidebar(int pane, SidebarMode mode) {
-    if (!HasConfigurableSidebar()) {
+    SetSidebar(workspace, pane, mode);
+  }
+  void SetSidebar(Workspace target, int pane, SidebarMode mode) {
+    if (target != Workspace::askr && target != Workspace::smidja) {
       paneTree[pane] = mode == SidebarMode::FolderTree;
       return;
     }
-    auto &current = (IsSmidja() ? smidjaSidebar : askrSidebar)[pane];
-    auto &restore = (IsSmidja() ? smidjaRestore : askrRestore)[pane];
+    const bool smidja = target == Workspace::smidja;
+    auto &current = (smidja ? smidjaSidebar : askrSidebar)[pane];
+    auto &restore = (smidja ? smidjaRestore : askrRestore)[pane];
     if (current != SidebarMode::Hidden)
       restore = current;
     current = mode;

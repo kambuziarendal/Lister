@@ -88,6 +88,28 @@ int main() {
   check(restored.Sidebar(0) == SidebarMode::Hidden &&
             restored.Sidebar(1) == SidebarMode::Favorites,
         "Smiðja retains distinct sidebar choices after switching workspace");
+  Preferences sidebars;
+  sidebars.workspace = Workspace::askr;
+  check(sidebars.Sidebar(0) == SidebarMode::FolderTree,
+        "Askr keeps the original file tree default");
+  sidebars.SetSidebar(0, SidebarMode::ShortcutsAndTree);
+  sidebars.SetSidebar(0, SidebarMode::Hidden);
+  sidebars.SetSidebar(1, SidebarMode::Shelf);
+  sidebars.workspace = Workspace::smidja;
+  sidebars.SetSidebar(0, SidebarMode::Shelf);
+  sidebars.SetSidebar(0, SidebarMode::Hidden);
+  sidebars.SetSidebar(1, SidebarMode::Favorites);
+  Preferences sidebarReload;
+  sidebarReload.Load(sidebars.Save());
+  check(sidebarReload.Sidebar(0) == SidebarMode::Hidden &&
+            sidebarReload.RestoreSidebar(0) == SidebarMode::Shelf &&
+            sidebarReload.Sidebar(1) == SidebarMode::Favorites,
+        "Smiðja persists each sidebar and remembers the mode of a hidden sidebar");
+  sidebarReload.workspace = Workspace::askr;
+  check(sidebarReload.Sidebar(0) == SidebarMode::Hidden &&
+            sidebarReload.RestoreSidebar(0) == SidebarMode::ShortcutsAndTree &&
+            sidebarReload.Sidebar(1) == SidebarMode::Shelf,
+        "Askr persists its own independent sidebar choices and restore mode");
   restored.ResetLayout();
   check(restored.workspace == Workspace::tviskipt && restored.buttons &&
             !restored.command && !restored.bankTop && !restored.commandTop &&
