@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "ArchiveJobs.h"
+#include "ArchiveJobChecks.h"
+#include "DataIsoVerification.h"
 #include "ArchiveBackend.h"
 #include "ArchiveVolumes.h"
 #include "CabWriter.h"
@@ -10,7 +12,6 @@
 #include "DynamicLibrary.h"
 #include "JobSnapshot.h"
 #include "LocalMoveTree.h"
-#include "Sha256.h"
 #include "VirtualFile.h"
 #include <Directory.h>
 #include <Entry.h>
@@ -20,6 +21,7 @@
 #include <archive_entry.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <fs_attr.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <algorithm>
@@ -31,22 +33,10 @@
 #include <thread>
 #include <chrono>
 #include <set>
-#include <fs_attr.h>
 
 namespace Listi {
 namespace {
-void Require(bool ok, const std::string &message) {
-  if (!ok)
-    throw std::runtime_error(message);
-}
-struct FD {
-  int n;
-  explicit FD(int value) : n(value) {}
-  ~FD() {
-    if (n >= 0)
-      close(n);
-  }
-};
+using namespace ArchiveJobChecks;
 struct Writer {
   DynamicLibrary lib{"libarchive.so", "libarchive.so.13"};
   archive *a = nullptr;
@@ -159,14 +149,6 @@ void Guards(const Job &job) {
                 s.st_ino == job.expectedDestination.inode,
             "The destination folder was replaced. Choose it again.");
   }
-}
-bool Unchanged(const struct stat &a, const struct stat &b) {
-  return a.st_dev == b.st_dev && a.st_ino == b.st_ino &&
-         a.st_mode == b.st_mode && a.st_size == b.st_size &&
-         a.st_mtim.tv_sec == b.st_mtim.tv_sec &&
-         a.st_mtim.tv_nsec == b.st_mtim.tv_nsec &&
-         a.st_ctim.tv_sec == b.st_ctim.tv_sec &&
-         a.st_ctim.tv_nsec == b.st_ctim.tv_nsec;
 }
 std::string PathOf(BDirectory &dir) {
   BEntry e;
@@ -381,111 +363,6 @@ void CopyMetadata(const std::string &fromPath, const std::string &toPath,
   }
   Require(status == B_ENTRY_NOT_FOUND, "Cannot enumerate archive metadata.");
 }
-// External ISO images can contain boot code and layout metadata that the
-// data-disc writer cannot preserve. Only an unchanged ISO written and
-// verified by Listi can be rebuilt by the archive editor.
-constexpr const char *IsoDigestAttr = "Listi:verified-data-iso-v1";
-std::string IsoDigest(int fd, const Hooks &hooks) {
-  struct stat before, after;
-  Require(!fstat(fd, &before) && S_ISREG(before.st_mode),
-          "Cannot inspect data ISO.");
-  Sha256 digest;
-  std::vector<char> buffer(131072);
-  off_t at = 0;
-  for (;;) {
-    if (hooks.proceed && !hooks.proceed())
-      throw Cancelled();
-    auto n = pread(fd, buffer.data(), buffer.size(), at);
-    if (n < 0 && errno == EINTR)
-      continue;
-    Require(n >= 0, "Cannot read data ISO.");
-    if (!n)
-      break;
-    digest.Update(buffer.data(), n);
-    at += n;
-  }
-  Require(at == before.st_size && !fstat(fd, &after) &&
-              Unchanged(before, after),
-          "Data ISO changed while being verified.");
-  return digest.Finish();
-}
-void SealIso(int fd, const Hooks &hooks) {
-  const auto digest = IsoDigest(fd, hooks);
-  Require(fs_write_attr(fd, IsoDigestAttr, B_STRING_TYPE, 0, digest.data(),
-                        digest.size()) == ssize_t(digest.size()),
-          "Cannot store data ISO verification on this filesystem.");
-}
-void VerifyIsoOutput(Writer &writer, int output,
-                     std::map<std::string, std::string> members, Pack &pack) {
-  auto &lib = writer.lib;
-  struct Reader {
-    DynamicLibrary &lib;
-    archive *a;
-    ~Reader() {
-      if (a)
-        LIBCALL(lib, archive_read_free)(a);
-    }
-  } reader{lib, LIBCALL(lib, archive_read_new)()};
-  const auto a = reader.a;
-  Require(
-      a && lseek(output, 0, SEEK_SET) == 0 &&
-          LIBCALL(lib, archive_read_support_format_iso9660)(a) == ARCHIVE_OK &&
-          LIBCALL(lib, archive_read_open_fd)(a, output, 131072) == ARCHIVE_OK,
-      "Cannot reopen staged data ISO. Nothing was published.");
-  std::vector<char> decoded(65536), original(65536);
-  archive_entry *entry = nullptr;
-  int status;
-  while ((status = LIBCALL(lib, archive_read_next_header)(a, &entry)) ==
-         ARCHIVE_OK) {
-    pack.Check();
-    auto name = SafeArchivePath(LIBCALL(lib, archive_entry_pathname)(entry));
-    if (name.empty())
-      continue;
-    const auto member = members.find(name);
-    Require(member != members.end(),
-            "Data ISO changed an entry name or wrote an extra entry.");
-    const auto path = member->second;
-    members.erase(member);
-    struct stat st;
-    Require(!lstat(path.c_str(), &st) &&
-                (st.st_mode & 0777) ==
-                    LIBCALL(lib, archive_entry_perm)(entry) &&
-                (st.st_mode & S_IFMT) ==
-                    LIBCALL(lib, archive_entry_filetype)(entry) &&
-                !LIBCALL(lib, archive_entry_hardlink)(entry),
-            "Data ISO could not preserve entry type or permissions: " + path);
-    if (S_ISDIR(st.st_mode))
-      continue;
-    FD input(open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK));
-    struct stat opened;
-    Require(input.n >= 0 && !fstat(input.n, &opened) && Unchanged(st, opened) &&
-                st.st_size == LIBCALL(lib, archive_entry_size)(entry),
-            "Data ISO could not preserve entry size: " + path);
-    off_t total = 0;
-    for (;;) {
-      pack.Check();
-      const auto n =
-          LIBCALL(lib, archive_read_data)(a, decoded.data(), decoded.size());
-      Require(n >= 0, "Cannot decode staged data ISO: " + path);
-      if (!n)
-        break;
-      size_t have = 0;
-      while (have < size_t(n)) {
-        const auto got = read(input.n, original.data() + have, n - have);
-        if (got < 0 && errno == EINTR)
-          continue;
-        Require(got > 0, "Cannot verify data ISO source: " + path);
-        have += got;
-      }
-      Require(!memcmp(decoded.data(), original.data(), n),
-              "Data ISO could not preserve entry bytes: " + path);
-      total += n;
-    }
-    Require(total == st.st_size, "Data ISO entry is incomplete: " + path);
-  }
-  Require(status == ARCHIVE_EOF && members.empty(),
-          "Data ISO is damaged or missing entries. Nothing was published.");
-}
 void CreateOutput(int output, const std::string &format,
                   const std::vector<std::string> &sources, int level,
                   bool encryptNames, const ArchiveSecretPtr &secret,
@@ -514,7 +391,7 @@ void CreateOutput(int output, const std::string &format,
       pack.Add(source, Leaf(source));
     writer.Check(LIBCALL(writer.lib, archive_write_close)(writer.a));
     if (format == "iso")
-      VerifyIsoOutput(writer, output, std::move(isoMembers), pack);
+      VerifyDataIsoOutput(writer.lib, output, std::move(isoMembers), hooks);
     pack.Verify();
   }
 }
@@ -578,17 +455,8 @@ std::string EditFormat(const std::string &path, const Hooks &hooks = {}) {
     CabValidateEdit(fd.n);
   if (detected == ARCHIVE_FORMAT_LHA)
     Require(LhaCanCreate(), "Install lha from HaikuDepot to edit this archive.");
-  if (detected == ARCHIVE_FORMAT_ISO9660) {
-    char recorded[64];
-    attr_info info;
-    Require(
-        fs_stat_attr(fd.n, IsoDigestAttr, &info) == 0 &&
-            info.type == B_STRING_TYPE && info.size == sizeof(recorded) &&
-            fs_read_attr(fd.n, IsoDigestAttr, B_STRING_TYPE, 0, recorded,
-                         sizeof(recorded)) == sizeof(recorded) &&
-            IsoDigest(fd.n, hooks) == std::string(recorded, sizeof(recorded)),
-        "Only unmodified Listi data ISOs can be edited. Other ISO images can be browsed and copied out without risking boot or disc metadata.");
-  }
+  if (detected == ARCHIVE_FORMAT_ISO9660)
+    RequireVerifiedDataIso(fd.n, hooks);
   std::string format = detected == ARCHIVE_FORMAT_TAR       ? "tar"
                        : detected == ARCHIVE_FORMAT_CPIO    ? "cpio"
                        : detected == ARCHIVE_FORMAT_CAB     ? "cab"
@@ -816,7 +684,7 @@ Result RunArchiveEdit(const Job &job, const Hooks &hooks,
     Require(!fsync(output.n), "Cannot flush updated archive to disk.");
     CopyMetadata(job.destination, outputPath, internal);
     if (format == "iso")
-      SealIso(output.n, internal);
+      SealDataIso(output.n, internal);
     Require(!fsync(output.n), "Cannot flush updated archive metadata.");
     check();
     if (job.archiveVerifyOutput) {
@@ -1665,7 +1533,7 @@ Result RunArchiveJob(const Job &job, const Hooks &hooks) {
       CreateOutput(output.n, job.archiveFormat, job.sources, job.archiveLevel,
                    job.archiveEncryptNames, secret, tracked);
       if (job.archiveFormat == "iso")
-        SealIso(output.n, tracked);
+        SealDataIso(output.n, tracked);
       Require(!fsync(output.n), "Cannot flush archive to disk.");
       Require(publish.SetTo(&stage.dir, "archive", false) == B_OK,
               "Archive output disappeared.");
