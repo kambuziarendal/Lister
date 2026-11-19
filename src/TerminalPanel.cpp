@@ -6,6 +6,7 @@
 #include <Button.h>
 #include <Clipboard.h>
 #include <Font.h>
+#include <GroupLayout.h>
 #include <LayoutBuilder.h>
 #include <MessageRunner.h>
 #include <StringView.h>
@@ -586,8 +587,10 @@ private:
 
 TerminalPanel::TerminalPanel(BMessenger owner)
     : BGroupView(B_VERTICAL, 0),
+      header(new BGroupLayout(B_HORIZONTAL, B_USE_HALF_ITEM_SPACING)),
       location(new BStringView("terminal location", "Listi CLI")),
       terminal(new TerminalView()),
+      position(new BButton("terminal position", "Move right", nullptr)),
       move(new BButton("Detach CLI", nullptr)),
       close(new BButton("Close CLI", nullptr)) {
   SetName("Listi CLI");
@@ -595,20 +598,48 @@ TerminalPanel::TerminalPanel(BMessenger owner)
   location->SetExplicitMinSize(BSize(0, B_SIZE_UNSET));
   location->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
   BLayoutBuilder::Group<>(this)
-      .AddGroup(B_HORIZONTAL, B_USE_HALF_ITEM_SPACING)
+      .AddGroup(header, 0)
       .SetInsets(B_USE_HALF_ITEM_SPACING, 0)
+      .AddGroup(B_HORIZONTAL, B_USE_HALF_ITEM_SPACING)
       .Add(location)
+      .Add(position)
+      .End()
+      .AddGroup(B_HORIZONTAL, B_USE_HALF_ITEM_SPACING, 0)
       .Add(move)
       .Add(close)
       .End()
+      .End()
       .Add(terminal);
+  SetDockSide(false);
+  position->SetTarget(owner);
+  position->SetTimeout(0);
   move->SetTarget(owner);
   close->SetTarget(owner);
   move->SetTimeout(0);
   close->SetTimeout(0);
 }
 
-void TerminalPanel::SetPlacement(bool floating, int64 placement) {
+void TerminalPanel::SetDockSide(bool beside) {
+  dockedBeside = beside;
+  header->SetOrientation(dockedBeside && !floating ? B_VERTICAL : B_HORIZONTAL);
+  position->SetLabel(beside ? "Move below" : "Move right");
+  position->SetToolTip(beside ? "Move this shell below the file panels."
+                              : "Move this shell to the right of the file panels.");
+}
+
+void TerminalPanel::SetPlacement(bool detached, int64 generation) {
+  placement = generation;
+  if (floating != detached) {
+    floating = detached;
+    header->SetOrientation(dockedBeside && !floating ? B_VERTICAL : B_HORIZONTAL);
+    if (floating)
+      position->Hide();
+    else
+      position->Show();
+  }
+  auto reposition = new BMessage(kToggleTerminalSide);
+  reposition->AddInt64("terminal placement", placement);
+  position->SetMessage(reposition);
   move->SetLabel(floating ? "Dock CLI" : "Detach CLI");
   auto change = new BMessage(floating ? kDockTerminal : kFloatTerminal);
   change->AddInt64("terminal placement", placement);

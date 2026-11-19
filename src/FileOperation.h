@@ -72,6 +72,9 @@ struct Job {
   std::map<std::string, BulkRenameGuard> bulkFingerprints;
   std::string
       destinationFolder; // Captured parent for rename/new-folder questions.
+  // Internal, never decoded from UI messages: a staged copy for an archive
+  // move must not follow a destination merge into another mounted volume.
+  bool copyForArchiveMove = false;
 };
 struct Hooks {
   std::function<bool()> proceed;

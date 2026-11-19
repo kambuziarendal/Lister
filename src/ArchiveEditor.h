@@ -28,7 +28,10 @@ public:
   const std::string &Directory() const { return directory; }
 
 private:
-  std::string directory, member, working;
+  std::string directory, member, working, predecessor;
+  static std::shared_ptr<ArchiveEditSession>
+  Create(const std::string &member, const std::string &root,
+         const std::string &predecessor, const Hooks &hooks);
   Job target;
   unsigned permissions = 0644;
   struct stat directoryIdentity {
@@ -37,6 +40,7 @@ private:
   int stable = 0;
   void ValidateDirectory() const;
   void ValidateArchive() const;
+  void RequireActive() const;
   void Persist();
   bool ChangedBytes();
 };

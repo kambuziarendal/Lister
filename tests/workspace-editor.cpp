@@ -64,11 +64,15 @@ int main() {
   receiver->Run();
   Preferences prefs;
   for (bool save : {false, true}) {
-    OpenWorkspaceEditor(BMessenger(receiver), prefs);
+    OpenWorkspaceEditor(BMessenger(receiver), prefs, save);
     auto *window = app.WindowAt(0);
     if (!window || !window->Lock())
       return 2;
     BMessenger dialog(window);
+    auto *tabs = Control<BTabView>(window, "workspace tabs");
+    Check(tabs->Selection() == (save ? 1 : 0),
+          "settings entry opens Modules; menu entry opens Action buttons");
+    tabs->Select(0);
     auto *actions = Control<BListView>(window, "visible actions");
     Check(actions->CountItems() == int32(prefs.actionButtons.size()),
           "the standard action bank is unchanged");
@@ -90,7 +94,6 @@ int main() {
     dialog.SendMessage(&move, &reply);
     if (!window->Lock())
       return 2;
-    auto *tabs = Control<BTabView>(window, "workspace tabs");
     tabs->Select(1);
     auto *adaptive = Control<BCheckBox>(window, "adaptive workspace");
     Check(adaptive->Value() == B_CONTROL_OFF, "adaptation defaults to off");

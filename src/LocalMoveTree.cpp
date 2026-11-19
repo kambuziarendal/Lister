@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "LocalMoveTree.h"
+#include "MoveVolume.h"
 #include "VirtualFile.h"
 #include <Node.h>
 #include <cerrno>
@@ -53,12 +54,15 @@ void FlushPath(const std::string &path) {
 }
 } // namespace
 LocalMoveTree::LocalMoveTree(const std::vector<std::string> &roots,
-                             const Hooks &hooks, bool portableSource)
+                             const Hooks &hooks, bool portableSource,
+                             std::optional<dev_t> requiredVolume)
     : portable(portableSource) {
   for (const auto &selected : roots) {
     struct stat st;
     Require(!lstat(selected.c_str(), &st) && !S_ISLNK(st.st_mode),
             "Move entry disappeared or is a link: " + selected);
+    if (requiredVolume)
+      RequireSameMoveVolume(st.st_dev, *requiredVolume);
     char *resolved = realpath(selected.c_str(), nullptr);
     const std::string root = resolved ? resolved : "";
     free(resolved);

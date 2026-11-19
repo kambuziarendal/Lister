@@ -6,6 +6,8 @@
 #include <List.h>
 #include <cassert>
 #include <cctype>
+#include <fstream>
+#include <unistd.h>
 
 int main() {
   BApplication app("application/x-vnd.Listi-MainWindowRoutingTest");
@@ -73,6 +75,86 @@ int main() {
   workspace(Workspace::smidja);
   assert(item(kSwitch)->IsEnabled() && item(kSame)->IsEnabled());
   assert(std::string(item(kSwitch)->Label()) == "Switch panel");
+  auto *left = dynamic_cast<Listi::PanelTools *>(window->FindView("first panel tools"));
+  auto *right = dynamic_cast<Listi::PanelTools *>(window->FindView("second panel tools"));
+  assert(left && right);
+  using Page = Listi::PanelPage;
+  auto *original = left->Page(Page::Files);
+  auto *tabs = left->FindView("panel tabs");
+  assert(tabs && tabs->IsHidden(tabs));
+  auto select = [&](Page page) {
+    BMessage change(Listi::kPanelPage);
+    change.AddInt32("pane", 0);
+    change.AddInt32("page", static_cast<int32>(page));
+    window->MessageReceived(&change);
+  };
+  send(kSearch);
+  auto *search = left->Page(Page::Search);
+  assert(search && left->Current() == Page::Search && !tabs->IsHidden(tabs));
+  auto *query = dynamic_cast<BTextControl *>(search->FindView("search expression"));
+  assert(query);
+  query->SetText("left-only");
+  select(Page::Files);
+  assert(left->Page(Page::Files) == original && left->Current() == Page::Files);
+  send(kSearch);
+  assert(left->Page(Page::Search) == search && left->Current() == Page::Search);
+  assert(std::string(query->Text()) == "left-only");
+  send(kSwitch);
+  send(kSearch);
+  auto *rightSearch = right->Page(Page::Search);
+  assert(rightSearch && rightSearch != search);
+  auto *rightQuery = dynamic_cast<BTextControl *>(rightSearch->FindView("search expression"));
+  assert(rightQuery && std::string(rightQuery->Text()).empty());
+  rightQuery->SetText("right-only");
+  assert(std::string(query->Text()) == "left-only");
+  send(kSwitch);
+  BMessage close(Listi::kClosePanelPage);
+  close.AddInt32("pane", 0);
+  window->MessageReceived(&close);
+  assert(!left->Page(Page::Search) && left->Current() == Page::Files);
+  assert(tabs->IsHidden(tabs));
+  send(kQuickView);
+  assert(right->Current() == Page::Preview && left->Page(Page::Files) == original);
+  send(kQuickView);
+  assert(right->Current() == Page::Files && right->Page(Page::Search) == rightSearch);
+  assert(std::string(rightQuery->Text()) == "right-only");
+  // A tool may close immediately, before the result list's first draw.
+  for (int i = 0; i < 12; ++i) {
+    send(kSearch);
+    window->MessageReceived(&close);
+    assert(!left->Page(Page::Search));
+  }
+  // The Inspector's Edit action must not point at a selection on a hidden Files tab.
+  char temp[] = "/tmp/Listi-inspector-routing-XXXXXX";
+  assert(mkdtemp(temp));
+  const std::string file = std::string(temp) + "/visible.txt";
+  assert(std::ofstream(file) << "visible selection");
+  auto *pane = static_cast<Pane *>(original);
+  pane->Navigate(temp);
+  window->Show();
+  assert(window->Lock());
+  auto waitFor = [&](auto condition) {
+    for (int i = 0; i < 200 && !condition(); ++i) {
+      window->Unlock();
+      snooze(25000);
+      assert(window->Lock());
+    }
+    assert(condition());
+  };
+  waitFor([&] { return !pane->IsScanning(); });
+  assert(pane->MatchPattern("visible.txt", true) == 1);
+  select(Page::Files);
+  send(kQuickView);
+  auto *inspect = right->Page(Page::Preview);
+  assert(inspect);
+  auto *textPreview = inspect->FindView("preview scroll");
+  assert(textPreview);
+  waitFor([&] { return !textPreview->IsHidden(); });
+  send(kSearch);
+  assert(left->Current() == Page::Search && textPreview->IsHidden());
+  select(Page::Files);
+  waitFor([&] { return !textPreview->IsHidden(); });
+  assert(unlink(file.c_str()) == 0 && rmdir(temp) == 0);
   window->Quit();
   puts("Main window: menu shortcuts and workspace routing OK");
 }

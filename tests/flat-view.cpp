@@ -9,6 +9,9 @@
 #include <Button.h>
 #include <ColumnListView.h>
 #include <ColumnTypes.h>
+#include <Menu.h>
+#include <MenuField.h>
+#include <MenuItem.h>
 #include <String.h>
 #include <StringView.h>
 #include <TextControl.h>
@@ -261,8 +264,60 @@ int main() {
   Check(Await([&] { return Inspect(search, [](BWindow &window) {
     return TextContains(window, "search status", "Complete snapshot");
   }); }), "a new search completes after the failed generation");
+  // Use the visible sort menu. Both filenames are real matching entries;
+  // changing order must not change which original the user selected.
+  auto searchRows = [](BWindow &window) {
+    return dynamic_cast<BColumnListView *>(window.FindView("search results"));
+  };
+  auto sortBy = [&](int32 order) {
+    return Inspect(search, [&](BWindow &window) {
+      auto field = dynamic_cast<BMenuField *>(window.FindView("result order"));
+      auto item = field ? field->Menu()->ItemAt(order) : nullptr;
+      return item && static_cast<BInvoker *>(item)->Invoke() == B_OK;
+    });
+  };
+  auto resultName = [](BRow *row) {
+    return std::string(static_cast<BStringField *>(row->GetField(0))->String());
+  };
+  Check(sortBy(1) && Await([&] {
+    return Inspect(search, [&](BWindow &window) {
+      auto rows = searchRows(window);
+      if (!rows || rows->CountRows() != 2 ||
+          resultName(rows->RowAt(0)) != "same.txt" ||
+          resultName(rows->RowAt(1)) != "same.txt.old")
+        return false;
+      rows->AddToSelection(rows->RowAt(0));
+      return true;
+    });
+  }), "standalone search sorts ascending by filename");
+  Check(sortBy(2) && Await([&] {
+    return Inspect(search, [&](BWindow &window) {
+      auto rows = searchRows(window);
+      return rows && rows->CountRows() == 2 &&
+             resultName(rows->RowAt(0)) == "same.txt.old" &&
+             resultName(rows->RowAt(1)) == "same.txt" &&
+             rows->CurrentSelection() == rows->RowAt(1);
+    });
+  }), "descending sort keeps the selected original");
+  search.SendMessage(kSearchStart);
+  Check(Await([&] {
+    return Inspect(search, [&](BWindow &window) {
+      auto rows = searchRows(window);
+      return rows && rows->CountRows() == 2 && !rows->CurrentSelection() &&
+             resultName(rows->RowAt(0)) == "same.txt.old" &&
+             TextContains(window, "search status", "Complete snapshot");
+    });
+  }), "new search inserts arriving hits in the selected order");
   search.SendMessage(B_QUIT_REQUESTED);
   Check(Await([&] { return !search.IsValid(); }), "Find files closes after retry");
+  bool closedEveryTime = true;
+  for (int i = 0; i < 24 && closedEveryTime; ++i) {
+    auto transient = OpenFileSearch(BMessenger(), 0, nested.c_str(),
+                                    SavedSearches{}.Message());
+    transient.SendMessage(B_QUIT_REQUESTED);
+    closedEveryTime = Await([&] { return !transient.IsValid(); });
+  }
+  Check(closedEveryTime, "standalone searches can close immediately on open");
   lost.SendMessage(B_QUIT_REQUESTED);
   Check(Await([&] { return !lost.IsValid(); }), "close after lost completion");
   delete_sem(openedRoot);

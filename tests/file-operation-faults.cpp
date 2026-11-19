@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sys/stat.h>
 #include <unistd.h>
 
 using namespace Listi;
@@ -18,6 +19,7 @@ namespace {
 std::string deniedStage, watchedStage, deniedRemoval;
 int watchedFd = -1, writes = 0;
 bool failWrite = false, denyTrashCleanup = false;
+bool deviceGone = false;
 int failures = 0;
 
 void Check(bool ok, const char *label) {
@@ -68,6 +70,15 @@ extern "C" ssize_t __wrap_write(int fd, const void *data, size_t size) {
   }
   return __real_write(fd, data, size);
 }
+extern "C" int __real_stat(const char *, struct stat *);
+extern "C" int __wrap_stat(const char *path, struct stat *st) {
+  if (deviceGone && strncmp(path, "/dev/disk/", 10) == 0) {
+    errno = ENOENT;
+    return -1;
+  }
+  return __real_stat(path, st);
+}
+
 extern "C" int __real_unlink(const char *);
 extern "C" int __wrap_unlink(const char *path) {
   if (deniedRemoval == path) {
@@ -126,6 +137,20 @@ int main() {
   deniedRemoval.clear();
   watchedStage.clear();
 
+  std::ofstream(target) << "original";
+  Hooks disconnect = replace;
+  disconnect.progress = [](const std::string &, uint64_t bytes) {
+    if (bytes)
+      deviceGone = true;
+  };
+  result = Run({Action::Copy, {source.string()}, out.string()}, disconnect);
+  deviceGone = false;
+  Check(!result.completed && result.errors.size() == 1 &&
+            Has(result, source, target, "failed", "device disconnected") &&
+            Read(source) == payload && Read(target) == "original" &&
+            std::distance(fs::directory_iterator(out), fs::directory_iterator()) == 1,
+        "disconnected device cannot publish a cached copy or replace the destination");
+
   // A conflict forces a copy-and-cleanup move even on a single volume.
   std::ofstream(target) << "old";
   bool edited = false;
@@ -157,6 +182,21 @@ int main() {
   Check(!result.errors.empty() && !result.completed && fs::exists(dir) &&
             fs::exists(saved) && fs::exists(mapped),
         "replacement of empty destination at final progress keeps the source directory");
+
+  const auto growing = root / "download", copied = out / "download";
+  fs::create_directory(growing);
+  std::ofstream(growing / "first") << "first";
+  Hooks addAfterScan;
+  addAfterScan.progress = [&](const std::string &path, uint64_t) {
+    if (path == growing)
+      std::ofstream(growing / "second") << "just arrived";
+  };
+  result = Run({Action::Copy, {growing.string()}, out.string()}, addAfterScan);
+  Check(!result.errors.empty() && !result.completed &&
+            Has(result, growing, copied, "partial") &&
+            Read(growing / "second") == "just arrived" &&
+            Read(copied / "first") == "first" && !fs::exists(copied / "second"),
+        "folder changed after enumeration is not reported as completely copied");
 
   const auto longName = std::string(250, 'a');
   std::ofstream(root / longName) << "long name";

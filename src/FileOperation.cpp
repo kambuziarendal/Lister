@@ -5,10 +5,13 @@
 #include "ArchiveJobs.h"
 #include "ImageConvert.h"
 #include "NamedEntry.h"
+#include "JobSnapshot.h"
+#include "MoveVolume.h"
 #include "Trash.h"
 #include <Directory.h>
 #include <Entry.h>
 #include <Node.h>
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -16,6 +19,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <fs_attr.h>
+#include <fs_info.h>
 #include <limits.h>
 #include <map>
 #include <memory>
@@ -77,6 +81,36 @@ struct Runner {
   const Job *guardedJob = nullptr;
   std::string guardedSource;
   std::map<std::string, size_t> outcomeIndex;
+  struct BackingDevice {
+    std::string path;
+    NodeIdentity node;
+  };
+  std::map<dev_t, BackingDevice> backingDevices;
+  void CheckDestinationDevice(dev_t volume) {
+    auto it = backingDevices.find(volume);
+    if (it == backingDevices.end()) {
+      fs_info info{};
+      if (fs_stat_dev(volume, &info))
+        throw std::runtime_error("The destination volume is no longer available.");
+      BackingDevice backing;
+      if (strncmp(info.device_name, "/dev/disk/", 10) == 0)
+        backing.path = info.device_name;
+      it = backingDevices.emplace(volume, std::move(backing)).first;
+    }
+    auto &backing = it->second;
+    if (backing.path.empty())
+      return; // Not a disk-backed filesystem.
+    // A disconnected BFS volume can still report successful stat and fsync
+    // calls against cached files. Check the backing device in devfs instead.
+    struct stat st;
+    if (stat(backing.path.c_str(), &st) ||
+        (backing.node.device >= 0 &&
+         (backing.node.device != st.st_dev || backing.node.inode != st.st_ino)))
+      throw std::runtime_error(
+          "Destination device disconnected or changed. Copy not confirmed; "
+          "check the destination after reconnecting.");
+    backing.node = {st.st_dev, st.st_ino};
+  }
   size_t mutations = 0;
   EntryOutcome &Outcome(const std::string &src, const std::string &dst = {}) {
     auto index = outcomeIndex.emplace(src, result.outcomes.size());
@@ -150,6 +184,7 @@ struct Runner {
   void Done(const std::string &src, const std::string &dst,
             const struct stat &expected) {
     ++mutations;
+    CheckDestinationDevice(expected.st_dev);
     struct stat committed;
     if (lstat(dst.c_str(), &committed) || expected.st_dev != committed.st_dev ||
         expected.st_ino != committed.st_ino || expected.st_mode != committed.st_mode ||
@@ -295,13 +330,15 @@ struct Runner {
            a.st_ctim.tv_sec == b.st_ctim.tv_sec &&
            a.st_ctim.tv_nsec == b.st_ctim.tv_nsec;
   }
-  void VerifyCopy(const std::string &source) {
+  void VerifyCopy(const std::string &source, dev_t sourceVolume) {
     if (!deferCompletion)
       return;
     const auto recorded = copied.find(source);
     if (recorded == copied.end())
       throw std::runtime_error(source + ": no committed copy; source retained");
     const auto &copy = recorded->second;
+    CheckDestinationDevice(copy.committed.st_dev);
+    RequireSameMoveVolume(sourceVolume, copy.committed.st_dev);
     struct stat now;
     if (lstat(copy.destination.c_str(), &now) || !SameEntry(copy.committed, now)) {
       auto &row = Outcome(source);
@@ -321,7 +358,7 @@ struct Runner {
           root + ": source changed; copied data kept and source retained");
     for (auto &entry : before) {
       auto found = after.find(entry.first);
-      VerifyCopy(entry.first);
+      VerifyCopy(entry.first, entry.second.st_dev);
       if (found == after.end() || !SameEntry(entry.second, found->second))
         throw std::runtime_error(
             root + ": source changed; copied data kept and source retained");
@@ -334,7 +371,7 @@ struct Runner {
       struct stat now;
       if (lstat(it->first.c_str(), &now))
         Fail(it->first);
-      VerifyCopy(it->first);
+      VerifyCopy(it->first, it->second.st_dev);
       bool directory = S_ISDIR(it->second.st_mode);
       if (now.st_ino != it->second.st_ino || now.st_dev != it->second.st_dev ||
           (!directory && !SameEntry(it->second, now)))
@@ -404,6 +441,8 @@ struct Runner {
       Fail(src);
     struct stat before {};
     bool existed = Exists(dst, &before);
+    if (existed && (deferCompletion || guardedJob->copyForArchiveMove))
+      RequireSameMoveVolume(guardedJob->expectedDestination.device, before.st_dev);
     if (existed && guardedJob && guardedJob->action == Action::Duplicate)
       throw std::runtime_error(
           dst + ": already exists; duplicate does not overwrite");
@@ -422,6 +461,7 @@ struct Runner {
         if (lstat(dst.c_str(), &before) || !S_ISDIR(before.st_mode))
           throw std::runtime_error(dst + ": new destination folder changed");
       }
+      CheckDestinationDevice(before.st_dev);
       copyDirectories.emplace_back(dst, before);
       struct DirectoryScope {
         DirectoryStack &stack;
@@ -455,8 +495,12 @@ struct Runner {
         Fail(dst);
       Tick(src);
       Guard();
-      if (complete)
+      if (complete) {
+        struct stat current;
+        if (lstat(src.c_str(), &current) || !SameEntry(st, current))
+          throw std::runtime_error(src + ": source folder changed during copy");
         Done(src, dst, expected);
+      }
       return complete;
     }
     if (!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode))
@@ -480,6 +524,7 @@ struct Runner {
     if (fstat(out.n, &stagingIdentity))
       Fail(tmp);
     try {
+      CheckDestinationDevice(stagingIdentity.st_dev);
       if (S_ISLNK(st.st_mode)) {
         char link[PATH_MAX];
         ssize_t n = readlink(src.c_str(), link, sizeof(link) - 1);
@@ -488,6 +533,11 @@ struct Runner {
         link[n] = 0;
         if (unlink(tmp.c_str()) || symlink(link, tmp.c_str()) ||
             lstat(tmp.c_str(), &stagingIdentity))
+          Fail(tmp);
+        // BNode opens the link itself, including a dangling link.
+        Attributes(src, tmp);
+        struct timespec times[2] = {st.st_atim, st.st_mtim};
+        if (utimensat(AT_FDCWD, tmp.c_str(), times, AT_SYMLINK_NOFOLLOW))
           Fail(tmp);
       } else {
         FD in(open(src.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK));
@@ -526,6 +576,7 @@ struct Runner {
         if (fchmod(out.n, st.st_mode & 07777))
           Fail(tmp);
         struct timespec times[2] = {st.st_atim, st.st_mtim};
+        CheckDestinationDevice(stagingIdentity.st_dev);
         if (futimens(out.n, times) || fsync(out.n))
           Fail(tmp);
       }
@@ -537,6 +588,7 @@ struct Runner {
       if (lstat(tmp.c_str(), &staged) || staged.st_dev != stagingIdentity.st_dev ||
           staged.st_ino != stagingIdentity.st_ino)
         throw std::runtime_error(tmp + ": staging file changed");
+      CheckDestinationDevice(stagingIdentity.st_dev);
       Commit(tmp, dst, existed, before);
       Done(src, dst, staged);
     } catch (...) {
@@ -699,8 +751,8 @@ struct Runner {
               h.progress(source, 0);
             continue;
           }
-          if (s != B_CROSS_DEVICE_LINK)
-            throw std::runtime_error(source + ": " + strerror(s));
+          // Do not fall back to copy-and-delete if the mount changed after preflight.
+          throw std::runtime_error(source + ": " + strerror(s));
         }
         Snapshot beforeMove;
         if (job.action == Action::Move) {
@@ -774,7 +826,19 @@ Result Run(const Job &j, const Hooks &h) {
 
   Runner r{h};
   try {
-    r.Execute(j);
+    if (j.action == Action::Move) {
+      Job move = j;
+      // A queued selection already carries its original identities. Guard()
+      // rejects a stale entry individually without cancelling its valid siblings.
+      const bool frozen = move.expectedDestination.device >= 0 &&
+          std::all_of(move.sources.begin(), move.sources.end(),
+                      [&](const std::string &path) { return move.expectedSources.count(path); });
+      if (!frozen)
+        FreezeLocalJob(move, move.destination);
+      CheckMoveVolumes(move);
+      r.Execute(move);
+    } else
+      r.Execute(j);
   } catch (const Cancelled &) {
     r.result.cancelled = true;
   } catch (const std::exception &e) {

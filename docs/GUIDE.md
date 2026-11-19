@@ -72,7 +72,7 @@ in this alpha.
   shortcuts remain available when the bank is hidden.
 - **Terminal here:** start an interactive shell in the active local folder.
   Choose **Below file panels** or **Beside file panels** to keep the shell in
-  the main window. **Detach CLI** moves that same shell to its own Listi window;
+  the main window. Use **Move right** or **Move below** on the open CLI to move the same shell without changing its working directory. **Detach CLI** moves that same shell to its own Listi window;
   **Dock CLI** or closing the detached window returns it to the file panels.
   Moving the CLI keeps running commands, shell state and scrollback. **Close
   CLI** ends the shell. **Detached Listi CLI** (Command+Shift+T) opens or
@@ -99,7 +99,7 @@ in this alpha.
 
 ### Custom workspaces
 
-Open **View > Workspace > Customize workspace…**. The four built-in presets
+Open **View > Workspace > Customize workspace…**, or go straight to **Modules** with **Listi > Settings > Workspaces > Customize current workspace layout…**. The four built-in presets
 still work without changing any settings.
 
 - **Action buttons:** remove buttons you rarely use and move the others into
@@ -211,6 +211,17 @@ number to review its result, even after another job has started. **Recent
 activity** is the combined log; a specific job shows its source and destination
 paths where available. Large reports have multiple pages. Job results are for
 this session, not saved to disk. **Clear finished** frees completed reports without cancelling any jobs.
+
+**Moving between local volumes:** Listi refuses a Move when the local source
+and destination are on different filesystem devices. This applies to two
+mounted volumes even on the same physical disk. For an archive member, it
+is the volume holding the archive file that counts.
+
+Use **Copy** and keep the source until you have verified the destination.
+For folders, **Compare folders** in SHA-256 mode checks file contents, not
+permissions or BFS attributes; check any metadata you need separately.
+Remove originals as a separate action only after verification. Ordinary
+moves within one local volume remain available.
 
 For a local move, **Moved** means Listi committed the move. **Copied; source
 retained** means the destination copy was made but Listi did not remove that
@@ -352,6 +363,8 @@ local volume. It does not follow symbolic links or enter Trash. **Stop scan**
 keeps the rows received so far. A stopped scan, unreadable branch or scan limit
 (5,000 results or 250,000 entries examined) is reported as incomplete.
 
+In **Smiðja**, **Listi > Find files** (Command+Shift+F) opens **Search** in the active panel. Enter a name fragment and press Enter. Click **Files** to return to the same file list, then **Search** to resume without restarting. **Quick view** opens **Preview** in the opposite panel. Close a tool with **×**; closing the last tool removes the tab row. Outside Smiðja, Find files still opens its own window.
+
 **Listi > Find files** combines a name fragment or BFS formula with extension,
 size and date criteria. Saved searches store criteria, not copies of results.
 Advanced BFS queries can subscribe to live changes. Search results refer to
@@ -420,7 +433,7 @@ capabilities. A successful listing does not establish member-data integrity.
 - Selected local multipart 7z and RAR naming families are supported for reading.
   All parts must remain together and unchanged. This does not imply split ZIP,
   split creation or repair support.
-- Supported local archive-to-archive and archive/local moves verify destination
+- Supported local archive-to-archive and archive/local moves within the same volume verify destination
   contents before source cleanup. They are not an atomic two-location
   transaction and have no automatic crash-resume journal.
 - Archive/local moves refuse unsupported metadata and file types rather than

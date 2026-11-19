@@ -319,13 +319,15 @@ class WorkspaceEditor : public BWindow {
 
   BGroupView *ModulePage() {
     showBank = new BCheckBox("Show action buttons", nullptr);
-    showCommand = new BCheckBox("Show command line", nullptr);
+    showCommand = new BCheckBox("Show command field", nullptr);
     panelArrangement =
         Choice("File panel arrangement:", {"Side by side", "Stacked"});
     bankZone =
         Choice("Action buttons:", {"Below file panels", "Above file panels"});
     commandZone =
-        Choice("Command line:", {"Below file panels", "Above file panels"});
+        Choice("Command field:", {"Below file panels", "Above file panels"});
+    commandZone->SetToolTip("This field runs a command in an external terminal. "
+                           "Move the Listi CLI with its own position button.");
     previewZone =
         Choice("Preview position:", {"After file panels", "Before file panels"});
     previewZone->SetToolTip(
@@ -411,7 +413,7 @@ class WorkspaceEditor : public BWindow {
   }
 
 public:
-  WorkspaceEditor(BMessenger owner, const Preferences &prefs)
+  WorkspaceEditor(BMessenger owner, const Preferences &prefs, bool showModules)
       : BWindow(BRect(0, 0, 625, 430), "Customize workspace", B_MODAL_WINDOW,
                 B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS |
                     B_NOT_ZOOMABLE),
@@ -441,6 +443,8 @@ public:
         .End();
     GetLayout()->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
     AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
+    if (showModules)
+      tabs->Select(1);
     CenterOnScreen();
     Show();
   }
@@ -481,6 +485,7 @@ public:
 };
 }
 
-void OpenWorkspaceEditor(BMessenger target, const Preferences &prefs) {
-  new WorkspaceEditor(target, prefs);
+void OpenWorkspaceEditor(BMessenger target, const Preferences &prefs,
+                         bool showModules) {
+  new WorkspaceEditor(target, prefs, showModules);
 }

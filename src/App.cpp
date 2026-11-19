@@ -31,6 +31,7 @@
 #include "InlineAction.h"
 #include "OperationQueue.h"
 #include "Pane.h"
+#include "PanelTools.h"
 #include "TerminalDock.h"
 #include "VirtualFile.h"
 #include "WindowKeyFilter.h"
@@ -69,9 +70,11 @@
 #include <set>
 #include <sys/stat.h>
 #include <unistd.h>
+using Listi::PanelPage;
+
 constexpr uint32 kResumeArchiveEdits = 'ared';
 constexpr uint32 kPreviewPattern = 'sppv', kApplyPattern = 'spap';
-constexpr uint32 kEditWorkspace = 'ewsp', kSplitChanged = 'swgt',
+constexpr uint32 kSplitChanged = 'swgt',
                  kQuickView = 'qvpr';
 
 class WorkspaceSplit : public BSplitView {
@@ -112,7 +115,7 @@ static void Notice(const char *text) {
 }
 class MainWindow : public BWindow {
   Preferences prefs;
-  BMessenger searchWindow;
+  BMessenger searchWindow, savingEditor;
   std::map<std::string, BMessenger> flatViews;
   BMenuItem *flatViewItem;
   BMessenger bulkRenameWindow;
@@ -159,7 +162,63 @@ class MainWindow : public BWindow {
       pane->SetPlaces(places, placesWritable && !placesSaving);
   }
   Pane *panes[2];
+  Listi::PanelTools *hosts[2];
   ImagePreview *preview;
+  bool PanelPreviewVisible() const {
+    return hosts[0]->Current() == PanelPage::Preview ||
+           hosts[1]->Current() == PanelPage::Preview;
+  }
+  bool ToolAllowsCommand(uint32 action) const {
+    switch (action) {
+    case kCopy: case kMove: case kSame: case kCreateLink: case kDuplicate:
+    case kCompareFolders: case kCreateArchive: case kExtractArchive:
+      return hosts[0]->Current() == PanelPage::Files &&
+             hosts[1]->Current() == PanelPage::Files;
+    case kClipboardCopy: case kClipboardCut: case kClipboardPaste:
+    case kClipboardSaveText: case kClipboardSaveImage: case kUndoBulkRename:
+    case kEdit: case kView: case kOpenWith: case kOpenSystem: case kProperties:
+    case kDelete: case kRestore: case kPermanentDelete: case kRename:
+    case kBulkRename: case kMkdir: case kAddArchive: case kRemoveArchive:
+    case kAll: case kNone: case kInvert: case kSelectType: case kSelectPattern:
+    case kApplyPattern: case kGridMode: case Listi::kAddToShelf:
+    case Listi::kFlatView:
+      return hosts[source]->Current() == PanelPage::Files;
+    default:
+      return true;
+    }
+  }
+  void FocusPage(int pane) {
+    switch (hosts[pane]->Current()) {
+    case PanelPage::Files:
+      panes[pane]->FocusList();
+      break;
+    case PanelPage::Search: {
+      BMessage focus(kSearch);
+      hosts[pane]->Page(PanelPage::Search)->MessageReceived(&focus);
+      break;
+    }
+    case PanelPage::Preview:
+      hosts[pane]->Page(PanelPage::Preview)->MakeFocus();
+      break;
+    }
+  }
+  void ActivatePanel(int pane) {
+    source = pane;
+    for (int i = 0; i < 2; ++i)
+      panes[i]->SetSource(i == source);
+  }
+  void PublishSearchStore(const BMessage &message, const BMessenger &author) {
+    auto send = [&](const BMessenger &recipient) {
+      if (!recipient.IsValid())
+        return;
+      auto update = recipient == author ? message : SearchStore();
+      recipient.SendMessage(&update, static_cast<BHandler *>(nullptr), 0);
+    };
+    send(searchWindow);
+    for (auto host : hosts)
+      if (auto *page = host->Page(PanelPage::Search))
+        send(BMessenger(page));
+  }
   BMenuItem *previewMenu, *einnMenu, *askrMenu, *tviskiptMenu, *smidjaMenu;
   BMenuItem *quickViewMenu;
   bool quickView = false;
@@ -182,12 +241,18 @@ class MainWindow : public BWindow {
     service.SendMessage(&saved);
   }
   void UpdatePreview() {
-    if (!previewVisible) {
-      preview->ShowFile("");
-      return;
+    auto visibleFile = [&](int pane) -> std::string {
+      if (hosts[pane]->Current() != PanelPage::Files)
+        return {};
+      auto selection = panes[pane]->Selected();
+      return selection.size() == 1 ? selection.front() : "";
+    };
+    for (int pane = 0; pane < 2; ++pane) {
+      if (auto *inspector = static_cast<ImagePreview *>(hosts[pane]->Page(PanelPage::Preview)))
+        inspector->ShowFile(hosts[pane]->Current() == PanelPage::Preview
+                                ? visibleFile(1 - pane) : "");
     }
-    auto selected = panes[source]->Selected();
-    preview->ShowFile(selected.size() == 1 ? selected[0] : "");
+    preview->ShowFile(previewVisible ? visibleFile(source) : "");
   }
   InlineAction *actionArea;
   void CloseAction() {
@@ -203,7 +268,7 @@ class MainWindow : public BWindow {
       archiveClipboardPending = false;
     }
     RefreshBank();
-    panes[source]->FocusList();
+    FocusPage(source);
   }
   void AskInline(const char *text, const char *button, const BMessage &result,
                  const char *initial = nullptr) {
@@ -658,7 +723,7 @@ class MainWindow : public BWindow {
       prefs.splitWeights[i] = raw[i] * totalShare / total;
   }
   void ApplyPreviewVisibility() {
-    const bool showPreview = quickView || (prefs.Preview() && !prefs.SinglePane());
+    const bool showPreview = quickView || (prefs.Preview() && !prefs.SinglePane() && !PanelPreviewVisible());
     if (showPreview != previewVisible) {
       previewVisible = showPreview;
       if (showPreview && preview->IsHidden(preview))
@@ -666,9 +731,9 @@ class MainWindow : public BWindow {
       else if (!showPreview && !preview->IsHidden(preview))
         preview->Hide();
     }
-    quickViewMenu->SetMarked(quickView);
+    quickViewMenu->SetMarked(quickView || PanelPreviewVisible());
     previewMenu->SetMarked(prefs.Preview() && !prefs.SinglePane());
-    previewMenu->SetEnabled(!quickView && !prefs.SinglePane());
+    previewMenu->SetEnabled(!quickView && !PanelPreviewVisible() && !prefs.SinglePane());
     UpdatePreview();
   }
   void ApplyWorkspace() {
@@ -683,13 +748,14 @@ class MainWindow : public BWindow {
     PlaceTools();
     UpdateBank(Bounds().Width());
     for (int i = 0; i < 2; ++i) {
+      hosts[i]->EnableTools(prefs.IsSmidja());
       const bool visible = i == source || (!quickView && !prefs.SinglePane());
       if (visible != paneVisible[i]) {
         paneVisible[i] = visible;
         if (visible)
-          panes[i]->Show();
+          hosts[i]->Show();
         else
-          panes[i]->Hide();
+          hosts[i]->Hide();
       }
       panes[i]->SetWorkspace(prefs);
       panes[i]->SetSource(i == source);
@@ -736,7 +802,7 @@ class MainWindow : public BWindow {
     prefs.singlePane = source;
     ApplyWorkspace();
     if (!actionArea->Pending())
-      panes[source]->FocusList();
+      FocusPage(source);
     Save();
   }
   void Apply() {
@@ -895,7 +961,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Listi::SavedPlaces &saved, bool writable,
              const Listi::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.35.0", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.36.1", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable),
         places(saved), placesWritable(writable), service(svc) {
@@ -1005,7 +1071,7 @@ public:
     workspace->AddItem(smidjaMenu);
     workspace->AddSeparatorItem();
     workspace->AddItem(new BMenuItem("Customize workspace…",
-                                      new BMessage(kEditWorkspace)));
+                                      new BMessage(kOpenWorkspaceEditor)));
     viewMenu->AddItem(workspace);
     fileView = new BMenu("File view");
     for (int32 i = 0; i < ViewModeCount; ++i) {
@@ -1060,8 +1126,10 @@ public:
     panes[1] = new Pane(1, prefs);
     split = new WorkspaceSplit();
     splitterSize = split->SplitterSize();
-    split->AddChild(panes[0]);
-    split->AddChild(panes[1]);
+    for (int pane = 0; pane < 2; ++pane) {
+      hosts[pane] = new Listi::PanelTools(pane, panes[pane]);
+      split->AddChild(hosts[pane]);
+    }
     preview = new ImagePreview();
     split->AddChild(preview);
     split->SetItemWeight(0, 0.39, false);
@@ -1121,7 +1189,7 @@ public:
 
     Apply();
     PublishPlaces();
-    panes[source]->FocusList();
+    FocusPage(source);
     ResizeTo(1140, 650);
   }
   void FrameResized(float width, float height) override {
@@ -1175,6 +1243,21 @@ public:
   ~MainWindow() {
     terminalDock.reset();
     delete queue;
+  }
+  void DispatchMessage(BMessage *message, BHandler *target) override {
+    if (prefs.IsSmidja() &&
+        (message->what == B_MOUSE_DOWN || message->what == B_KEY_DOWN)) {
+      auto *receiver = message->what == B_MOUSE_DOWN
+                           ? dynamic_cast<BView *>(target) : CurrentFocus();
+      for (auto *view = receiver; view; view = view->Parent()) {
+        for (int pane = 0; pane < 2; ++pane)
+          if (view == hosts[pane] && source != pane) {
+            ActivatePanel(pane);
+            UpdatePreview();
+          }
+      }
+    }
+    BWindow::DispatchMessage(message, target);
   }
   void MenusBeginning() override {
     BWindow::MenusBeginning();
@@ -1252,6 +1335,10 @@ public:
         m->SendReply(&reply);
         return;
       }
+    }
+    if (prefs.IsSmidja() && !ToolAllowsCommand(m->what)) {
+      queue->ErrorInfo("Switch to Files in the affected panel before using this command.");
+      return;
     }
     switch (m->what) {
     case Listi::kShowShelf:
@@ -1337,6 +1424,8 @@ public:
       break;
     }
     case kSearchEdit: {
+      BMessenger author(searchWindow);
+      m->FindMessenger("searchEditor", &author);
       try {
         if (!searchesWritable)
           throw std::runtime_error(
@@ -1363,6 +1452,7 @@ public:
         pendingSearches = next;
         pendingSearchName = m->GetBool("remove", false) ? "" : item.name;
         searchesSaving = true;
+        savingEditor = author;
         if (service.SendMessage(&request) != B_OK) {
           searchesSaving = false;
           throw std::runtime_error("Could not queue saved search.");
@@ -1370,7 +1460,7 @@ public:
       } catch (const std::exception &e) {
         auto reply = SearchStore();
         reply.AddString("error", e.what());
-        searchWindow.SendMessage(&reply);
+        PublishSearchStore(reply, author);
       }
       break;
     }
@@ -1389,7 +1479,8 @@ public:
           reply.AddBool("committed", true);
           reply.AddString("chosen", pendingSearchName.c_str());
         }
-        searchWindow.SendMessage(&reply);
+        PublishSearchStore(reply, savingEditor);
+        savingEditor = {};
       }
       break;
     case kPlacesSaved:
@@ -1420,7 +1511,7 @@ public:
       if (!actionArea->Pending()) {
         const auto *terminalPanel = terminalDock->Docked();
         if (!terminalPanel || !terminalPanel->HasFocus())
-          panes[source]->FocusList();
+          FocusPage(source);
       }
       break;
     case kInlineCancel:
@@ -1428,31 +1519,69 @@ public:
         break;
       if (actionArea->Pending())
         CloseAction();
-      else if (quickView) {
+      else if (hosts[source]->Current() != PanelPage::Files) {
+        hosts[source]->Select(PanelPage::Files);
+        ApplyPreviewVisibility();
+        FocusPage(source);
+      } else if (PanelPreviewVisible()) {
+        hosts[1 - source]->Close(PanelPage::Preview);
+        ApplyPreviewVisibility();
+        FocusPage(source);
+      } else if (quickView) {
         quickView = false;
         ApplyWorkspace();
-        panes[source]->FocusList();
+        FocusPage(source);
       } else
         queue->Collapse();
       break;
+    case Listi::kPanelPage:
+    case Listi::kClosePanelPage: {
+      const int32 pane = m->GetInt32("pane", -1);
+      if (!prefs.IsSmidja() || pane < 0 || pane > 1)
+        break;
+      if (m->what == Listi::kClosePanelPage)
+        hosts[pane]->Close(hosts[pane]->Current());
+      else {
+        const int32 page = m->GetInt32("page", -1);
+        if (page < 0 || page > 2 || !hosts[pane]->Page(PanelPage(page)))
+          break;
+        hosts[pane]->Select(PanelPage(page));
+      }
+      ActivatePanel(pane);
+      ApplyPreviewVisibility();
+      FocusPage(pane);
+      break;
+    }
     case kQuickView:
+      if (prefs.IsSmidja()) {
+        int pane = hosts[source]->Current() == PanelPage::Preview ? source : 1 - source;
+        if (hosts[pane]->Current() == PanelPage::Preview) {
+          hosts[pane]->Close(PanelPage::Preview);
+        } else if (hosts[pane]->Page(PanelPage::Preview)) {
+          hosts[pane]->Select(PanelPage::Preview);
+        } else {
+          hosts[pane]->Open(PanelPage::Preview, new ImagePreview());
+        }
+        ApplyPreviewVisibility();
+        FocusPage(source);
+        break;
+      }
       quickView = !quickView;
       ApplyWorkspace();
-      panes[source]->FocusList();
+      FocusPage(source);
       break;
     case kPreviewToggle:
-      if (prefs.SinglePane() || quickView)
+      if (prefs.SinglePane() || quickView || PanelPreviewVisible())
         break;
       prefs.SetPreview(!prefs.Preview());
       ApplyPreviewVisibility();
       Save();
       break;
     case kPreviewSelection:
-      if (m->GetInt32("pane", -1) == source) {
+      if (m->GetInt32("pane", -1) == source || PanelPreviewVisible())
         UpdatePreview();
-        if (m->HasString("operationError"))
-          queue->ErrorInfo(m->GetString("operationError", ""));
-      }
+      if (m->GetInt32("pane", -1) == source && m->HasString("operationError"))
+        queue->ErrorInfo(m->GetString("operationError", ""));
       break;
     case kPaneDisplay:
       for (int i = 0; i < 2; ++i) {
@@ -1482,7 +1611,8 @@ public:
     case kActivate:
       if (m->GetInt32("pane", source) < 0 || m->GetInt32("pane", source) > 1)
         break;
-      if ((quickView || prefs.SinglePane()) && m->GetInt32("pane", source) != source)
+      if (hosts[m->GetInt32("pane", source)]->Current() != PanelPage::Files ||
+          ((quickView || prefs.SinglePane()) && m->GetInt32("pane", source) != source))
         break;
       source = m->GetInt32("pane", source);
       for (int i = 0; i < 2; i++)
@@ -1501,7 +1631,7 @@ public:
       source = 1 - source;
       for (int i = 0; i < 2; i++)
         panes[i]->SetSource(i == source);
-      panes[source]->FocusList();
+      FocusPage(source);
       UpdatePreview();
       break;
     case kSame:
@@ -1514,6 +1644,16 @@ public:
         p->Reload();
       break;
     case kSearch:
+      if (prefs.IsSmidja()) {
+        if (!hosts[source]->Page(PanelPage::Search))
+          hosts[source]->Open(PanelPage::Search, CreatePanelSearch(
+              BMessenger(this), source, panes[source]->Path(), SearchStore()));
+        else
+          hosts[source]->Select(PanelPage::Search);
+        ApplyPreviewVisibility();
+        FocusPage(source);
+        break;
+      }
       if (searchWindow.IsValid())
         searchWindow.SendMessage(kSearch);
       else
@@ -1543,7 +1683,9 @@ public:
         quickView = false;
         ApplyWorkspace();
       }
+      hosts[which]->Select(PanelPage::Files);
       source = which;
+      ApplyPreviewVisibility();
       if (prefs.SinglePane()) {
         prefs.singlePane = source;
         ApplyWorkspace();
@@ -1553,10 +1695,12 @@ public:
         panes[i]->SetSource(i == source);
       panes[source]->MessageReceived(m);
       Activate();
-      panes[source]->FocusList();
+      FocusPage(source);
       break;
     }
     case kFilter:
+      hosts[source]->Select(PanelPage::Files);
+      ApplyPreviewVisibility();
       panes[source]->FocusFilter();
       break;
     case kContextMenu: {
@@ -1565,7 +1709,8 @@ public:
         break;
       }
       const int32 owner = m->GetInt32("pane", -1);
-      if (owner < 0 || owner > 1 || ((prefs.SinglePane() || quickView) && owner != source))
+      if (owner < 0 || owner > 1 || hosts[owner]->Current() != PanelPage::Files ||
+          ((prefs.SinglePane() || quickView) && owner != source))
         break;
       source = owner;
       for (int i = 0; i < 2; ++i)
@@ -1605,7 +1750,7 @@ public:
         options.selected = selected.size();
         options.directory = m->GetBool("directory", false);
         options.local = local;
-        options.dual = !prefs.SinglePane();
+        options.dual = !prefs.SinglePane() && hosts[1 - owner]->Current() == PanelPage::Files;
         options.folderLocal = folderLocal;
         const auto folderLocation = Listi::ParseLocation(folder);
         options.folderArchive = folderLocation.Archive();
@@ -2064,10 +2209,11 @@ public:
           break;
         terminalPanel->Stop();
       }
-      if (!floating)
-        terminalSplit->SetOrientation(m->what == Listi::kTerminalBeside
-                                          ? B_HORIZONTAL
-                                          : B_VERTICAL);
+      if (!floating) {
+        const bool beside = m->what == Listi::kTerminalBeside;
+        terminalSplit->SetOrientation(beside ? B_HORIZONTAL : B_VERTICAL);
+        terminalPanel->SetDockSide(beside);
+      }
       terminalSplit->SetItemCollapsed(1, false);
       if (!terminalPanel->Active()) {
         if (const int error = terminalPanel->Start(path)) {
@@ -2082,6 +2228,17 @@ public:
         terminalPanel->Focus();
       break;
     }
+    case Listi::kToggleTerminalSide: {
+      auto *panel = terminalDock->Docked();
+      if (panel && panel->Active() &&
+          panel->Placement() == m->GetInt64("terminal placement", -1)) {
+        const bool beside = terminalSplit->Orientation() != B_HORIZONTAL;
+        terminalSplit->SetOrientation(beside ? B_HORIZONTAL : B_VERTICAL);
+        panel->SetDockSide(beside);
+        panel->Focus();
+      }
+      break;
+    }
     case Listi::kFloatTerminal:
       terminalDock->Float(m->GetInt64("terminal placement", -1));
       break;
@@ -2091,7 +2248,7 @@ public:
     case Listi::kCloseTerminal:
       if (terminalDock->Close(m->GetInt64("terminal placement", -1))) {
         Activate();
-        panes[source]->FocusList();
+        FocusPage(source);
       }
       break;
     case Listi::kTerminalWindow:
@@ -2148,11 +2305,11 @@ public:
       if (m->what == kToggleBank && bankOverflow)
         OpenCompactBank();
       break;
-    case kEditWorkspace:
+    case kOpenWorkspaceEditor:
       if (actionArea->Pending())
         queue->ErrorInfo("Finish or cancel the open question first.");
       else
-        OpenWorkspaceEditor(BMessenger(this), prefs);
+        OpenWorkspaceEditor(BMessenger(this), prefs, m->GetBool("modules", false));
       break;
     case kApplyWorkspaceEditor: {
       if (actionArea->Pending()) {
@@ -2175,7 +2332,7 @@ public:
       else
         prefs.singlePane = source;
       ApplyWorkspace();
-      panes[source]->FocusList();
+      FocusPage(source);
       Save();
       break;
     }

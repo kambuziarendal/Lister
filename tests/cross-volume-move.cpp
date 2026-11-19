@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Opt-in native audit. The destination is an explicitly selected test volume.
-#include "FileOperation.h"
+#include "ArchiveJobs.h"
+#include "FileClipboard.h"
+#include "TransferCommand.h"
+#include "VirtualFile.h"
+#include <Application.h>
+#include <Clipboard.h>
 #include <algorithm>
 #include <cerrno>
 #include <cstdlib>
@@ -58,6 +63,7 @@ void Write(const fs::path &file, const std::string &contents) {
 }
 
 int main() try {
+  BApplication app("application/x-vnd.Listi-cross-volume-test");
   const char *volume = std::getenv("LISTI_TEST_VOLUME");
   struct stat from, to;
   if (!volume || stat("/tmp", &from) || stat(volume, &to) ||
@@ -71,121 +77,107 @@ int main() try {
     failures += !ok;
   };
 
-  // Cancellation after removing the source cannot undo a committed move.
-  for (bool batch : {false, true}) {
-    auto first = source.path / (batch ? "batch" : "single");
-    auto next = source.path / "next";
-    auto moved = dest.path / first.filename();
-    Write(first, "first");
-    Job job{Action::Move, {first.string()}, dest.path.string()};
-    if (batch) {
-      Write(next, "next");
-      job.sources.push_back(next.string());
+  const auto item = source.path / "item";
+  const auto destItem = dest.path / "item";
+  Write(item, "original");
+  auto refuses = [](const Job &job) {
+    try {
+      PrepareTransfer(job);
+    } catch (const std::exception &error) {
+      return std::string(error.what()).find("Move between volumes") != std::string::npos;
     }
-    Hooks hooks;
-    hooks.proceed = [&] { return fs::exists(first); };
-    int notifications = 0;
-    hooks.fileDone = [&](const std::string &src, const std::string &dst) {
-      if (src == first && dst == moved && !fs::exists(first))
-        ++notifications;
-    };
-    auto result = Run(job, hooks);
-    const std::vector<std::pair<std::string, std::string>> expected{
-        {first.string(), moved.string()}};
-    check(result.errors.empty() && result.cancelled == batch &&
-              result.completed == 1 && notifications == 1 &&
-              Has(result, first, moved, "moved") &&
-              (!batch || Has(result, next, dest.path / "next", "unprocessed")) &&
-              result.completedRoots == expected && !result.retainedMoveCopy &&
-              !fs::exists(first) &&
-              Read(moved) == "first" &&
-              (!batch ||
-               (Read(next) == "next" && !fs::exists(dest.path / "next"))),
-          batch ? "count committed move and leave next source alone"
-                : "count last move even when cancelled after removal");
-  }
-
-  auto large = source.path / "large";
-  const std::string payload(512 * 1024, 'x');
-  Write(large, payload);
-  Fixture interrupted(volume);
-  for (const auto action : {Action::Copy, Action::Move}) {
-    Hooks hooks;
-    bool stop = false;
-    hooks.proceed = [&] { return !stop; };
-    hooks.progress = [&](const std::string &, uint64_t bytes) {
-      stop |= bytes > 0;
-    };
-    const auto result =
-        Run({action, {large.string()}, interrupted.path.string()}, hooks);
-    check(result.cancelled && result.errors.empty() && !result.completed &&
-              !result.retainedMoveCopy && Read(large) == payload &&
-              fs::is_empty(interrupted.path),
-          action == Action::Copy
-              ? "cancelled copy has no retained-move notice"
-              : "move cancelled during copy has no retained-copy notice");
-  }
-
-  Hooks hooks;
-  const auto largeCopy = dest.path / "large";
-  int done = 0, failed = 0;
-  hooks.proceed = [&] { return !fs::exists(largeCopy); };
-  hooks.fileDone = [&](const std::string &, const std::string &) { ++done; };
-  hooks.fileFailed = [&](const std::string &, const std::string &) { ++failed; };
-  auto result = Run({Action::Move, {large.string()}, dest.path.string()}, hooks);
-  check(result.cancelled && !result.completed && result.errors.empty() &&
-            result.completedRoots.empty() && !done && !failed &&
-            Has(result, large, largeCopy, "source-retained") &&
-            result.retainedMoveCopy ==
-                std::make_pair(large.string(), largeCopy.string()) &&
-            Read(large) == payload && Read(largeCopy) == payload,
-        "cancel before removal reports both paths without completing the move");
-
-  const auto folder = source.path / "tree";
-  const auto treeCopy = dest.path / "tree";
-  fs::create_directory(folder);
-  Write(folder / "a", "first child");
-  Write(folder / "z", "last child");
-
-  bool treeCopied = false;
-  hooks = {};
-  hooks.progress = [&](const std::string &path, uint64_t) {
-    if (path == folder)
-      treeCopied = true;
+    return false;
   };
-  hooks.proceed = [&] { return !treeCopied; };
-  result = Run({Action::Move, {folder.string()}, dest.path.string()}, hooks);
-  check(result.cancelled && result.errors.empty() && !result.completed &&
-            result.retainedMoveCopy ==
-                std::make_pair(folder.string(), treeCopy.string()) &&
-            Read(folder / "a") == "first child" &&
-            Read(folder / "z") == "last child" &&
-            Read(treeCopy / "a") == "first child" &&
-            Read(treeCopy / "z") == "last child",
-        "cancel before directory cleanup reports the two complete trees");
+  Job move{Action::Move, {item.string()}, dest.path.string()};
+  auto result = Run(move, {});
+  check(refuses(move) && !result.errors.empty() && !result.completed &&
+            fs::is_empty(dest.path) && Read(item) == "original",
+        "panel preparation and worker independently reject other-volume move");
 
-  hooks = {};
+  Fixture localTarget("/tmp");
+  const auto local = localTarget.path / "first";
+  const auto remote = dest.path / "second";
+  Write(local, "local");
+  Write(remote, "other volume");
+  Job mixed{Action::Move, {local.string(), remote.string()}, source.path.string()};
+  result = Run(mixed, {});
+  check(refuses(mixed) && !result.completed && !result.errors.empty() &&
+            !fs::exists(source.path / "first") && Read(local) == "local" &&
+            Read(remote) == "other volume",
+        "entire mixed selection is refused before moving the first entry");
+
+  auto tree = source.path / "tree";
+  fs::create_directory(tree);
+  Write(tree / "child", "child");
+  result = Run({Action::Move, {tree.string()}, dest.path.string()}, {});
+  check(!result.completed && !result.errors.empty() && !fs::exists(dest.path / "tree") &&
+            Read(tree / "child") == "child", "other-volume directory move is refused");
+
+  auto archive = [&](const fs::path &directory) {
+    auto j = PrepareArchiveJob(false, {item.string()});
+    j.archiveFormat = "zip";
+    SetArchiveDestination(j, directory.string(), "test.zip");
+    auto create = Run(j, {});
+    if (create.completed != 1 || !create.errors.empty())
+      throw std::runtime_error("Cannot create archive fixture");
+    return OpenArchive(j.destination);
+  };
+  const auto srcArchive = archive(source.path), dstArchive = archive(dest.path);
+  const auto srcMember = ChildLocation(srcArchive, "item");
+  const auto otherArchiveBefore = Read(dest.path / "test.zip");
+  const auto srcArchiveBefore = Read(source.path / "test.zip");
+  for (Job attempted : {Job{Action::Move, {item.string()}, dstArchive},
+                        Job{Action::Move, {srcMember}, dest.path.string()},
+                        Job{Action::Move, {srcMember}, dstArchive}}) {
+    bool refused = refuses(attempted);
+    attempted.action = Action::MoveArchive;
+    auto worker = Run(attempted, {});
+    check(refused && worker.completed == 0 && !worker.errors.empty() &&
+              !fs::exists(destItem) && Read(item) == "original" &&
+              Read(source.path / "test.zip") == srcArchiveBefore &&
+              Read(dest.path / "test.zip") == otherArchiveBefore,
+          "cross-volume archive move is refused by preparation and worker");
+  }
+
+  BClipboard clipboard("listi-volume-move-test", true);
+  PutFileClipboard({item.string()}, true, &clipboard);
+  bool cutRefused = false;
+  try {
+    PrepareFilePaste(dest.path.string(), &clipboard);
+  } catch (const std::exception &error) {
+    cutRefused = std::string(error.what()).find("Move between volumes") != std::string::npos;
+  }
+  auto retry = PrepareFilePaste(localTarget.path.string(), &clipboard);
+  check(cutRefused && !retry.lease.empty() && retry.jobs.size() == 1 &&
+            retry.jobs.front().action == Action::Move && !fs::exists(destItem),
+        "rejected cut/paste does not consume or reserve its clipboard entries");
+  FinishFilePaste(retry, {}, &clipboard);
+
+  result = Run(PrepareTransfer({Action::Copy, {item.string()}, dest.path.string()}), {});
+  check(result.completed == 1 && result.errors.empty() && Read(item) == Read(destItem),
+        "explicit cross-volume Copy still writes the selected bytes and keeps the source");
+  result = Run({Action::Move, {item.string()}, localTarget.path.string()}, {});
+  check(result.completed == 1 && result.errors.empty() && !fs::exists(item) &&
+            Read(localTarget.path / "item") == "original",
+        "same-volume Move still transfers the original");
+
+  // Same-volume folder merges still copy and clean up. Cancellation must
+  // distinguish two intact trees from a partially removed source.
+  auto merged = localTarget.path / "tree";
+  fs::create_directory(merged);
+  Write(tree / "z", "last");
+  Hooks hooks;
+  hooks.proceed = [&] { return !fs::exists(merged / "z") || !fs::exists(merged / "child"); };
+  result = Run({Action::Move, {tree.string()}, localTarget.path.string()}, hooks);
+  check(result.cancelled && !result.completed && Read(tree / "child") == "child" &&
+            Read(tree / "z") == "last", "cancelled merge retains source files");
   hooks.conflict = [](const std::string &) { return Decision::Replace; };
-  // Reverse snapshot order deletes z first. Cancel before deleting a.
-  hooks.proceed = [&] { return fs::exists(folder / "z"); };
-  result = Run({Action::Move, {folder.string()}, dest.path.string()}, hooks);
-  check(result.cancelled && result.errors.empty() && !result.completed &&
-            result.completedRoots.empty() && !result.retainedMoveCopy &&
-            Has(result, folder, treeCopy, "partial") &&
-            Has(result, folder / "a", treeCopy / "a", "source-retained") &&
-            Has(result, folder / "z", treeCopy / "z", "moved") &&
-            !fs::exists(folder / "z") && Read(folder / "a") == "first child" &&
-            Read(treeCopy / "a") == "first child" &&
-            Read(treeCopy / "z") == "last child",
-        "cancel during directory cleanup never reports the source as intact");
-
-  const auto blocked = source.path / "blocked";
-  Write(blocked, "source");
-  fs::create_directory(dest.path / blocked.filename());
-  result = Run({Action::Move, {blocked.string()}, dest.path.string()}, {});
-  check(!result.cancelled && result.errors.size() == 1 && !result.completed &&
-            !result.retainedMoveCopy && Read(blocked) == "source",
-        "copy failure has no retained-copy notice");
+  hooks.proceed = [&] { return fs::exists(tree / "z"); };
+  result = Run({Action::Move, {tree.string()}, localTarget.path.string()}, hooks);
+  check(result.cancelled && !result.completed && !fs::exists(tree / "z") &&
+            Has(result, tree, merged, "partial") &&
+            Read(tree / "child") == "child" && Read(merged / "child") == "child" &&
+            Read(merged / "z") == "last", "late cancellation reports partial same-volume merge");
 
   // Never fill a general-purpose volume. This case is explicitly enabled
   // for a small disposable filesystem, and writes only in the unique fixture.
@@ -204,7 +196,7 @@ int main() try {
     hooks = {};
     hooks.conflict = [](const std::string &) { return Decision::Replace; };
     result =
-        Run({Action::Move, {oversized.string()}, full.path.string()}, hooks);
+        Run({Action::Copy, {oversized.string()}, full.path.string()}, hooks);
     check(
         result.errors.size() == 1 &&
             result.errors.front().find(std::strerror(ENOSPC)) !=

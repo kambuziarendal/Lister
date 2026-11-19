@@ -5,6 +5,7 @@
 #include "FileSearch.h"
 #include "SearchWorker.h"
 #include "SavedSearches.h"
+#include <GroupView.h>
 #include <MessageRunner.h>
 #include <MenuField.h>
 #include <MenuItem.h>
@@ -21,6 +22,7 @@
 #include <TextControl.h>
 #include <TextView.h>
 #include <Window.h>
+#include <algorithm>
 #include <memory>
 #include <stdexcept>
 namespace {
@@ -29,10 +31,12 @@ constexpr uint32 kStart = 'ssrt', kStop = 'sstp', kHit = 'shit',
                  kFinished = 'sfin', kSave = 'sqsv', kForget = 'sqfg',
                  kLoad = 'sqld', kName = 'sqnm', kPicked = 'spik',
                  kShow = 'sshw', kMode = 'smod', kClearFilters = 'sclr',
-                 kDeliveryCheck = 'sdck';
+                 kDeliveryCheck = 'sdck', kSection = 'ssec', kOrder = 'sord';
 struct HitRow : BRow {
   Listi::SearchHit hit;
-  explicit HitRow(const Listi::SearchHit &value) : BRow(24), hit(value) {
+  int64 arrival;
+  HitRow(const Listi::SearchHit &value, int64 sequence)
+      : BRow(24), hit(value), arrival(sequence) {
     size_t slash = hit.path.find_last_of('/');
     SetField(new BStringField(hit.path.substr(slash + 1).c_str()), 0);
     SetField(new BStringField(hit.path.substr(0, slash ? slash : 1).c_str()),
@@ -40,24 +44,94 @@ struct HitRow : BRow {
   }
 };
 class Results : public BColumnListView {
+  int64 sequence = 0;
+  int32 order = 0;
+  BColumn *columns[2];
+
+  bool Before(HitRow *left, HitRow *right, int32 requestedOrder) const {
+    if (requestedOrder != 0) {
+      int32 key = requestedOrder <= 2 ? 0 : 1;
+      int cmp = columns[key]->CompareFields(left->GetField(key),
+                                            right->GetField(key));
+      if (cmp != 0)
+        return requestedOrder % 2 ? cmp < 0 : cmp > 0;
+    }
+    return left->arrival < right->arrival;
+  }
+
 public:
+  BMessenger receiver;
   Results()
       : BColumnListView("search results", B_WILL_DRAW | B_NAVIGABLE,
                         B_FANCY_BORDER) {
-    AddColumn(new BStringColumn("Name", 220, 80, 1000, B_TRUNCATE_MIDDLE), 0);
-    AddColumn(
-        new BStringColumn("Original folder", 440, 120, 2000, B_TRUNCATE_MIDDLE),
-        1);
+    // Haiku starts an unjoined native sort thread even on initial attachment.
+    // It can outlive a rapidly closed window/tab. Sort only on our UI looper.
+    SetSortingEnabled(false);
+    columns[0] = new BStringColumn("Name", 220, 80, 1000, B_TRUNCATE_MIDDLE);
+    columns[1] = new BStringColumn("Original folder", 440, 120, 2000,
+                                   B_TRUNCATE_MIDDLE);
+    AddColumn(columns[0], 0);
+    AddColumn(columns[1], 1);
     SetSelectionMode(B_SINGLE_SELECTION_LIST);
     SetInvocationMessage(new BMessage(kShow));
   }
+  void Add(const SearchHit &hit) {
+    auto row = new HitRow(hit, sequence++);
+    if (!order) {
+      AddRow(row);
+      return;
+    }
+    int32 first = 0, last = CountRows();
+    while (first < last) {
+      int32 middle = first + (last - first) / 2;
+      if (Before(static_cast<HitRow *>(RowAt(middle)), row, order))
+        first = middle + 1;
+      else
+        last = middle;
+    }
+    AddRow(row, first);
+  }
+
+  void Order(int32 next) {
+    if (next == order || next < 0 || next > 4)
+      return;
+    BList current, ordered;
+    std::vector<HitRow *> rows;
+    rows.reserve(CountRows());
+    for (int32 i = 0; i < CountRows(); ++i) {
+      auto row = static_cast<HitRow *>(RowAt(i));
+      if (!current.AddItem(row))
+        return;
+      rows.push_back(row);
+    }
+    std::sort(rows.begin(), rows.end(), [this, next](HitRow *a, HitRow *b) {
+      return Before(a, b, next);
+    });
+    for (auto row : rows)
+      if (!ordered.AddItem(row))
+        return;
+    order = next;
+    auto selected = CurrentSelection();
+    auto focus = FocusRow();
+    RemoveRows(&current);
+    AddRows(&ordered, -1);
+    if (focus)
+      SetFocusRow(focus, false);
+    if (selected)
+      AddToSelection(selected);
+  }
+
   void SelectionChanged() override {
     BColumnListView::SelectionChanged();
-    if (Window())
-      Window()->PostMessage(kPicked);
+    if (receiver.IsValid())
+      receiver.SendMessage(kPicked);
   }
 };
-class SearchWindow : public BWindow {
+class SearchView : public BGroupView {
+  BPopUpMenu *sectionMenu = nullptr, *orderMenu;
+  BGroupView *sections[3]{};
+  int32 section = 0;
+  bool initialized = false;
   BMessenger owner;
   int32 pane;
   BTextControl *root, *expression, *name;
@@ -76,7 +150,7 @@ class SearchWindow : public BWindow {
   BStringView *status, *selected, *scope, *hint;
   BButton *start, *stop, *show;
   Results *results;
-  BLooper *worker;
+  BLooper *worker = nullptr;
   std::shared_ptr<std::atomic<int64>> generation;
   std::shared_ptr<std::atomic<int64>> failedSerial =
       std::make_shared<std::atomic<int64>>(-1);
@@ -148,6 +222,8 @@ class SearchWindow : public BWindow {
     savedField->SetEnabled(!saving);
   }
   void Store(const BMessage &m) {
+    if (m.GetInt64("revision", 0) < storeRevision)
+      return;
     saved = SavedSearches::FromMessage(m);
     if (m.HasString("chosen")) {
       chosen = m.GetString("chosen", "");
@@ -214,9 +290,9 @@ class SearchWindow : public BWindow {
             found); // Preserve selection only for identical path AND identity.
     }
     for (const auto &item : next)
-      results->AddRow(new HitRow(item.second));
+      results->Add(item.second);
     pending.clear();
-    PostMessage(kPicked);
+    BMessenger(this).SendMessage(kPicked);
   }
   void Colors() {
     results->SetColor(B_COLOR_BACKGROUND,
@@ -230,10 +306,9 @@ class SearchWindow : public BWindow {
   }
 
 public:
-  SearchWindow(BMessenger target, int32 which, const char *path,
-               const BMessage &store)
-      : BWindow(BRect(90, 90, 1000, 720), "Listi: Find files", B_TITLED_WINDOW,
-                B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS),
+  SearchView(BMessenger target, int32 which, const char *path,
+             const BMessage &store, bool compact)
+      : BGroupView("file search", B_VERTICAL, compact ? 4 : 8),
         owner(target), pane(which),
         generation(std::make_shared<std::atomic<int64>>(0)) {
     root = new BTextControl("search scope", "Folder:", path, nullptr);
@@ -255,7 +330,8 @@ public:
                                new BMessage(kClearFilters));
     for (auto field : {extension, minimum, maximum, fromDate, throughDate}) {
       field->TextView()->SetMaxBytes(255);
-      field->SetExplicitMinSize(BSize(180, B_SIZE_UNSET));
+      if (!compact)
+        field->SetExplicitMinSize(BSize(180, B_SIZE_UNSET));
     }
     extension->SetToolTip(
         "File extension, case-insensitive, e.g. pdf or tar.gz. Not MIME or wildcards.");
@@ -280,9 +356,19 @@ public:
                     "Select a result to see its full original path.");
     start = new BButton("start search", "Search", new BMessage(kStart));
     stop = new BButton("stop search", "Stop", new BMessage(kStop));
-    show = new BButton("show original", "Show original in panel",
+    show = new BButton("show original",
+                       compact ? "Show original" : "Show original in panel",
                        new BMessage(kShow));
     results = new Results;
+    orderMenu = new BPopUpMenu("result order");
+    const char *orders[] = {"As found", "Name ↑", "Name ↓", "Folder ↑", "Folder ↓"};
+    for (int32 i = 0; i < 5; ++i) {
+      auto message = new BMessage(kOrder);
+      message->AddInt32("order", i);
+      orderMenu->AddItem(new BMenuItem(orders[i], message));
+    }
+    orderMenu->ItemAt(0)->SetMarked(true);
+    auto orderField = new BMenuField("result order", "Sort:", orderMenu);
     savedMenu = new BPopUpMenu("saved searches");
     savedField = new BMenuField("saved searches", "Saved:", savedMenu);
     savedField->SetExplicitMinSize(BSize(130, B_SIZE_UNSET));
@@ -292,66 +378,159 @@ public:
     name->SetModificationMessage(new BMessage(kName));
     save = new BButton("save search", "Save", new BMessage(kSave));
     forget = new BButton("forget search", "Forget", new BMessage(kForget));
-    BLayoutBuilder::Group<>(this, B_VERTICAL, 8)
-        .SetInsets(10)
-        .AddGroup(B_HORIZONTAL, 8)
-        .Add(savedField)
-        .Add(name)
-        .Add(save)
-        .Add(forget)
-        .End()
-        .Add(root)
-        .Add(expression)
-        .Add(Line(
-            "file filters hint",
-            "Optional file filters (regular files only): sizes in B / KiB / MiB / GiB; dates YYYY-MM-DD, local time."))
-        .AddGroup(B_HORIZONTAL, 8)
-        .Add(extension)
-        .Add(minimum)
-        .Add(maximum)
-        .End()
-        .AddGroup(B_HORIZONTAL, 8)
-        .Add(fromDate)
-        .Add(throughDate)
-        .Add(createdDate)
-        .Add(clearFilters)
-        .End()
-        .AddGroup(B_HORIZONTAL, 8)
-        .Add(predicate)
-        .Add(trash)
-        .Add(live)
-        .AddGlue()
-        .Add(start)
-        .Add(stop)
-        .End()
-        .Add(hint)
-        .Add(scope)
-        .Add(results)
-        .Add(selected)
-        .AddGroup(B_HORIZONTAL, 8)
-        .Add(status)
-        .Add(show)
-        .End();
-    results->SetTarget(this);
-    for (auto field :
-         {root, expression, extension, minimum, maximum, fromDate, throughDate})
-      field->TextView()->AddFilter(
-          new Listi::ExplicitSubmit(BMessenger(this), BMessage(kStart)));
-    AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(kStop));
-    AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
-    worker = NewSearchWorker(BMessenger(this), generation, failedSerial);
-    workerReady = worker->Run() >= 0;
+    if (compact)
+      BuildCompactLayout(orderField);
+    else {
+      BLayoutBuilder::Group<>(this, B_VERTICAL, 8)
+          .SetInsets(10)
+          .AddGroup(B_HORIZONTAL, 8)
+          .Add(savedField)
+          .Add(name)
+          .Add(save)
+          .Add(forget)
+          .End()
+          .Add(root)
+          .Add(expression)
+          .Add(Line(
+              "file filters hint",
+              "Optional file filters (regular files only): sizes in B / KiB / MiB / GiB; dates YYYY-MM-DD, local time."))
+          .AddGroup(B_HORIZONTAL, 8)
+          .Add(extension)
+          .Add(minimum)
+          .Add(maximum)
+          .End()
+          .AddGroup(B_HORIZONTAL, 8)
+          .Add(fromDate)
+          .Add(throughDate)
+          .Add(createdDate)
+          .Add(clearFilters)
+          .End()
+          .AddGroup(B_HORIZONTAL, 8)
+          .Add(predicate)
+          .Add(trash)
+          .Add(live)
+          .Add(orderField)
+          .AddGlue()
+          .Add(start)
+          .Add(stop)
+          .End()
+          .Add(hint)
+          .Add(scope)
+          .Add(results)
+          .Add(selected)
+          .AddGroup(B_HORIZONTAL, 8)
+          .Add(status)
+          .Add(show)
+          .End();
+    }
     Store(store);
     Busy(false);
     show->SetEnabled(false);
     Colors();
-    expression->MakeFocus();
   }
-  ~SearchWindow() {
+
+  void BuildCompactLayout(BMenuField *orderField) {
+    // Keep the everyday name search short. Criteria and saved searches use
+    // the same controls and worker as the standalone form, on demand.
+    sectionMenu = new BPopUpMenu("search section");
+    const char *labels[] = {"Results", "File filters", "Saved searches"};
+    for (int32 i = 0; i < 3; ++i) {
+      auto pick = new BMessage(kSection);
+      pick->AddInt32("section", i);
+      sectionMenu->AddItem(new BMenuItem(labels[i], pick));
+      sections[i] = new BGroupView(B_VERTICAL, 4);
+    }
+    sectionMenu->ItemAt(0)->SetMarked(true);
+    auto sectionField = new BMenuField("search section", nullptr, sectionMenu);
+    sectionField->SetToolTip("Switch between results, file filters and saved searches");
+    BLayoutBuilder::Group<>(sections[0], B_VERTICAL, 4)
+        .Add(root)
+        .Add(expression)
+        .AddGroup(B_HORIZONTAL, 4)
+        .Add(start)
+        .Add(stop)
+        .AddGlue()
+        .Add(show)
+        .End()
+        .Add(results)
+        .Add(selected);
+    BLayoutBuilder::Group<>(sections[1], B_VERTICAL, 3)
+        .Add(extension)
+        .Add(minimum)
+        .Add(maximum)
+        .Add(fromDate)
+        .Add(throughDate)
+        .Add(createdDate)
+        .AddGroup(B_HORIZONTAL, 4)
+        .Add(predicate)
+        .Add(live)
+        .Add(trash)
+        .End()
+        .Add(clearFilters)
+        .Add(hint)
+        .AddGlue();
+    BLayoutBuilder::Group<>(sections[2], B_VERTICAL, 4)
+        .Add(savedField)
+        .Add(name)
+        .AddGroup(B_HORIZONTAL, 4)
+        .Add(save)
+        .Add(forget)
+        .End()
+        .AddGlue();
+    BLayoutBuilder::Group<>(this, B_VERTICAL, 4)
+        .SetInsets(4)
+        .AddGroup(B_HORIZONTAL, 4)
+        .Add(sectionField)
+        .Add(orderField)
+        .End()
+        .Add(sections[0])
+        .Add(sections[1])
+        .Add(sections[2])
+        .Add(scope)
+        .Add(status);
+    sections[1]->Hide();
+    sections[2]->Hide();
+  }
+
+  void SelectSection(int32 next) {
+    if (!sectionMenu || next < 0 || next > 2 || next == section)
+      return;
+    sections[section]->Hide();
+    section = next;
+    sections[section]->Show();
+    sectionMenu->ItemAt(section)->SetMarked(true);
+  }
+
+  void AllAttached() override {
+    BGroupView::AllAttached();
+    // Controls and asynchronous updates belong to this search, not the host
+    // window (which may contain a second independent search).
+    for (BControl *control : std::initializer_list<BControl *>{
+             root, expression, name, predicate, start, stop, show, save, forget,
+             clearFilters})
+      control->SetTarget(this);
+    savedMenu->SetTargetForItems(this);
+    if (sectionMenu)
+      sectionMenu->SetTargetForItems(this);
+    orderMenu->SetTargetForItems(this);
+    results->receiver = BMessenger(this);
+    results->SetTarget(this);
+    if (!initialized) {
+      for (auto field : {root, expression, extension, minimum, maximum, fromDate,
+                         throughDate})
+        field->TextView()->AddFilter(
+            new Listi::ExplicitSubmit(BMessenger(this), BMessage(kStart)));
+      worker = NewSearchWorker(BMessenger(this), generation, failedSerial);
+      workerReady = worker->Run() >= 0;
+      initialized = true;
+    }
+  }
+
+  ~SearchView() {
     generation->fetch_add(1);
     // Invalidate in-flight work before joining. A merely posted quit could
     // destroy the worker's BHandler after BApplication's token space is gone.
-    if (worker->Lock())
+    if (worker && worker->Lock())
       worker->Quit();
   }
   void MessageReceived(BMessage *m) override {
@@ -389,8 +568,10 @@ public:
       scope->SetText(pane == 0 ? "Show original uses the left panel."
                                : "Show original uses the right panel.");
       scope->SetToolTip(scope->Text());
-      PostMessage(kMode);
+      BMessenger(this).SendMessage(kMode);
       StoreControls();
+      SelectSection(0);
+      expression->MakeFocus();
       Status("Criteria loaded. Press Search to obtain current results.");
       break;
     }
@@ -401,6 +582,9 @@ public:
       if (m->what == kForget && (chosen.empty() || chosen != name->Text()))
         break;
       BMessage edit(kSearchEdit);
+      // The owner addresses embedded searches by view, standalone by window.
+      edit.AddMessenger("searchEditor", sectionMenu ? BMessenger(this)
+                                                  : BMessenger(Window()));
       edit.AddInt64("revision", storeRevision);
       edit.AddString("name", name->Text());
       edit.AddBool("remove", m->what == kForget);
@@ -426,8 +610,18 @@ public:
         Status("File filters cleared. Name or BFS formula is unchanged.");
       }
       break;
+    case kOrder:
+      results->Order(m->GetInt32("order", -1));
+      break;
+    case kSection:
+      SelectSection(m->GetInt32("section", -1));
+      break;
     case kSearch:
-      Activate();
+      SelectSection(0);
+      if (busy)
+        results->MakeFocus();
+      else
+        expression->MakeFocus();
       break;
     case kMode: {
       bool formula = predicate->Value() == B_CONTROL_ON;
@@ -449,6 +643,7 @@ public:
       BMessage request(kStart);
       if (!AddFilters(request))
         break;
+      SelectSection(0);
       ++serial;
       generation->store(serial);
       resultRevision = 0;
@@ -505,6 +700,8 @@ public:
     case kSearchBegin:
       if (!busy || m->GetInt64("serial", -1) != serial)
         break;
+      if (m->GetInt64("revision", -1) <= resultRevision)
+        break;
       resultRevision = m->GetInt64("revision", -1);
       initial = m->GetBool("initial", false);
       pending.clear();
@@ -512,14 +709,17 @@ public:
     case kHit: {
       if (!busy || m->GetInt64("serial", -1) != serial)
         break;
-      if (m->GetInt64("revision", -1) != resultRevision)
+      if (resultRevision == 0 || m->GetInt64("revision", -1) != resultRevision)
         break;
       BMessage item;
       for (int32 i = 0; m->FindMessage("hit", i, &item) == B_OK; ++i) {
         SearchHit hit{item.GetString("path", ""), item.GetInt64("device", -1),
                       item.GetInt64("node", -1)};
+        if (hit.path.empty() || hit.path[0] != '/' || hit.device < 0 ||
+            hit.node < 0)
+          continue;
         if (initial)
-          results->AddRow(new HitRow(hit));
+          results->Add(hit);
         else
           pending.push_back(hit);
       }
@@ -531,7 +731,7 @@ public:
     case kFinished: {
       if (!busy || m->GetInt64("serial", -1) != serial)
         break;
-      if (m->GetInt64("revision", -1) < resultRevision)
+      if (m->GetInt64("revision", -1) != resultRevision)
         break;
       bool updating = m->GetBool("live", false);
       if (!initial)
@@ -572,16 +772,53 @@ public:
       break;
     }
     case B_COLORS_UPDATED:
-      BWindow::MessageReceived(m);
+      BGroupView::MessageReceived(m);
       Colors();
       break;
     default:
-      BWindow::MessageReceived(m);
+      BGroupView::MessageReceived(m);
       break;
     }
   }
 };
+
+class SearchWindow : public BWindow {
+  SearchView *content;
+public:
+  SearchWindow(BMessenger target, int32 which, const char *path,
+               const BMessage &store)
+      : BWindow(BRect(90, 90, 1000, 720), "Listi: Find files", B_TITLED_WINDOW,
+                B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS) {
+    content = new SearchView(target, which, path, store, false);
+    BLayoutBuilder::Group<>(this, B_VERTICAL, 0).Add(content);
+    AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(kStop));
+    AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
+    BMessenger(content).SendMessage(kSearch);
+  }
+
+  void MessageReceived(BMessage *message) override {
+    // Preserve the window messenger contract for callers outside Smiðja.
+    switch (message->what) {
+    case kSearch:
+      Activate();
+      // fall through
+    case kSearchStore:
+    case kStart:
+    case kStop:
+      content->MessageReceived(message);
+      break;
+    default:
+      BWindow::MessageReceived(message);
+    }
+  }
+};
+} // namespace
+
+BView *CreatePanelSearch(BMessenger owner, int32 pane, const char *root,
+                         const BMessage &store) {
+  return new SearchView(owner, pane, root, store, true);
 }
+
 BMessenger OpenFileSearch(BMessenger owner, int32 pane, const char *root,
                           const BMessage &store) {
   auto window = new SearchWindow(owner, pane, root, store);
