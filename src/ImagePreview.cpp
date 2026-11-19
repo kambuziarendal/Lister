@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "ImagePreview.h"
 #include "BitmapMailbox.h"
+#include "Common.h"
+#include <Window.h>
 #include "InspectorContent.h"
 #include "InspectorDocument.h"
 #include "InspectorEditor.h"
@@ -390,6 +392,9 @@ ImagePreview::ImagePreview(bool standalone)
   photoActions->SetToolTip("Image size, zoom and camera details. Scroll to zoom; drag to pan.");
   next = addButton("Next", kNext);
   play = addButton("Play preview", kPlay);
+  closeQuickView = addButton("×", kCloseQuickView);
+  closeQuickView->SetName("close quick view");
+  closeQuickView->SetToolTip("Close Quick view (Esc)");
 }
 ImagePreview::~ImagePreview() {
   generation->store(-1);
@@ -399,6 +404,7 @@ ImagePreview::~ImagePreview() {
   delete bitmap;
 }
 void ImagePreview::AttachedToWindow() {
+  closeQuickView->SetTarget(Window());
   fileAction->SetTarget(this);
   StartWatching(BMessenger(be_app), 'isav');
   previous->SetTarget(this);
@@ -688,9 +694,22 @@ void ImagePreview::MouseUp(BPoint where) {
   BView::MouseUp(where);
 }
 
+void ImagePreview::SetQuickViewCloseVisible(bool visible) {
+  if (visible == !closeQuickView->IsHidden(closeQuickView))
+    return;
+  if (visible)
+    closeQuickView->Show();
+  else
+    closeQuickView->Hide();
+  FrameResized(Bounds().Width(), Bounds().Height());
+}
+
 void ImagePreview::FrameResized(float width, float height) {
-  photoActions->MoveTo(std::max(0.f, width - photoActions->Bounds().Width() - 8), 3);
-  fileAction->MoveTo(std::max(0.f, width - fileAction->Bounds().Width() - 8), 3);
+  const float closeLeft = width - closeQuickView->Bounds().Width() - 5;
+  closeQuickView->MoveTo(std::max(0.f, closeLeft), 3);
+  const float actionsRight = closeQuickView->IsHidden(closeQuickView) ? width : closeLeft;
+  photoActions->MoveTo(std::max(0.f, actionsRight - photoActions->Bounds().Width() - 8), 3);
+  fileAction->MoveTo(std::max(0.f, actionsRight - fileAction->Bounds().Width() - 8), 3);
   textScroll->MoveTo(8, 35);
   textScroll->ResizeTo(std::max(32.f, width - 16), std::max(32.f, height - 70));
   text->SetTextRect(text->Bounds().OffsetToCopy(0, 0).InsetByCopy(4, 3));
@@ -702,7 +721,13 @@ void ImagePreview::FrameResized(float width, float height) {
 }
 void ImagePreview::Draw(BRect) {
   SetHighUIColor(B_DOCUMENT_TEXT_COLOR);
-  DrawString("Inspector", BPoint(12, 22));
+  BString title(closeQuickView->IsHidden(closeQuickView) ? "Inspector" : "Quick view");
+  float right = Bounds().right;
+  for (auto button : {photoActions, fileAction, closeQuickView})
+    if (!button->IsHidden(button))
+      right = std::min(right, button->Frame().left);
+  TruncateString(&title, B_TRUNCATE_END, std::max(0.f, right - 16));
+  DrawString(title, BPoint(12, 22));
   BRect area = Bounds().InsetByCopy(12, 12);
   area.top += 22;
   area.bottom = previous->IsHidden(previous) && play->IsHidden(play)

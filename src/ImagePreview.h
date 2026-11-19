@@ -24,6 +24,7 @@ public:
   void MouseDown(BPoint) override;
   void MouseMoved(BPoint, uint32, const BMessage *) override;
   void MouseUp(BPoint) override;
+  void SetQuickViewCloseVisible(bool visible);
   void ShowFile(const std::string &);
 
 private:
@@ -45,7 +46,7 @@ private:
   ThemeTextView *text;
   BScrollView *textScroll;
   BButton *previous, *next, *play;
-  BButton *fileAction;
+  BButton *fileAction, *closeQuickView;
   bool ready = false, canEdit = false;
   Inspector::Kind kind = Inspector::Kind::Unknown;
   const bool standalone;
