@@ -5,7 +5,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace Listi::ArchiveJobChecks {
+namespace Listi {
+struct Job;
+namespace ArchiveJobChecks {
+std::string LocalSource(const std::string &path);
+void VerifyArchiveSets(const Job &);
+void Guards(const Job &);
+std::string MemberPath(const std::string &path);
+
 inline void Require(bool ok, const std::string &message) {
   if (!ok)
     throw std::runtime_error(message);
@@ -25,5 +32,6 @@ inline bool Unchanged(const struct stat &a, const struct stat &b) {
          a.st_mtim.tv_nsec == b.st_mtim.tv_nsec &&
          a.st_ctim.tv_sec == b.st_ctim.tv_sec &&
          a.st_ctim.tv_nsec == b.st_ctim.tv_nsec;
+}
 }
 }
