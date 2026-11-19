@@ -110,6 +110,22 @@ int main() {
             sidebarReload.RestoreSidebar(0) == SidebarMode::ShortcutsAndTree &&
             sidebarReload.Sidebar(1) == SidebarMode::Shelf,
         "Askr persists its own independent sidebar choices and restore mode");
+  sidebarReload.SetSidebar(0, SidebarMode::RecentFolders);
+  sidebarReload.SetSidebar(0, SidebarMode::Hidden);
+  sidebarReload.SetSidebar(Workspace::smidja, 1, SidebarMode::RecentFolders);
+  sidebarReload.profiles.Add("Recent", sidebarReload.CaptureLayout());
+  Preferences recentReload;
+  recentReload.Load(sidebarReload.Save());
+  const auto *recentProfile = recentReload.profiles.Find("Recent");
+  check(recentReload.Sidebar(0) == SidebarMode::Hidden &&
+            recentReload.RestoreSidebar(0) == SidebarMode::RecentFolders &&
+            recentReload.Sidebar(1) == SidebarMode::Shelf && recentProfile &&
+            recentProfile->layout.RestoreSidebar(0) == SidebarMode::RecentFolders,
+        "Recent folders is restored when a hidden Askr sidebar is reopened");
+  recentReload.workspace = Workspace::smidja;
+  check(recentReload.Sidebar(1) == SidebarMode::RecentFolders &&
+            recentReload.RestoreSidebar(0) == SidebarMode::Shelf,
+        "Smiðja keeps Recent folders independent of the other pane and Askr");
   restored.ResetLayout();
   check(restored.workspace == Workspace::tviskipt && restored.buttons &&
             !restored.command && !restored.bankTop && !restored.commandTop &&

@@ -23,7 +23,7 @@ class BListView;
 class BMenuField;
 class BMenu;
 class BMenuItem;
-class FavoriteList;
+class DestinationList;
 namespace Listi { class Shelf; }
 class BMessageRunner;
 class Pane : public BView {
@@ -91,7 +91,7 @@ private:
   MillerColumns *columns;
   FolderTree *tree;
   BCardView *sidebar;
-  FavoriteList *favorites;
+  DestinationList *favorites, *recentFolders;
   BScrollView *favoriteScroll;
   BListView *shelfList;
   std::shared_ptr<Listi::Shelf> shelf;
@@ -123,6 +123,7 @@ private:
   void StartNavigation(const std::string &, int target = -1,
                        bool trash = false);
   void UpdateNavigation();
+  void RefreshRecentFolders();
   BTextControl *filter;
   BButton *clearFilter;
   BStringView *status;

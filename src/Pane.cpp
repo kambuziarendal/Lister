@@ -65,9 +65,9 @@ public:
     return B_DISPATCH_MESSAGE;
   }
 };
-constexpr uint32 kRememberView = 'grem', kForgetView = 'gfor',
-                 kExpireProgress = 'expr', kToggleTree = 'ttre',
+constexpr uint32 kExpireProgress = 'expr', kToggleTree = 'ttre',
                  kSidebarMode = 'psbr', kFavoriteNavigate = 'fnav',
+                 kRecentNavigate = 'rnav',
                  kRemoveShortcut = 'prms', kRemoveShelfEntry = 'sfre',
                  kSidebarShelfDrop = 'sfsd',
                  kActivityFrame = 'actf', kCheckScanDelivery = 'scdl',
@@ -168,11 +168,11 @@ private:
 };
 } // namespace
 
-class FavoriteList : public BListView {
+class DestinationList : public BListView {
 public:
-  explicit FavoriteList(Pane *owner)
-      : BListView("favorite destinations"), pane(owner) {}
-  ~FavoriteList() override { Clear(); }
+  DestinationList(Pane *owner, const char *name, uint32 navigateMessage)
+      : BListView(name), pane(owner), navigateMessage(navigateMessage) {}
+  ~DestinationList() override { Clear(); }
 
   void Clear() {
     ClearSidebarItems(*this);
@@ -198,14 +198,23 @@ public:
       BListView::KeyDown(bytes, length);
   }
 
+  bool GetToolTipAt(BPoint point, BToolTip **tip) override {
+    if (navigateMessage == kRecentNavigate) {
+      auto item = dynamic_cast<SidebarItem *>(ItemAt(IndexOf(point)));
+      SetToolTip(item ? item->path.c_str() : nullptr);
+    }
+    return BListView::GetToolTipAt(point, tip);
+  }
+
 private:
   Pane *pane;
+  uint32 navigateMessage;
 
   void OpenSelection() {
     auto item = dynamic_cast<SidebarItem *>(ItemAt(CurrentSelection()));
     if (!item)
       return;
-    BMessage open(kFavoriteNavigate);
+    BMessage open(navigateMessage);
     open.AddString("path", item->path.c_str());
     Window()->PostMessage(&open, pane);
   }
@@ -321,7 +330,8 @@ Pane::Pane(int32 number, const Preferences &p, std::shared_ptr<Listi::Shelf> sha
   sidebar->SetExplicitMinSize(BSize(110, 96));
   sidebar->SetExplicitPreferredSize(BSize(170, 300));
   tree = new FolderTree(this);
-  favorites = new FavoriteList(this);
+  favorites =
+      new DestinationList(this, "favorite destinations", kFavoriteNavigate);
   favoriteScroll =
       new BScrollView("favorite destinations scroll", favorites, 0, false, true);
   favoriteScroll->SetExplicitMinSize(BSize(0, 32));
@@ -334,6 +344,10 @@ Pane::Pane(int32 number, const Preferences &p, std::shared_ptr<Listi::Shelf> sha
   auto shelfScroll =
       new BScrollView("sidebar shelf scroll", shelfList, 0, false, true);
   sidebar->AddChild(shelfScroll);
+  recentFolders = new DestinationList(this, "recent folders", kRecentNavigate);
+  auto recentScroll =
+      new BScrollView("recent folders scroll", recentFolders, 0, false, true);
+  sidebar->AddChild(recentScroll);
   InstallSidebarInput(this, sidebar);
   sidebar->CardLayout()->SetVisibleItem(0);
   UpdatePlaces();
@@ -544,6 +558,8 @@ void Pane::ToggleTreeFocus() {
     favorites->MakeFocus();
   else if (visibleSidebar == SidebarMode::Shelf)
     shelfList->MakeFocus();
+  else if (visibleSidebar == SidebarMode::RecentFolders)
+    recentFolders->MakeFocus();
 }
 void Pane::FocusFilter() {
   if (einn)
@@ -754,7 +770,12 @@ void Pane::UpdateSidebar() {
         showFavorites ? favoriteScroll->Show() : favoriteScroll->Hide();
       if (showTree == tree->IsHidden(tree))
         showTree ? tree->Show() : tree->Hide();
-      sidebar->CardLayout()->SetVisibleItem(wanted == SidebarMode::Shelf ? 1 : 0);
+      int32 card = 0;
+      if (wanted == SidebarMode::Shelf)
+        card = 1;
+      else if (wanted == SidebarMode::RecentFolders)
+        card = 2;
+      sidebar->CardLayout()->SetVisibleItem(card);
       if (visibleSidebar == SidebarMode::Hidden)
         sidebar->Show();
     }
@@ -762,6 +783,7 @@ void Pane::UpdateSidebar() {
     if (SidebarHasTree(visibleSidebar))
       tree->ShowPath(path.String());
     RefreshShelf();
+    RefreshRecentFolders();
   }
   UpdateSidebarMenu();
 }
@@ -865,6 +887,25 @@ void Pane::UpdatePlaces() {
 void Pane::UpdateNavigation() {
   back->SetEnabled(history.Back() >= 0);
   forward->SetEnabled(history.Forward() >= 0);
+}
+void Pane::RefreshRecentFolders() {
+  if (visibleSidebar != SidebarMode::RecentFolders)
+    return;
+  recentFolders->Clear();
+  for (const auto &folder : history.RecentFolders()) {
+    auto label = Listi::LocationLeaf(folder);
+    if (label.empty())
+      label = folder;
+    recentFolders->AddItem(new SidebarItem(label.c_str(), folder));
+    if (locationValid && path == folder.c_str())
+      recentFolders->Select(recentFolders->CountItems() - 1);
+  }
+  if (recentFolders->CountItems() == 0) {
+    auto empty = new BStringItem("No recent folders");
+    empty->SetEnabled(false);
+    recentFolders->AddItem(empty);
+  }
+  recentFolders->ScrollTo(0, 0);
 }
 void Pane::StartNavigation(const std::string &request, int target, bool trash) {
   stop_watching(this);
@@ -1197,6 +1238,18 @@ void Pane::MessageReceived(BMessage *m) {
       Navigate(destination);
     break;
   }
+  case kRecentNavigate: {
+    if (visibleSidebar != SidebarMode::RecentFolders)
+      break;
+    const char *destination = m->GetString("path", "");
+    const auto &recent = history.RecentFolders();
+    if (std::find(recent.begin(), recent.end(), destination) == recent.end())
+      break;
+    Activate();
+    if (path != destination || !locationValid)
+      Navigate(destination);
+    break;
+  }
   case kShowAttributeColumn:
   case kClearAttributeColumns: {
     std::string name = m->GetString("attribute", "");
@@ -1485,6 +1538,7 @@ void Pane::MessageReceived(BMessage *m) {
     UpdatePlaces();
     history.Complete(serial, path.String(), locationValid);
     UpdateNavigation();
+    RefreshRecentFolders();
     SetDisplayMode(LocationMode());
     edit->SetText(path);
     if (SidebarHasTree(visibleSidebar))

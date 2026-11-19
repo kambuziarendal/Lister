@@ -51,16 +51,17 @@ inline const char *ViewModeLabel(int32 mode) {
   return mode >= 0 && mode < ViewModeCount ? labels[mode] : "Details";
 }
 
-// The first three values retain the existing meanings.
+// Persisted sidebar mode IDs. Append new modes without reordering.
 enum class SidebarMode : int32 {
-  Hidden = 0, FolderTree = 1, Favorites = 2, ShortcutsAndTree = 3, Shelf = 4
+  Hidden = 0, FolderTree = 1, Favorites = 2, ShortcutsAndTree = 3, Shelf = 4,
+  RecentFolders = 5
 };
 constexpr SidebarMode SidebarModes[] = {
     SidebarMode::Hidden, SidebarMode::FolderTree, SidebarMode::Favorites,
-    SidebarMode::ShortcutsAndTree, SidebarMode::Shelf};
+    SidebarMode::ShortcutsAndTree, SidebarMode::Shelf, SidebarMode::RecentFolders};
 inline bool IsVisibleSidebar(int32 mode) {
   return mode >= static_cast<int32>(SidebarMode::FolderTree) &&
-         mode <= static_cast<int32>(SidebarMode::Shelf);
+         mode <= static_cast<int32>(SidebarMode::RecentFolders);
 }
 inline bool SidebarHasTree(SidebarMode mode) {
   return mode == SidebarMode::FolderTree || mode == SidebarMode::ShortcutsAndTree;
@@ -75,6 +76,8 @@ inline const char *SidebarModeLabel(SidebarMode mode) {
     return "Shortcuts above tree";
   case SidebarMode::Shelf:
     return "Shelf";
+  case SidebarMode::RecentFolders:
+    return "Recent folders";
   default:
     return "Hidden";
   }

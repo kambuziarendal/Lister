@@ -102,6 +102,13 @@ int main() {
     auto sidebar = Control<BMenuField>(window, "Smiðja first sidebar:");
     sidebar->Menu()->ItemAt(static_cast<int32>(SidebarMode::Favorites))
         ->SetMarked(true);
+    auto secondSidebar = Control<BMenuField>(window, "Smiðja second sidebar:");
+    auto recent = secondSidebar->Menu()->ItemAt(
+        static_cast<int32>(SidebarMode::RecentFolders));
+    Check(recent && !strcmp(recent->Label(), "Recent folders"),
+          "Smiðja sidebar options include Recent folders");
+    if (recent)
+      recent->SetMarked(true);
     tabs->Select(2);
     Control<BTextControl>(window, "profile name")->SetText("Small screen");
     BMessage add(*Control<BButton>(window, "create profile")->Message());
@@ -148,7 +155,8 @@ int main() {
   Check(profile && profile->layout.adaptive &&
             layout.smidjaSidebar[0] == SidebarMode::Favorites &&
             profile->layout.smidjaSidebar[0] == SidebarMode::Favorites &&
-            profile->layout.smidjaSidebar[1] == SidebarMode::FolderTree &&
+            layout.smidjaSidebar[1] == SidebarMode::RecentFolders &&
+            profile->layout.smidjaSidebar[1] == SidebarMode::RecentFolders &&
             profile->layout.actionButtons == layout.actionButtons,
         "named snapshot captures controls edited before creation");
   return failures ? 1 : 0;

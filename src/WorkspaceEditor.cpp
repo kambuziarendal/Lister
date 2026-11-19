@@ -339,7 +339,8 @@ class WorkspaceEditor : public BWindow {
                                  SidebarModeLabel(SidebarMode::FolderTree),
                                  SidebarModeLabel(SidebarMode::Favorites),
                                  SidebarModeLabel(SidebarMode::ShortcutsAndTree),
-                                 SidebarModeLabel(SidebarMode::Shelf)};
+                                 SidebarModeLabel(SidebarMode::Shelf),
+                                 SidebarModeLabel(SidebarMode::RecentFolders)};
     leftSidebar = Choice("Smiðja first sidebar:", sidebarChoices);
     rightSidebar = Choice("Smiðja second sidebar:", sidebarChoices);
     adaptive =
