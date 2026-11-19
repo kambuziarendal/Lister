@@ -273,7 +273,7 @@ int main() {
     return Inspect(search, [&](BWindow &window) {
       auto field = dynamic_cast<BMenuField *>(window.FindView("result order"));
       auto item = field ? field->Menu()->ItemAt(order) : nullptr;
-      return item && item->Invoke() == B_OK;
+      return item && static_cast<BInvoker *>(item)->Invoke() == B_OK;
     });
   };
   auto resultName = [](BRow *row) {
