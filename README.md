@@ -8,13 +8,13 @@ Listi is a native Haiku file manager. Browse a single folder, compare two panels
 
 ## Install
 
-Download the **[0.36.1-3 test candidate for Haiku x86_64](https://github.com/kambuziarendal/listi/releases/tag/v0.36.1-3)**. Open the HPKG in HaikuDepot, or install it from the download folder:
+Download the **[0.37.0-1 alpha test candidate for Haiku x86_64](https://github.com/kambuziarendal/listi/releases/tag/v0.37.0-1)**. Open the HPKG in HaikuDepot, or install it from the download folder:
 
 ```sh
-pkgman install ./Listi-0.36.1-3-x86_64.hpkg
+pkgman install ./Listi-0.37.0-1-x86_64.hpkg
 ```
 
-This is a prerelease tested on Haiku R1/beta6 in a virtual machine. Try it on copies of your files. To transfer files between disks, use **Copy**, remount the destination and check the copy before removing the original. Unplugging a disk during a write can leave the job waiting even after you click Cancel.
+This is alpha software. See the release notes for what was tested, and try it on copies of your files. To transfer files between disks, use **Copy**, remount the destination and check the copy before removing the original. Unplugging a disk during a write can leave the job waiting even after you click Cancel.
 
 ## Basic workflow
 

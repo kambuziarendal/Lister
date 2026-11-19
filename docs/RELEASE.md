@@ -1,6 +1,6 @@
 # Qualifying a Haiku x86_64 package
 
-For the current candidate, see the [0.36.1-3 package results](VERIFICATION.md#0361-3-package-results). The procedure below is for qualifying another build.
+See the [0.37.0-1 alpha candidate notes](https://github.com/kambuziarendal/listi/releases/tag/v0.37.0-1) for results specific to that package. The procedure below is for qualifying a build.
 
 1. Choose the exact commit to qualify. Use a clean release checkout on Haiku;
    save `git rev-parse HEAD` and check `git status --porcelain` is empty.

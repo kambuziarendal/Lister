@@ -977,7 +977,7 @@ public:
   MainWindow(const Preferences &p, BMessenger svc,
              const Listi::SavedPlaces &saved, bool writable,
              const Listi::SavedSearches &queries, bool queriesWritable)
-      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.36.1", B_TITLED_WINDOW,
+      : BWindow(BRect(70, 70, 1170, 710), "Listi 0.37.0", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), searches(queries), searchesWritable(queriesWritable),
         places(saved), placesWritable(writable), service(svc) {

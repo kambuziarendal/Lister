@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.37.0-1 alpha test candidate](https://github.com/kambuziarendal/listi/releases/tag/v0.37.0-1)
+
+- **Open with** can open a local file once or set Haiku's default application
+  for its file type. A file's own preferred application still takes precedence.
+- Each file panel has its own CLI session. Move a running session between the
+  shared dock and its own window without restarting it. Show or hide function
+  buttons from **View**, including in Smiðja.
+- Choose a sidebar per panel with folder shortcuts, a tree, Shelf or **Recent
+  folders**. Add shortcuts from the file list or tree; recent folders are kept
+  per panel for the current session.
+- Type the beginning of a name to select it in list, icon or Miller views.
+  Context menus offer preview, folder views and selection commands, and search
+  results can jump to the original file.
+- Close Quick view with **×** or **Esc** to return focus to the file list.
+
+This is an alpha, not a beta. A copy can still wait on the device after
+cancellation is requested if a disk is unplugged during a write.
+
 ## [0.36.1-3 test candidate](https://github.com/kambuziarendal/listi/releases/tag/v0.36.1-3)
 
 - In Smiðja, switching a file panel to Search no longer leaves a hidden
