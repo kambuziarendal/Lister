@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased (0.35.0 source)
+## Unreleased: 0.35.0 development candidate
 
-These changes are not in the downloadable 0.32.1 alpha.
+The candidate package is `Listi-0.35.0-1-x86_64.hpkg`. It is not a public
+release. The downloadable alpha remains [0.32.1](#0321-alpha).
 
 - Quick view follows the active selection across workspaces. The inspector adds
   local photo controls, optional camera details and explicit short media previews.
@@ -18,6 +19,23 @@ These changes are not in the downloadable 0.32.1 alpha.
   can start drawing before the next regular batch is ready.
 - Partial and interrupted jobs no longer display full progress as if they
   completed successfully.
+- Find files restores its controls if the worker cannot deliver its result.
+  A damaged recovery journal no longer hides other recoverable archive edits.
+- Editing an encrypted archive keeps its protection even if the cached password
+  has expired. Ordinary ZIP creation does not require AES support.
+
+### Known limits
+
+- Cancelling a job does not undo completed work. After an interruption, compare
+  source and destination before retrying. A hidden staging file is not a backup.
+  Local copies refuse empty typed BFS attributes rather than dropping them.
+- Avoid renaming or replacing the same entries in another application during a
+  move or rename. Haiku cannot atomically check identity and rename in one step.
+- Settings writes preserve the previous file on reported write, file-sync,
+  close or rename failures. This is not a guarantee against sudden power loss.
+- Large remote folders may still take time to show their first entries.
+  Archive support depends on installed engines. See the [workflow guide](docs/GUIDE.md)
+  and [verification limits](docs/VERIFICATION.md#verification-limits).
 
 ## [0.32.1 alpha](https://github.com/kambuziarendal/listi/releases/tag/v0.32.1)
 
