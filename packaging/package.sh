@@ -3,7 +3,9 @@ set -eu
 [ "$(uname -s)" = Haiku ] || { echo 'Build and package inside Haiku.' >&2; exit 1; }
 version=${1:?version required}
 metadata_version=$(awk '$1 == "version" { print $2 }' PackageInfo)
-[ "$metadata_version" = "$version-1" ] || { echo 'Package version mismatch.' >&2; exit 1; }
+revision=${metadata_version##*-}
+case "$revision" in ''|0*|*[!0-9]*) echo 'Invalid package revision.' >&2; exit 1 ;; esac
+[ "$metadata_version" = "$version-$revision" ] || { echo 'Package version mismatch.' >&2; exit 1; }
 set -- src/objects.*-release/Listi
 [ "$#" = 1 ] && [ -x "$1" ] || { echo 'Expected one linked release binary.' >&2; exit 1; }
 mkdir -p build dist
@@ -33,4 +35,4 @@ for base,dirs,files in os.walk(root,topdown=False):
  for name in files+dirs:os.utime(os.path.join(base,name),(stamp,stamp),follow_symlinks=False)
 os.utime(root,(stamp,stamp))
 PY
-package create -C "$stage" "dist/Listi-$version-1-x86_64.hpkg"
+package create -C "$stage" "dist/Listi-$metadata_version-x86_64.hpkg"

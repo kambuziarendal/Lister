@@ -4,7 +4,10 @@
 
 - Move refuses transfers between different local filesystem devices, including
   moves between a local archive and another volume. Use Copy and verify the
-  destination before removing the original. Same-volume moves remain available.
+  destination before removing the original. Same-volume moves remain available,
+  including valid Shelf items when a different selected item was replaced.
+- A local disk copy no longer confirms a cached result when its backing disk
+  has disappeared before publication.
 
 ## 0.36.0 (unreleased)
 

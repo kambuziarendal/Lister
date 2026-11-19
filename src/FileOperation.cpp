@@ -11,6 +11,7 @@
 #include <Directory.h>
 #include <Entry.h>
 #include <Node.h>
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -818,7 +819,13 @@ Result Run(const Job &j, const Hooks &h) {
   try {
     if (j.action == Action::Move) {
       Job move = j;
-      FreezeLocalJob(move, move.destination);
+      // A queued selection already carries its original identities. Guard()
+      // rejects a stale entry individually without cancelling its valid siblings.
+      const bool frozen = move.expectedDestination.device >= 0 &&
+          std::all_of(move.sources.begin(), move.sources.end(),
+                      [&](const std::string &path) { return move.expectedSources.count(path); });
+      if (!frozen)
+        FreezeLocalJob(move, move.destination);
       CheckMoveVolumes(move);
       r.Execute(move);
     } else
