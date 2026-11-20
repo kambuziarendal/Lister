@@ -2,7 +2,6 @@
 #pragma once
 
 #include "ClipboardTextFile.h"
-#include <functional>
 #include <set>
 
 class InlineAction;
@@ -16,7 +15,7 @@ constexpr uint32 kClipboardFileAccepted = 'ctac';
 // Owns frozen clipboard content and tracks the jobs that share a paste lease.
 class ClipboardFlow {
 public:
-  ClipboardFlow(InlineAction &, OperationQueue &, std::function<void()> hideBank);
+  ClipboardFlow(InlineAction &, OperationQueue &);
 
   void Begin(uint32 action, Pane &pane);
   std::optional<std::string> SaveFile(const std::string &name);
@@ -32,7 +31,6 @@ private:
 
   InlineAction &actionArea;
   OperationQueue &queue;
-  std::function<void()> hideBank;
   std::optional<ClipboardFile> pendingClipboardFile;
   ClipboardPaste clipboardPaste;
   bool archiveClipboardPending = false;

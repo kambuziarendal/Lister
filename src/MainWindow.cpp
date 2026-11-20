@@ -199,8 +199,6 @@ class MainWindow : public BWindow {
   }
   void AskInline(const char *text, const char *button, const BMessage &result,
                  const char *initial = nullptr) {
-    if (!actionArea->Pending())
-      ShowBank(false);
     if (!actionArea->Ask(text, button, result, initial))
       queue->ErrorInfo("Finish or cancel the open question first.");
   }
@@ -282,7 +280,6 @@ class MainWindow : public BWindow {
             "\nRelative: path from this folder. Absolute: full target path.";
       auto accepted = Listi::EncodeJob(job, kNamedEntryAccepted);
       accepted.AddString("newEntryIn", job.destination.c_str());
-      ShowBank(false);
       actionArea->Ask(text.c_str(), duplicate ? "Duplicate" : "Relative link",
                       accepted, job.entryName.c_str(),
                       duplicate ? nullptr : "Absolute link");
@@ -641,11 +638,10 @@ public:
     command->SetToolTip(
         "Runs a shell command in the active directory using Terminal.");
     queue = new OperationQueue(BMessenger(this));
-    actionArea = new InlineAction(BMessenger(this));
-    clipboard = std::make_unique<Listi::ClipboardFlow>(
-        *actionArea, *queue, [this] { ShowBank(false); });
+    actionArea = new InlineAction(BMessenger(this), [this] { ShowBank(false); });
+    clipboard = std::make_unique<Listi::ClipboardFlow>(*actionArea, *queue);
     fileDrop = std::make_unique<Listi::FileDropFlow>(
-        *actionArea, *queue, BMessenger(this), service, [this] { ShowBank(false); });
+        *actionArea, *queue, BMessenger(this), service);
     actionArea->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     actionArea->GroupLayout()->SetInsets(8, 6, 8, 6);
     actionArea->Hide();
@@ -1334,8 +1330,6 @@ public:
       break;
     }
     case kNetwork:
-      if (!actionArea->Pending())
-        ShowBank(false);
       if (!actionArea->Connect(BMessenger(panes[source])))
         queue->ErrorInfo("Finish or cancel the open question first.");
       break;

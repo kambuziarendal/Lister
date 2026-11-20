@@ -2,7 +2,6 @@
 #pragma once
 
 #include <Messenger.h>
-#include <functional>
 
 class InlineAction;
 class OperationQueue;
@@ -16,14 +15,13 @@ constexpr uint32 kDropAccepted = 'dacc', kImageDropConvert = 'dcvi';
 class FileDropFlow {
 public:
   FileDropFlow(InlineAction &, OperationQueue &, BMessenger owner,
-               BMessenger service, std::function<void()> hideBank);
+               BMessenger service);
   void Handle(const BMessage &message);
 
 private:
   InlineAction &actionArea;
   OperationQueue &queue;
   BMessenger owner, service;
-  std::function<void()> hideBank;
   int64 serial = 0;
 };
 

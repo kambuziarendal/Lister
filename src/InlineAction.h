@@ -3,6 +3,7 @@
 #include <GroupView.h>
 #include <Message.h>
 #include <Messenger.h>
+#include <functional>
 #include <string>
 #include <vector>
 class BTextControl;
@@ -12,7 +13,7 @@ constexpr uint32 kInlineClosed = 'icls';
 // Owns one frozen question. New requests cannot replace a pending decision.
 class InlineAction : public BGroupView {
 public:
-  explicit InlineAction(BMessenger target);
+  explicit InlineAction(BMessenger target, std::function<void()> beforeOpen = {});
   bool Pending() const { return pending; }
   bool Ask(const char *text, const char *button, const BMessage &result,
            const char *initial = nullptr, const char *alternative = nullptr,
@@ -24,6 +25,7 @@ public:
 
 private:
   BMessenger target;
+  std::function<void()> beforeOpen;
   BMessage result;
   BTextControl *name = nullptr;
   BStringView *nameHint = nullptr;

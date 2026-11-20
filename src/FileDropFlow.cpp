@@ -13,23 +13,14 @@
 #include "TransferCommand.h"
 #include "VirtualFile.h"
 #include <stdexcept>
-#include <utility>
 
 namespace Listi {
 
 FileDropFlow::FileDropFlow(InlineAction &actionArea, OperationQueue &queue,
-                           BMessenger owner, BMessenger service,
-                           std::function<void()> hideBank)
-    : actionArea(actionArea), queue(queue), owner(owner), service(service),
-      hideBank(std::move(hideBank)) {}
+                           BMessenger owner, BMessenger service)
+    : actionArea(actionArea), queue(queue), owner(owner), service(service) {}
 
 void FileDropFlow::Handle(const BMessage &message) {
-  auto ask = [&](const char *text, const char *button, const BMessage &accepted) {
-    if (!actionArea.Pending())
-      hideBank();
-    if (!actionArea.Ask(text, button, accepted))
-      queue.ErrorInfo("Finish or cancel the open question first.");
-  };
   switch (message.what) {
   case kDrop: {
     if (actionArea.Pending()) {
@@ -43,7 +34,7 @@ void FileDropFlow::Handle(const BMessage &message) {
           PrepareFileDrop(message, message.GetString("destination", ""), true);
       if (job.action == Action::EditArchive) {
         auto prompt = ArchiveActions::ConfirmAddition(job, {});
-        ask(prompt.text.String(), prompt.button, prompt.accepted);
+        actionArea.Ask(prompt.text.String(), prompt.button, prompt.accepted);
         break;
       }
       const bool canConvert = CanProbeImageDrop(job);
@@ -55,7 +46,8 @@ void FileDropFlow::Handle(const BMessage &message) {
           throw std::runtime_error(
               "Drop into a different folder, not the source folder.");
         accepted.AddBool("convertOnly", true);
-        ask("Convert an image in its current folder. The original is kept.",
+        actionArea.Ask(
+            "Convert an image in its current folder. The original is kept.",
             "Convert here", accepted);
         break;
       }
@@ -67,7 +59,6 @@ void FileDropFlow::Handle(const BMessage &message) {
           (!canMove
                ? "\nCopy only for network/archive transfers. Originals are kept."
                : "\nCopy keeps originals. Move removes originals after transfer.");
-      hideBank();
       actionArea.Ask(text.c_str(), "Copy here", accepted, nullptr,
                       canMove ? "Move here" : nullptr,
                       canConvert ? "Convert here" : nullptr);
@@ -129,7 +120,6 @@ void FileDropFlow::Handle(const BMessage &message) {
     std::string text = "Convert " + Leaf(job.sources.front()) +
                        " into:\n" + job.destination +
                        "\nThe original and existing files are kept.";
-    hideBank();
     actionArea.Ask(text.c_str(), "Convert", accepted, nullptr, nullptr,
                     nullptr, labels);
     break;

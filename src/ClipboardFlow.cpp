@@ -11,9 +11,8 @@
 
 namespace Listi {
 
-ClipboardFlow::ClipboardFlow(InlineAction &actionArea, OperationQueue &queue,
-                             std::function<void()> hideBank)
-    : actionArea(actionArea), queue(queue), hideBank(std::move(hideBank)) {}
+ClipboardFlow::ClipboardFlow(InlineAction &actionArea, OperationQueue &queue)
+    : actionArea(actionArea), queue(queue) {}
 
 void ClipboardFlow::AskToSaveFile(const char *folder, ClipboardContent content) {
   auto file = PrepareClipboardFile(folder, content);
@@ -23,7 +22,6 @@ void ClipboardFlow::AskToSaveFile(const char *folder, ClipboardContent content) 
                       file.folder;
   BMessage accepted(kClipboardFileAccepted);
   accepted.AddString("newEntryIn", file.folder.c_str());
-  hideBank();
   if (actionArea.Ask(prompt.c_str(), "Save", accepted,
                      file.suggestedName.c_str()))
     pendingClipboardFile = std::move(file);
@@ -90,10 +88,7 @@ void ClipboardFlow::Begin(uint32 action, Pane &pane) {
       archiveClipboardPending = !clipboardPaste.lease.empty();
       auto prompt = ArchiveActions::ConfirmAddition(clipboardPaste.jobs[0],
                                                    clipboardPaste.lease);
-      if (!actionArea.Pending())
-        hideBank();
-      if (!actionArea.Ask(prompt.text.String(), prompt.button, prompt.accepted))
-        queue.ErrorInfo("Finish or cancel the open question first.");
+      actionArea.Ask(prompt.text.String(), prompt.button, prompt.accepted);
       if (!archiveClipboardPending)
         clipboardPaste = {};
       return;

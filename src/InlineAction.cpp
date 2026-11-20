@@ -13,12 +13,14 @@
 #include <TextView.h>
 #include "ThemeTextView.h"
 #include <string>
+#include <utility>
 namespace {
 constexpr uint32 kAccept = 'iacc', kAlternate = 'ialt', kCancel = 'iccl',
                  kClosed = 'ican', kThird = 'i3rd';
 }
-InlineAction::InlineAction(BMessenger receiver)
-    : BGroupView(B_VERTICAL, 5), target(receiver) {}
+InlineAction::InlineAction(BMessenger receiver, std::function<void()> beforeOpen)
+    : BGroupView(B_VERTICAL, 5), target(receiver),
+      beforeOpen(std::move(beforeOpen)) {}
 BMessage InlineAction::Event(uint32 what) const {
   BMessage message(what);
   message.AddInt64("question", serial);
@@ -46,6 +48,8 @@ bool InlineAction::Ask(const char *text, const char *button,
                        const std::vector<std::string> &choices) {
   if (pending)
     return false;
+  if (beforeOpen)
+    beforeOpen();
   ++serial;
   result = accepted;
   auto explanation = new ThemeTextView("question", B_PANEL_BACKGROUND_COLOR,
@@ -115,6 +119,8 @@ bool InlineAction::Ask(const char *text, const char *button,
 bool InlineAction::Connect(BMessenger pane) {
   if (pending)
     return false;
+  if (beforeOpen)
+    beforeOpen();
   ++serial;
   AddChild(CreateConnectionView(pane, BMessenger(this), Event(kCancel)));
   pending = true;
