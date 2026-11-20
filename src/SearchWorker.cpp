@@ -109,14 +109,9 @@ public:
       events = 0;
       if (!Alive())
         return;
-      request = {};
-      request.root = m->GetString("root", "");
-      request.expression = m->GetString("expression", "");
-      request.predicate = m->GetBool("predicate", false);
-      request.includeTrash = m->GetBool("trash", false);
-      request.flat = m->GetBool("flat", false);
       try {
-        request.filters = ReadSearchFilters(*m);
+        request = SearchRequest::ReadCriteria(*m);
+        request.flat = m->GetBool("flat", false);
       } catch (const std::exception &e) {
         BMessage failed(kSearchDone);
         failed.AddString("error", e.what());

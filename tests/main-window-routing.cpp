@@ -18,6 +18,7 @@
 #include <Button.h>
 #include <GridView.h>
 #include <MenuBar.h>
+#include <MenuField.h>
 #include <MenuItem.h>
 #include <TextControl.h>
 #include <TextView.h>
@@ -421,6 +422,17 @@ int main() {
   // A delayed confirmation must use the folder where the question was opened.
   const auto elsewhere = sourcePath + "/elsewhere";
   assert(mkdir(elsewhere.c_str(), 0700) == 0);
+  Listi::SavedPlaces bookmarks;
+  bookmarks.Add("Original", sourcePath);
+  bookmarks.Add("Elsewhere", elsewhere);
+  pane->SetPlaces(bookmarks, true);
+  auto *go = dynamic_cast<BMenuField *>(pane->FindView("go"));
+  assert(go);
+  auto *firstPlace = go->Menu()->FindItem("Original");
+  auto *nextPlace = go->Menu()->FindItem("Elsewhere");
+  assert(firstPlace && firstPlace->IsMarked() && nextPlace && !nextPlace->IsMarked());
+  // A folder change updates selection without replacing the command object.
+  assert(firstPlace->Message()->AddBool("identity probe", true) == B_OK);
   send(kMkdir);
   auto *question = window->FindView("question");
   assert(question);
@@ -436,6 +448,11 @@ int main() {
   pane->Navigate(elsewhere.c_str());
   waitFor([&] { return !pane->IsScanning(); });
   assert(elsewhere == pane->Path());
+  firstPlace = go->Menu()->FindItem("Original");
+  nextPlace = go->Menu()->FindItem("Elsewhere");
+  assert(firstPlace && firstPlace->Message()->GetBool("identity probe", false));
+  assert(!firstPlace->IsMarked() && nextPlace && nextPlace->IsMarked());
+  assert(favorites->CurrentSelection() == 1);
   assert(confirm->Invoke() == B_OK);
   const auto created = sourcePath + "/New folder";
   waitFor([&] { return access(created.c_str(), F_OK) == 0; });

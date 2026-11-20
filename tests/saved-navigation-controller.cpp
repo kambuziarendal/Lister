@@ -80,6 +80,7 @@ int main() {
 
   BMessage searchReply(kSearchesSaved);
   searchReply.AddInt64("revision", 1);
+  searchReply.AddInt64("serial", saveSearch.GetInt64("serial", -1));
   assert(!state.FinishSearchSave(searchReply) && state.Saving());
   searchReply.ReplaceInt64("revision", 0);
   searchReply.AddString("error", "Store unavailable");
@@ -88,18 +89,48 @@ int main() {
   assert(!state.Saving() && state.SearchStore().GetInt64("revision", -1) == 0);
   assert(!SavedSearches::FromMessage(state.SearchStore()).Find("Notes"));
 
-  assert(!state.EditSearch(search, author));
-  assert(requests->Next().what == kSaveSearches);
+  BMessage retry(search);
+  retry.ReplaceString("name", "  Retry  ");
+  assert(!state.EditSearch(retry, service));
+  const auto nextSave = requests->Next();
+  assert(nextSave.what == kSaveSearches);
+  // A failed attempt does not advance the store revision. Its old reply must
+  // not settle a later writer's request, even at the same revision.
+  assert(!state.FinishSearchSave(searchReply) && state.Saving());
+  const auto nextSerial = nextSave.GetInt64("serial", -1);
+  assert(nextSerial > searchReply.GetInt64("serial", -1));
+  searchReply.ReplaceInt64("serial", nextSerial);
   searchReply.RemoveName("error");
   auto committed = state.FinishSearchSave(searchReply);
-  assert(committed && committed->author == author);
+  assert(committed && committed->author == service);
   assert(committed->message.GetBool("committed", false));
-  assert(std::string(committed->message.GetString("chosen", "")) == "Notes");
+  assert(std::string(committed->message.GetString("chosen", "")) == "Retry");
   assert(committed->message.GetInt64("revision", -1) == 1);
-  assert(SavedSearches::FromMessage(committed->message).Find("Notes"));
+  const auto stored = SavedSearches::FromMessage(committed->message);
+  assert(stored.Find("Retry") && !stored.Find("Notes"));
   assert(!state.FinishSearchSave(searchReply));
   rejected = state.EditSearch(search, author); // editor still has revision 0
   assert(rejected && rejected->message.HasString("error") && !state.Saving());
+
+  // Only the requesting editor gets the rejection. The other search windows
+  // receive the same committed list without changing their own selection.
+  auto *standalone = new SaveRequests;
+  auto *left = new SaveRequests;
+  auto *right = new SaveRequests;
+  for (auto *editor : {standalone, left, right})
+    editor->Run();
+  search.AddMessenger("searchEditor", BMessenger(right));
+  state.HandleSearchMessage(search, BMessenger(standalone),
+                            {BMessenger(left), BMessenger(right)});
+  for (auto *editor : {right, standalone, left}) {
+    auto update = editor->Next();
+    assert(update.what == kSearchStore);
+    assert(update.HasString("error") == (editor == right));
+    assert(!update.HasString("chosen") && !update.GetBool("saving", true));
+    assert(SavedSearches::FromMessage(update).Find("Retry"));
+    assert(editor->Lock());
+    editor->Quit();
+  }
 
   // A failure to enqueue must not keep quit blocked or publish an unsaved edit.
   SavedNavigationController disconnected(BMessenger{}, {}, true, {}, true);

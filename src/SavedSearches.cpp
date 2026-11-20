@@ -3,27 +3,17 @@
 #include "MessageStore.h"
 #include <algorithm>
 #include <stdexcept>
+#include <utility>
 namespace Listi {
 void SavedSearch::WriteTo(BMessage &message) const {
   message.AddString("name", name.c_str());
-  message.AddString("root", request.root.c_str());
-  message.AddString("expression", request.expression.c_str());
-  message.AddBool("predicate", request.predicate);
-  message.AddBool("trash", request.includeTrash);
   message.AddBool("live", live);
-  WriteSearchFilters(message, request.filters);
+  request.WriteCriteria(message);
 }
 
 SavedSearch SavedSearch::FromMessage(const BMessage &message) {
-  SavedSearch item;
-  item.name = message.GetString("name", "");
-  item.request.root = message.GetString("root", "");
-  item.request.expression = message.GetString("expression", "");
-  item.request.predicate = message.GetBool("predicate", false);
-  item.request.includeTrash = message.GetBool("trash", false);
-  item.live = message.GetBool("live", false);
-  item.request.filters = ReadSearchFilters(message);
-  return item;
+  return {message.GetString("name", ""), SearchRequest::ReadCriteria(message),
+          message.GetBool("live", false)};
 }
 
 const SavedSearch *SavedSearches::Find(const std::string &name) const {
@@ -32,7 +22,7 @@ const SavedSearch *SavedSearches::Find(const std::string &name) const {
       return &item;
   return nullptr;
 }
-void SavedSearches::Put(SavedSearch item, bool replace) {
+std::string SavedSearches::Put(SavedSearch item, bool replace) {
   auto first = item.name.find_first_not_of(" \t\r\n");
   item.name =
       first == std::string::npos
@@ -59,14 +49,15 @@ void SavedSearches::Put(SavedSearch item, bool replace) {
     if (old.name == item.name) {
       if (!replace)
         throw std::runtime_error("That search name is already in use.");
-      old = item;
-      return;
+      old = std::move(item);
+      return old.name;
     }
   if (replace)
     throw std::runtime_error("That saved search no longer exists.");
   if (items.size() >= Limit)
     throw std::runtime_error("Saved-search limit reached (64).");
-  items.push_back(item);
+  items.push_back(std::move(item));
+  return items.back().name;
 }
 void SavedSearches::Remove(const std::string &name) {
   auto found = std::find_if(items.begin(), items.end(),

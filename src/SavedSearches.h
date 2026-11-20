@@ -17,7 +17,7 @@ public:
   static constexpr size_t Limit = 64;
   const std::vector<SavedSearch> &Items() const { return items; }
   const SavedSearch *Find(const std::string &name) const;
-  void Put(SavedSearch item, bool replace);
+  std::string Put(SavedSearch item, bool replace); // Returns the stored name.
   void Remove(const std::string &name);
   BMessage Message() const;
   static SavedSearches FromMessage(const BMessage &);

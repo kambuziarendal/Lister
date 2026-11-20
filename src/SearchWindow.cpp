@@ -135,11 +135,6 @@ class SearchView : public BGroupView {
     saved = SavedSearches::FromMessage(m);
     if (m.HasString("chosen")) {
       chosen = m.GetString("chosen", "");
-      auto first = chosen.find_first_not_of(" \t\r\n");
-      chosen = first == std::string::npos
-                   ? ""
-                   : chosen.substr(first, chosen.find_last_not_of(" \t\r\n") -
-                                              first + 1);
       name->SetText(chosen.c_str());
     }
     storeRevision = m.GetInt64("revision", 0);
@@ -521,7 +516,7 @@ public:
       const auto criteria = Criteria();
       if (!ValidateFilters(criteria))
         break;
-      WriteSearchFilters(request, criteria.filters);
+      criteria.WriteCriteria(request);
       SelectSection(0);
       ++serial;
       generation->store(serial);
@@ -532,10 +527,6 @@ public:
       selected->SetText("");
       selected->SetToolTip("");
       request.AddInt64("serial", serial);
-      request.AddString("root", criteria.root.c_str());
-      request.AddString("expression", criteria.expression.c_str());
-      request.AddBool("predicate", criteria.predicate);
-      request.AddBool("trash", criteria.includeTrash);
       request.AddBool("live", live->Value() == B_CONTROL_ON);
       BString description(pane == 0 ? "Left panel | " : "Right panel | ");
       description << criteria.root.c_str() << " | " << criteria.expression.c_str();

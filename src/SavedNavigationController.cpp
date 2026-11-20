@@ -106,17 +106,17 @@ SavedNavigationController::EditSearch(const BMessage &edit, BMessenger author) {
 
     auto next = searches;
     auto item = SavedSearch::FromMessage(edit);
-    const bool remove = edit.GetBool("remove", false);
-    if (remove)
+    std::string chosen;
+    if (edit.GetBool("remove", false))
       next.Remove(item.name);
     else
-      next.Put(item, edit.GetBool("replace", false));
+      chosen = next.Put(std::move(item), edit.GetBool("replace", false));
 
     auto request = next.Message();
     request.what = kSaveSearches;
     request.AddInt64("revision", searchesRevision);
     request.AddInt64("serial", ++searchesSerial);
-    pendingSearch = PendingSearch{std::move(next), remove ? "" : item.name, author};
+    pendingSearch = PendingSearch{std::move(next), std::move(chosen), author};
     if (service.SendMessage(&request) != B_OK) {
       pendingSearch.reset();
       throw std::runtime_error("Could not queue saved search.");

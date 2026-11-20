@@ -25,6 +25,11 @@ constexpr uint32 kFavoriteNavigate = 'fnav', kRecentNavigate = 'rnav',
                  kRemoveShortcut = 'prms', kRemoveShelfEntry = 'sfre',
                  kSidebarShelfDrop = 'sfsd';
 
+constexpr const char *kPlaceCommands[] = {
+    "Save this place...", "Rename this saved place...", "Forget this saved place..."};
+constexpr int32 kPlaceCommandCount = sizeof(kPlaceCommands) / sizeof(kPlaceCommands[0]);
+constexpr int32 kFirstPlace = kPlaceCommandCount + 1; // After the separator.
+
 class SidebarItem : public BStringItem {
 public:
   SidebarItem(const char *label, const std::string &path)
@@ -176,6 +181,12 @@ PaneSidebar::PaneSidebar(Pane &pane, int32 paneId, BMenu &goMenu,
     : BCardView("navigation sidebar"), pane(pane), paneId(paneId),
       viewMenu(viewMenu), history(history), shelf(std::move(shelf)) {
   placesMenu = new PlacesMenu(&pane);
+  for (int32 i = 0; i < kPlaceCommandCount; ++i) {
+    auto *command = new BMessage(kPlaceAction);
+    command->AddInt32("action", i);
+    placesMenu->AddItem(new BMenuItem(kPlaceCommands[i], command));
+  }
+  placesMenu->AddSeparatorItem();
   goMenu.AddItem(placesMenu);
   SetExplicitMinSize(BSize(110, 96));
   SetExplicitPreferredSize(BSize(170, 300));
@@ -408,52 +419,40 @@ void PaneSidebar::SetPlaces(const Listi::SavedPlaces &value, bool writable) {
   places = value;
   placesWritable = writable;
   ClearSidebarItems(*favorites);
-  for (const auto &place : places.Items())
+  while (auto *item = placesMenu->RemoveItem(kFirstPlace))
+    delete item;
+  for (const auto &place : places.Items()) {
     favorites->AddItem(new SidebarItem(place.name.c_str(), place.path));
+    auto *message = new BMessage(kNavigate);
+    message->AddString("path", place.path.c_str());
+    message->AddBool("place", true);
+    placesMenu->AddItem(new BMenuItem(place.name.c_str(), message));
+  }
   if (places.Items().empty()) {
-    auto empty = new BStringItem("No saved places");
+    auto *empty = new BStringItem("No saved places");
     empty->SetEnabled(false);
     favorites->AddItem(empty);
   }
+  if (pane.Window())
+    placesMenu->SetTargetForItems(&pane);
   UpdatePlaces();
 }
 void PaneSidebar::UpdatePlaces() {
-  while (auto item = placesMenu->RemoveItem(int32(0)))
-    delete item;
-  const char *labels[] = {"Save this place...", "Rename this saved place...",
-                          "Forget this saved place..."};
-  bool saved = places.Find(pane.Path()) != nullptr;
-  for (int32 i = 0; i < 3; ++i) {
-    auto message = new BMessage(kPlaceAction);
-    message->AddInt32("action", i);
-    auto item = new BMenuItem(labels[i], message);
-    item->SetEnabled(placesWritable && (i ? saved
-                                          : pane.LocationValid() && !saved &&
-                                                places.Items().size() <
-                                                    Listi::SavedPlaces::Limit));
-    placesMenu->AddItem(item);
-  }
-  placesMenu->AddSeparatorItem();
   int32 current = -1;
-  int32 index = 0;
-  for (const auto &place : places.Items()) {
-    auto message = new BMessage(kNavigate);
-    message->AddString("path", place.path.c_str());
-    message->AddBool("place", true);
-    auto item = new BMenuItem(place.name.c_str(), message);
-    if (place.path == pane.Path()) {
-      current = index;
-      item->SetMarked(true);
-    }
-    placesMenu->AddItem(item);
-    ++index;
+  for (size_t i = 0; i < places.Items().size(); ++i) {
+    const bool here = places.Items()[i].path == pane.Path();
+    placesMenu->ItemAt(kFirstPlace + i)->SetMarked(here);
+    if (here)
+      current = i;
   }
+  placesMenu->ItemAt(0)->SetEnabled(placesWritable && current < 0 &&
+      pane.LocationValid() && places.Items().size() < Listi::SavedPlaces::Limit);
+  placesMenu->ItemAt(1)->SetEnabled(placesWritable && current >= 0);
+  placesMenu->ItemAt(2)->SetEnabled(placesWritable && current >= 0);
   if (current >= 0)
     favorites->Select(current);
   else
     favorites->DeselectAll();
-  if (pane.Window())
-    placesMenu->SetTargetForItems(&pane);
 }
 void PaneSidebar::RefreshRecentFolders() {
   if (visibleSidebar != SidebarMode::RecentFolders)

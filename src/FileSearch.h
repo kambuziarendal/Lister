@@ -12,6 +12,10 @@ struct SearchRequest {
   size_t resultLimit = 5000, visitLimit = 250000;
   SearchFilters filters;
   bool flat = false; // Recursive regular files with a root-relative parent.
+
+  // Shared by saved queries and worker messages; not execution limits or flat mode.
+  void WriteCriteria(BMessage &) const;
+  static SearchRequest ReadCriteria(const BMessage &);
 };
 struct SearchHit {
   std::string path;

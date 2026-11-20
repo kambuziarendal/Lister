@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "ApplicationServices.h"
 #include "Common.h"
+#include "SavedSearches.h"
 #include <Application.h>
 #include <OS.h>
 #include <cassert>
@@ -56,6 +57,16 @@ int main() {
   const auto reply = pane->Next();
   assert(reply.what == kImageDropOutputs && reply.GetInt64("request", -1) == 42);
   assert(reply.GetString("error", "")[0] != '\0');
+
+  // Reject an invalid format before touching settings, echoing this attempt's ID.
+  BMessage save(kSaveSearches);
+  save.AddInt32("version", -1);
+  save.AddInt64("revision", 4);
+  save.AddInt64("serial", 12);
+  assert(worker->PostMessage(&save) == B_OK);
+  const auto rejected = notices->Next();
+  assert(rejected.what == kSearchesSaved && rejected.HasString("error"));
+  assert(rejected.GetInt64("revision", -1) == 4 && rejected.GetInt64("serial", -1) == 12);
 
   const auto stop = [](BLooper *looper) {
     assert(looper->Lock());

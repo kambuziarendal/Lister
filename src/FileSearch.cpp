@@ -3,6 +3,7 @@
 #include "VirtualFile.h"
 #include <UnicodeChar.h>
 #include <Entry.h>
+#include <Message.h>
 #include <FindDirectory.h>
 #include <Path.h>
 #include <Query.h>
@@ -16,6 +17,24 @@
 #include <unistd.h>
 #include <vector>
 namespace Listi {
+void SearchRequest::WriteCriteria(BMessage &message) const {
+  message.AddString("root", root.c_str());
+  message.AddString("expression", expression.c_str());
+  message.AddBool("predicate", predicate);
+  message.AddBool("trash", includeTrash);
+  WriteSearchFilters(message, filters);
+}
+
+SearchRequest SearchRequest::ReadCriteria(const BMessage &message) {
+  SearchRequest request;
+  request.root = message.GetString("root", "");
+  request.expression = message.GetString("expression", "");
+  request.predicate = message.GetBool("predicate", false);
+  request.includeTrash = message.GetBool("trash", false);
+  request.filters = ReadSearchFilters(message);
+  return request;
+}
+
 namespace {
 bool Within(const std::string &path, const std::string &root) {
   return path == root || (root == "/" && path[0] == '/') ||
