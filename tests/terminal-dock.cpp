@@ -6,6 +6,7 @@
 #include <Button.h>
 #include <Clipboard.h>
 #include <Layout.h>
+#include <OS.h>
 #include <SplitView.h>
 #include <Window.h>
 #include <cstdlib>
@@ -141,17 +142,21 @@ void Check(bool success, const char *label) {
 }
 
 template <typename CheckState> bool Until(CheckState ready) {
-  for (int i = 0; i < 250; ++i) {
+  const bigtime_t deadline = system_time() + 5000000;
+  do {
     if (ready())
       return true;
     snooze(20000);
-  }
+  } while (system_time() < deadline);
   return false;
 }
 
 template <typename ReadWindow>
 bool WithWindow(const BMessenger &target, ReadWindow read) {
-  if (target.LockTargetWithTimeout(20000) != B_OK)
+  // PTY polling and app_server synchronization can hold the window lock
+  // through several poll intervals. Allow a one-shot interaction to acquire
+  // the lock without reissuing the interaction itself.
+  if (target.LockTargetWithTimeout(1000000) != B_OK)
     return false;
   BLooper *looper;
   target.Target(&looper);
