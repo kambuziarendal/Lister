@@ -4,171 +4,30 @@
 #include "ExplicitSubmit.h"
 #include "FileSearch.h"
 #include "SearchWorker.h"
+#include "SearchResultsView.h"
 #include "SavedSearches.h"
 #include <GroupView.h>
-#include <MessageFilter.h>
 #include <MessageRunner.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
-#include <map>
-#include <tuple>
 #include <Button.h>
 #include <CheckBox.h>
-#include <ColumnListView.h>
-#include <ColumnTypes.h>
 #include <LayoutBuilder.h>
 #include <Looper.h>
 #include <StringView.h>
 #include <TextControl.h>
 #include <TextView.h>
 #include <Window.h>
-#include <algorithm>
 #include <memory>
 #include <stdexcept>
 namespace {
 using namespace Listi;
 constexpr uint32 kStart = 'ssrt', kStop = 'sstp', kHit = 'shit',
                  kFinished = 'sfin', kSave = 'sqsv', kForget = 'sqfg',
-                 kLoad = 'sqld', kName = 'sqnm', kPicked = 'spik',
-                 kShow = 'sshw', kMode = 'smod', kClearFilters = 'sclr',
-                 kDeliveryCheck = 'sdck', kSection = 'ssec', kOrder = 'sord';
-struct HitRow : BRow {
-  Listi::SearchHit hit;
-  int64 arrival;
-  HitRow(const Listi::SearchHit &value, int64 sequence)
-      : BRow(24), hit(value), arrival(sequence) {
-    size_t slash = hit.path.find_last_of('/');
-    SetField(new BStringField(hit.path.substr(slash + 1).c_str()), 0);
-    SetField(new BStringField(hit.path.substr(0, slash ? slash : 1).c_str()),
-             1);
-  }
-};
-class Results : public BColumnListView {
-  class ContextClick : public BMessageFilter {
-    Results *results;
-
-  public:
-    explicit ContextClick(Results *view)
-        : BMessageFilter(B_MOUSE_DOWN), results(view) {}
-
-    filter_result Filter(BMessage *message, BHandler **) override {
-      if (!(message->GetInt32("buttons", 0) & B_SECONDARY_MOUSE_BUTTON))
-        return B_DISPATCH_MESSAGE;
-      BPoint point;
-      if (message->FindPoint("where", &point) != B_OK)
-        return B_SKIP_MESSAGE;
-      const auto row = static_cast<HitRow *>(results->RowAt(point));
-      if (!row)
-        return B_SKIP_MESSAGE;
-
-      const SearchHit hit = row->hit;
-      BPopUpMenu menu("Search result actions", false, false);
-      menu.AddItem(new BMenuItem("Show original in panel", nullptr));
-      if (menu.Go(results->ScrollView()->ConvertToScreen(point), false, true,
-                  false))
-        results->ShowOriginal(hit);
-      return B_SKIP_MESSAGE;
-    }
-  };
-
-  BMessenger owner;
-  int32 pane;
-  int64 sequence = 0;
-  int32 order = 0;
-  BColumn *columns[2];
-
-  bool Before(HitRow *left, HitRow *right, int32 requestedOrder) const {
-    if (requestedOrder != 0) {
-      int32 key = requestedOrder <= 2 ? 0 : 1;
-      int cmp = columns[key]->CompareFields(left->GetField(key),
-                                            right->GetField(key));
-      if (cmp != 0)
-        return requestedOrder % 2 ? cmp < 0 : cmp > 0;
-    }
-    return left->arrival < right->arrival;
-  }
-
-public:
-  BMessenger receiver;
-  Results(BMessenger target, int32 which)
-      : BColumnListView("search results", B_WILL_DRAW | B_NAVIGABLE,
-                        B_FANCY_BORDER),
-        owner(target), pane(which) {
-    // Haiku starts an unjoined native sort thread even on initial attachment.
-    // It can outlive a rapidly closed window/tab. Sort only on our UI looper.
-    SetSortingEnabled(false);
-    columns[0] = new BStringColumn("Name", 220, 80, 1000, B_TRUNCATE_MIDDLE);
-    columns[1] = new BStringColumn("Original folder", 440, 120, 2000,
-                                   B_TRUNCATE_MIDDLE);
-    AddColumn(columns[0], 0);
-    AddColumn(columns[1], 1);
-    SetSelectionMode(B_SINGLE_SELECTION_LIST);
-    SetInvocationMessage(new BMessage(kShow));
-    ScrollView()->AddFilter(new ContextClick(this));
-  }
-
-  void ShowOriginal(const SearchHit &hit) {
-    // The receiving pane rechecks identity after its asynchronous scan, too.
-    BMessage reveal(kRevealSearch);
-    reveal.AddInt32("pane", pane);
-    reveal.AddString("path", hit.path.c_str());
-    reveal.AddInt64("device", hit.device);
-    reveal.AddInt64("node", hit.node);
-    owner.SendMessage(&reveal);
-  }
-  void Add(const SearchHit &hit) {
-    auto row = new HitRow(hit, sequence++);
-    if (!order) {
-      AddRow(row);
-      return;
-    }
-    int32 first = 0, last = CountRows();
-    while (first < last) {
-      int32 middle = first + (last - first) / 2;
-      if (Before(static_cast<HitRow *>(RowAt(middle)), row, order))
-        first = middle + 1;
-      else
-        last = middle;
-    }
-    AddRow(row, first);
-  }
-
-  void Order(int32 next) {
-    if (next == order || next < 0 || next > 4)
-      return;
-    BList current, ordered;
-    std::vector<HitRow *> rows;
-    rows.reserve(CountRows());
-    for (int32 i = 0; i < CountRows(); ++i) {
-      auto row = static_cast<HitRow *>(RowAt(i));
-      if (!current.AddItem(row))
-        return;
-      rows.push_back(row);
-    }
-    std::sort(rows.begin(), rows.end(), [this, next](HitRow *a, HitRow *b) {
-      return Before(a, b, next);
-    });
-    for (auto row : rows)
-      if (!ordered.AddItem(row))
-        return;
-    order = next;
-    auto selected = CurrentSelection();
-    auto focus = FocusRow();
-    RemoveRows(&current);
-    AddRows(&ordered, -1);
-    if (focus)
-      SetFocusRow(focus, false);
-    if (selected)
-      AddToSelection(selected);
-  }
-
-  void SelectionChanged() override {
-    BColumnListView::SelectionChanged();
-    if (receiver.IsValid())
-      receiver.SendMessage(kPicked);
-  }
-};
+                 kLoad = 'sqld', kName = 'sqnm', kMode = 'smod',
+                 kClearFilters = 'sclr', kDeliveryCheck = 'sdck',
+                 kSection = 'ssec', kOrder = 'sord';
 class SearchView : public BGroupView {
   BPopUpMenu *sectionMenu = nullptr, *orderMenu;
   BGroupView *sections[3]{};
@@ -191,7 +50,7 @@ class SearchView : public BGroupView {
   BCheckBox *predicate, *trash, *live;
   BStringView *status, *selected, *scope, *hint;
   BButton *start, *stop, *show;
-  Results *results;
+  SearchResultsView *results;
   BLooper *worker = nullptr;
   std::shared_ptr<std::atomic<int64>> generation;
   std::shared_ptr<std::atomic<int64>> failedSerial =
@@ -315,37 +174,6 @@ class SearchView : public BGroupView {
     Status("Stopped: " + std::to_string(results->CountRows()) +
            " results. No longer updating.");
   }
-  void Reconcile() {
-    using Key = std::tuple<std::string, int64, int64>;
-    std::map<Key, SearchHit> next;
-    for (const auto &hit : pending)
-      next.emplace(Key(hit.path, hit.device, hit.node), hit);
-    for (int32 i = results->CountRows() - 1; i >= 0; --i) {
-      auto row = static_cast<HitRow *>(results->RowAt(i));
-      auto found =
-          next.find(Key(row->hit.path, row->hit.device, row->hit.node));
-      if (found == next.end()) {
-        results->RemoveRow(row);
-        delete row;
-      } else
-        next.erase(
-            found); // Preserve selection only for identical path AND identity.
-    }
-    for (const auto &item : next)
-      results->Add(item.second);
-    pending.clear();
-    BMessenger(this).SendMessage(kPicked);
-  }
-  void Colors() {
-    results->SetColor(B_COLOR_BACKGROUND,
-                      ui_color(B_DOCUMENT_BACKGROUND_COLOR));
-    results->SetColor(B_COLOR_TEXT, ui_color(B_DOCUMENT_TEXT_COLOR));
-    results->SetColor(B_COLOR_SELECTION, ui_color(B_CONTROL_HIGHLIGHT_COLOR));
-    results->SetColor(B_COLOR_SELECTION_TEXT, ui_color(B_CONTROL_TEXT_COLOR));
-    results->SetColor(B_COLOR_NON_FOCUS_SELECTION,
-                      tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), .8f));
-    results->Invalidate();
-  }
 
 public:
   SearchView(BMessenger target, int32 which, const char *path,
@@ -400,8 +228,8 @@ public:
     stop = new BButton("stop search", "Stop", new BMessage(kStop));
     show = new BButton("show original",
                        compact ? "Show original" : "Show original in panel",
-                       new BMessage(kShow));
-    results = new Results(target, which);
+                       new BMessage(kShowSearchResult));
+    results = new SearchResultsView(target, which);
     orderMenu = new BPopUpMenu("result order");
     const char *orders[] = {"As found", "Name ↑", "Name ↓", "Folder ↑", "Folder ↓"};
     for (int32 i = 0; i < 5; ++i) {
@@ -468,7 +296,7 @@ public:
     Store(store);
     Busy(false);
     show->SetEnabled(false);
-    Colors();
+    results->UpdateColors();
   }
 
   void BuildCompactLayout(BMenuField *orderField) {
@@ -555,8 +383,7 @@ public:
     if (sectionMenu)
       sectionMenu->SetTargetForItems(this);
     orderMenu->SetTargetForItems(this);
-    results->receiver = BMessenger(this);
-    results->SetTarget(this);
+    results->SetReceiver(this);
     if (!initialized) {
       for (auto field : {root, expression, extension, minimum, maximum, fromDate,
                          throughDate})
@@ -776,8 +603,11 @@ public:
       if (m->GetInt64("revision", -1) != resultRevision)
         break;
       bool updating = m->GetBool("live", false);
-      if (!initial)
-        Reconcile();
+      if (!initial) {
+        results->Reconcile(pending);
+        pending.clear();
+        BMessenger(this).SendMessage(kSearchResultPicked);
+      }
       Busy(updating);
       std::string error = m->GetString("error", "");
       std::string state =
@@ -793,22 +623,22 @@ public:
              " skipped." + (error.empty() ? "" : " " + error));
       break;
     }
-    case kPicked: {
-      auto row = static_cast<HitRow *>(results->CurrentSelection());
-      selected->SetText(row ? row->hit.path.c_str() : "");
-      selected->SetToolTip(row ? row->hit.path.c_str() : "");
-      show->SetEnabled(row != nullptr);
+    case kSearchResultPicked: {
+      const auto *hit = results->SelectedHit();
+      selected->SetText(hit ? hit->path.c_str() : "");
+      selected->SetToolTip(hit ? hit->path.c_str() : "");
+      show->SetEnabled(hit != nullptr);
       break;
     }
-    case kShow: {
-      auto row = static_cast<HitRow *>(results->CurrentSelection());
-      if (row)
-        results->ShowOriginal(row->hit);
+    case kShowSearchResult: {
+      const auto *hit = results->SelectedHit();
+      if (hit)
+        results->ShowOriginal(*hit);
       break;
     }
     case B_COLORS_UPDATED:
       BGroupView::MessageReceived(m);
-      Colors();
+      results->UpdateColors();
       break;
     default:
       BGroupView::MessageReceived(m);
