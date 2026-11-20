@@ -104,7 +104,9 @@ To test a restart and mount cycle, use a disposable BFS
 volume and keep the test program and settings file on a different volume. With
 the fixture mounted, run `shelf-collections --save-reference STORE FILE`.
 Run `shelf-collections --check-reference STORE FILE ready` from a separate
-process. Unmount the fixture and check for `missing`. After remounting it on
+process. Unmount the fixture and check for `missing`. Mount an unrelated BFS
+volume with the same label and filename: the reference must still be missing
+and the decoy file unchanged. Unmount it. After remounting the original on
 the same device path, check for `ready` again using the current absolute file
 path. Use the full path to the test binary in `build/native-audit-tests`.
 
@@ -184,6 +186,11 @@ On Haiku, run `python3 tests/run-native-audit.py file-operation-faults operation
 after building. These tests use disposable entries to check staged output after
 short/interrupted writes, permission errors during writing or source removal,
 partial batches and job results when UI notifications are delayed or lost.
+To check the interval before an operation is queued, also run
+`main-window-routing selection-model file-drop`. The fixtures keep a scanned
+row selected while replacing the entry at that pathname. File actions must
+refuse the replacement without clearing the preceding clipboard.
+
 Injected syscall failures also run when normal permission bits alone would not
 prevent the test user from writing.
 
