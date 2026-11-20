@@ -40,6 +40,8 @@ struct ShelfEntry {
 struct ShelfSnapshot {
   std::vector<ShelfEntry> entries;
   size_t revision = 0;
+  std::set<std::string> RetainSelection(const ShelfSnapshot &previous,
+                                        const std::set<std::string> &paths) const;
 };
 
 // Session-only collection. The browser and the Shelf have separate loopers.
@@ -49,7 +51,8 @@ public:
 
   size_t Add(const std::vector<std::string> &paths,
              const std::map<std::string, NodeIdentity> &expected = {});
-  void Remove(const std::set<std::string> &paths);
+  void Remove(const std::set<std::string> &paths,
+              std::optional<size_t> expectedRevision = std::nullopt);
   void Clear();
   void Load(std::vector<ShelfEntry> entries, size_t revision);
   void RefreshSavedReferences();

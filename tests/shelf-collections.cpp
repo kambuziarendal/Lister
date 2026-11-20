@@ -78,6 +78,11 @@ static void CheckExchangedNames(const fs::path &folder) {
             swapped.entries[0].State() == ShelfState::Ready &&
             swapped.entries[1].State() == ShelfState::Ready,
         "reloading exchanged names follows both originals");
+  auto ambiguous = swapped;
+  ++ambiguous.revision;
+  ambiguous.entries[1].proof = ambiguous.entries[0].proof;
+  Check(ambiguous.RetainSelection(swapped, {b.string()}).empty(),
+        "do not keep a selection when two references claim its identity");
 
   fs::remove(a);
   Load(shelf, records, "Pair");

@@ -141,6 +141,7 @@ class ShelfWindow : public BWindow {
   BMenuItem *clear, *copy, *move, *archive, *saveCollection;
   const std::string collectionsFile;
   std::map<std::string, ShelfRow *> displayed;
+  ShelfSnapshot rendered;
   std::unique_ptr<BFilePanel> picker;
   BMessenger archiveWindow;
   Action pickerAction = Action::Move;
@@ -179,7 +180,11 @@ class ShelfWindow : public BWindow {
   }
 
   void Render() {
-    const auto snapshot = shelf->Snapshot();
+    auto snapshot = shelf->Snapshot();
+    const auto selected = Selected();
+    const auto retained = snapshot.RetainSelection(rendered, selected);
+    if (retained != selected)
+      rows->DeselectAll();
     std::set<std::string> present;
     for (const auto &entry : snapshot.entries) {
       present.insert(entry.path);
@@ -203,12 +208,22 @@ class ShelfWindow : public BWindow {
         it = displayed.erase(it);
       }
     }
+    if (retained != selected) {
+      for (const auto &path : retained)
+        rows->AddToSelection(displayed.at(path));
+      if (retained.size() == 1)
+        rows->SetFocusRow(displayed.at(*retained.begin()), false);
+    }
+    auto removeMessage = new BMessage(kRemove);
+    removeMessage->AddInt64("revision", snapshot.revision);
+    remove->SetMessage(removeMessage);
     UpdateSelection(snapshot);
     clear->SetEnabled(!snapshot.entries.empty());
     copy->SetEnabled(!snapshot.entries.empty());
     move->SetEnabled(!snapshot.entries.empty());
     archive->SetEnabled(!snapshot.entries.empty());
     saveCollection->SetEnabled(!snapshot.entries.empty());
+    rendered = std::move(snapshot);
   }
 
   void RenderCollections(const ShelfCollections &collections) {
@@ -400,8 +415,10 @@ class ShelfWindow : public BWindow {
     if (selected.size() != 1)
       throw std::runtime_error("Select one unavailable reference to relink.");
     const auto snapshot = shelf->Snapshot();
+    if (snapshot.revision != rendered.revision)
+      throw std::runtime_error("The Shelf changed. Select the reference again.");
     relinking = *selected.begin();
-    pickerRevision = snapshot.revision;
+    pickerRevision = rendered.revision;
     BMessenger here(this);
     BMessage chosen(kRelinkChosen);
     chosen.AddInt64("shelf picker", ++pickerSerial);
@@ -592,7 +609,7 @@ public:
       case kInlineClosed:
         return;
       case kRemove:
-        shelf->Remove(Selected());
+        shelf->Remove(Selected(), size_t(message->GetInt64("revision", -1)));
         Render();
         ShelfChanged();
         Status("Removed references only. Original files were not changed.");

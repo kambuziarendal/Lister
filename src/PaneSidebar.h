@@ -2,6 +2,7 @@
 #pragma once
 
 #include "SavedPlaces.h"
+#include "Shelf.h"
 #include "WorkspaceLayout.h"
 #include <CardView.h>
 #include <memory>
@@ -14,7 +15,6 @@ class FolderTree;
 class Pane;
 namespace Listi {
 class NavigationHistory;
-class Shelf;
 }
 
 constexpr uint32 kToggleTree = 'ttre', kSidebarMode = 'psbr';
@@ -43,6 +43,7 @@ private:
   BMenu &viewMenu;
   const Listi::NavigationHistory &history;
   std::shared_ptr<Listi::Shelf> shelf;
+  Listi::ShelfSnapshot renderedShelf;
   FolderTree *tree;
   BListView *favorites, *recentFolders, *shelfList;
   BScrollView *favoriteScroll;

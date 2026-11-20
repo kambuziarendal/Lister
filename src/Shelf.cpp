@@ -5,6 +5,7 @@
 #include "ShelfIdentity.h"
 #include <algorithm>
 #include <cstdlib>
+#include <iterator>
 #include <limits.h>
 #include <stdexcept>
 #include <sys/stat.h>
@@ -110,8 +111,40 @@ size_t Shelf::Add(const std::vector<std::string> &paths,
   return additions.size();
 }
 
-void Shelf::Remove(const std::set<std::string> &paths) {
+std::set<std::string> ShelfSnapshot::RetainSelection(
+    const ShelfSnapshot &previous, const std::set<std::string> &paths) const {
+  if (paths.empty() || revision == previous.revision)
+    return paths;
+  std::set<std::string> retained;
+  for (const auto &old : previous.entries) {
+    if (!paths.count(old.path))
+      continue;
+    const auto matches = [&](const ShelfEntry &item) {
+      if (old.proof && item.proof) {
+        const auto &a = *old.proof, &b = *item.proof;
+        return a.device == b.device && a.volumeRoot == b.volumeRoot &&
+               a.entry == b.entry && a.kind == b.kind;
+      }
+      // An ordinary session reference on a non-BFS filesystem cannot
+      // be relocated. Its captured path and node must both still agree.
+      return !old.proof && !item.proof && !old.restored && !item.restored &&
+             old.path == item.path && old.identity.device == item.identity.device &&
+             old.identity.inode == item.identity.inode;
+    };
+    auto found = std::find_if(entries.begin(), entries.end(), matches);
+    if (found != entries.end() &&
+        std::none_of(std::next(found), entries.end(), matches) &&
+        std::count_if(previous.entries.begin(), previous.entries.end(), matches) == 1)
+      retained.insert(found->path);
+  }
+  return retained;
+}
+
+void Shelf::Remove(const std::set<std::string> &paths,
+                   std::optional<size_t> expectedRevision) {
   std::lock_guard<std::mutex> lock(mutex);
+  if (expectedRevision && current.revision != *expectedRevision)
+    throw std::runtime_error("The Shelf changed. Select the references again.");
   auto &entries = current.entries;
   auto end = std::remove_if(entries.begin(), entries.end(),
                             [&](const auto &e) { return paths.count(e.path); });

@@ -205,6 +205,71 @@ bool SelectMissing(BWindow *window) {
   });
 }
 
+void CheckSwapSelection(BApplication &app, const fs::path &root) {
+  const auto a = root / "alpha", b = root / "bravo", temporary = root / "temp";
+  std::ofstream(a) << "first";
+  std::ofstream(b) << "second";
+  auto shelf = std::make_shared<Shelf>();
+  shelf->Add({a.string(), b.string()});
+  ShelfCollections saved;
+  saved.Put("pair", shelf->Snapshot(), false);
+  const auto store = (root / "pair-store").string();
+  saved.Save(store);
+  const auto pair = ShelfCollections::Load(store);
+  shelf->Load(pair.Find("pair")->entries, shelf->Snapshot().revision);
+  BMessenger target;
+  OpenShelfWindow({}, shelf, target, store);
+  auto *window = app.WindowAt(0);
+  Check(Until([&] { return Status(window, "Shelf refreshed."); }),
+        "open Shelf with both saved references");
+  Check(InWindow(window, [](BWindow &locked) {
+    auto rows = dynamic_cast<BColumnListView *>(locked.FindView("shelf entries"));
+    for (int32 i = 0; rows && i < rows->CountRows(); ++i) {
+      auto row = rows->RowAt(i);
+      auto name = static_cast<BStringField *>(row->GetField(0));
+      if (std::string(name->String()) == "alpha") {
+        rows->AddToSelection(row);
+        rows->SelectionChanged();
+        return true;
+      }
+    }
+    return false;
+  }), "highlight the first original before exchange");
+  BMessage staleRemove;
+  Check(Until([&] {
+    return InWindow(window, [&](BWindow &locked) {
+      BButton *button = nullptr;
+      for (int32 i = 0; i < locked.CountChildren() && !button; ++i)
+        button = Button(*locked.ChildAt(i), "Remove from Shelf");
+      if (!button || !button->IsEnabled())
+        return false;
+      staleRemove = *button->Message();
+      return true;
+    });
+  }), "capture Remove for the displayed revision");
+
+  fs::rename(a, temporary);
+  fs::rename(b, a);
+  fs::rename(temporary, b);
+  shelf->RefreshSavedReferences();
+  target.SendMessage(&staleRemove);
+  Check(Until([&] { return Status(window, "The Shelf changed."); }) &&
+            shelf->Snapshot().entries.size() == 2,
+        "reject a Remove from the stale displayed revision");
+  Check(InWindow(window, [](BWindow &locked) {
+    auto rows = dynamic_cast<BColumnListView *>(locked.FindView("shelf entries"));
+    auto row = rows ? rows->CurrentSelection() : nullptr;
+    return row && !rows->CurrentSelection(row) &&
+           std::string(static_cast<BStringField *>(row->GetField(0))->String()) == "bravo";
+  }), "highlight follows the original after the two names are exchanged");
+  Check(Click(window, "Remove from Shelf") && Until([&] {
+    auto now = shelf->Snapshot();
+    return now.entries.size() == 1 && now.entries[0].path == a.string();
+  }), "fresh Remove affects only the highlighted original");
+  target.SendMessage(B_QUIT_REQUESTED);
+  Check(Until([&] { return !target.IsValid(); }), "close exchanged Shelf");
+}
+
 bool SubmitPicker(const BMessenger &window, int64 serial,
                   const fs::path &candidate) {
   entry_ref ref;
@@ -328,6 +393,7 @@ int main() {
           }), "reopening Shelf resolves a rename while its window was closed");
     messenger.SendMessage(B_QUIT_REQUESTED);
     Check(Until([&] { return !messenger.IsValid(); }), "close reopened Shelf");
+    CheckSwapSelection(app, fixture.root);
   } catch (const std::exception &e) {
     std::cerr << "FAIL " << e.what() << '\n';
     return 1;

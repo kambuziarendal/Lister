@@ -319,6 +319,8 @@ bool PaneSidebar::ContextMenu(BView *target, BPoint point) {
       auto remove =
           new BMessage(rows == favorites ? kRemoveShortcut : kRemoveShelfEntry);
       remove->AddString("path", entry->path.c_str());
+      if (rows == shelfList)
+        remove->AddInt64("revision", renderedShelf.revision);
       add(rows == favorites ? "Remove shortcut" : "Remove from Shelf", remove,
           rows != favorites || placesWritable);
     }
@@ -349,12 +351,15 @@ bool PaneSidebar::ContextMenu(BView *target, BPoint point) {
 void PaneSidebar::RefreshShelf() {
   if (!shelf || visibleSidebar != SidebarMode::Shelf)
     return;
-  std::string selected;
+  std::set<std::string> selected;
   if (auto item = dynamic_cast<SidebarItem *>(
           shelfList->ItemAt(shelfList->CurrentSelection())))
-    selected = item->path;
+    selected.insert(item->path);
+  auto snapshot = shelf->Snapshot();
+  selected = snapshot.RetainSelection(renderedShelf, selected);
+  renderedShelf = std::move(snapshot);
   ClearSidebarItems(*shelfList);
-  for (const auto &entry : shelf->Snapshot().entries) {
+  for (const auto &entry : renderedShelf.entries) {
     const auto slash = entry.path.find_last_of('/');
     std::string label = entry.path.substr(slash + 1);
     switch (entry.DisplayState()) {
@@ -371,7 +376,7 @@ void PaneSidebar::RefreshShelf() {
       break;
     }
     shelfList->AddItem(new SidebarItem(label.c_str(), entry.path));
-    if (entry.path == selected)
+    if (selected.count(entry.path))
       shelfList->Select(shelfList->CountItems() - 1);
   }
   if (shelfList->CountItems() == 0) {
@@ -507,7 +512,12 @@ bool PaneSidebar::HandleCommand(const BMessage &message) {
     break;
   case kRemoveShelfEntry:
     if (shelf && visibleSidebar == SidebarMode::Shelf) {
-      shelf->Remove({message.GetString("path", "")});
+      try {
+        shelf->Remove({message.GetString("path", "")},
+                      size_t(message.GetInt64("revision", -1)));
+      } catch (const std::exception &error) {
+        pane.ShowStatus(error.what());
+      }
       pane.Window()->PostMessage(Listi::kRefreshShelf);
     }
     break;
