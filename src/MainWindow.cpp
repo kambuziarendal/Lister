@@ -2,20 +2,15 @@
 #include "MainWindow.h"
 #include "MainWindowMenu.h"
 #include "ApplicationServices.h"
-#include "TransferCommand.h"
-#include "ArchiveActions.h"
 #include "ArchivePasswords.h"
 #include "Common.h"
-#include "BulkRename.h"
-#include "BulkRenameWindow.h"
 #include "ClipboardFlow.h"
 #include "FileDropFlow.h"
+#include "FileOperationFlow.h"
 #include "FlatViewWindow.h"
 #include "PaneContextMenu.h"
 #include "FunctionButtonBank.h"
-#include "NamedEntry.h"
 #include "JobSnapshot.h"
-#include "ArchiveWindow.h"
 #include "ArchiveEditor.h"
 #include "FolderCompare.h"
 #include "PropertiesWindow.h"
@@ -67,12 +62,10 @@ void PostMainWindowNotice(const char *text) {
 
 namespace {
 constexpr uint32 kPreviewPattern = 'sppv', kApplyPattern = 'spap';
-constexpr uint32 kNamedEntryAccepted = 'nacc', kConfirm = 'cfir';
 class MainWindow : public BWindow {
   Preferences prefs;
   BMessenger searchWindow;
   std::map<std::string, BMessenger> flatViews;
-  BMessenger bulkRenameWindow;
   std::shared_ptr<Listi::Shelf> shelf = std::make_shared<Listi::Shelf>();
   BMessenger shelfWindow;
   void RefreshShelf() {
@@ -238,55 +231,7 @@ class MainWindow : public BWindow {
   int source = 0;
   std::unique_ptr<Listi::ClipboardFlow> clipboard;
   std::unique_ptr<Listi::FileDropFlow> fileDrop;
-  Listi::ArchiveActions archiveActions;
-  void ArchiveAction(uint32 action) {
-    if (actionArea->Pending()) {
-      queue->ErrorInfo("Finish or cancel the open question first.");
-      return;
-    }
-    try {
-      if (action == kAddArchive)
-        archiveActions.ShowAddPicker(*panes[source], BMessenger(this));
-      else if (action == kRemoveArchive) {
-        auto prompt = Listi::ArchiveActions::ConfirmRemoval(*panes[source]);
-        AskInline(prompt.text.String(), prompt.button, prompt.accepted);
-      } else {
-        archiveActions.ShowJobWindow(
-            action == kExtractArchive, *panes[source],
-            *panes[prefs.SinglePane() ? source : 1 - source], BMessenger(this));
-      }
-    } catch (const std::exception &e) {
-      PostMainWindowNotice(e.what());
-    }
-  }
-  void ConfirmArchiveAddition(const Listi::Job &job) {
-    auto prompt = Listi::ArchiveActions::ConfirmAddition(job, {});
-    AskInline(prompt.text.String(), prompt.button, prompt.accepted);
-  }
-  void NamedEntry(Listi::Action action) {
-    if (actionArea->Pending()) {
-      queue->ErrorInfo("Finish or cancel the open question first.");
-      return;
-    }
-    try {
-      auto job = Listi::PrepareNamedEntry(
-          action, panes[source]->Selected(),
-          panes[prefs.SinglePane() ? source : 1 - source]->Path());
-      const bool duplicate = action == Listi::Action::Duplicate;
-      std::string text = std::string(duplicate ? "Duplicate: " : "Link to: ") +
-                         job.sources[0] + "\nIn: " + job.destination;
-      if (!duplicate)
-        text +=
-            "\nRelative: path from this folder. Absolute: full target path.";
-      auto accepted = Listi::EncodeJob(job, kNamedEntryAccepted);
-      accepted.AddString("newEntryIn", job.destination.c_str());
-      actionArea->Ask(text.c_str(), duplicate ? "Duplicate" : "Relative link",
-                      accepted, job.entryName.c_str(),
-                      duplicate ? nullptr : "Absolute link");
-    } catch (const std::exception &e) {
-      PostMainWindowNotice(e.what());
-    }
-  }
+  std::unique_ptr<Listi::FileOperationFlow> fileOperations;
   OperationQueue *queue;
   Listi::FunctionButtonBank *bank = nullptr;
   BTextControl *command;
@@ -450,122 +395,6 @@ class MainWindow : public BWindow {
     }
     ApplyWorkspace();
   }
-  Listi::Job Snapshot(Listi::Action a) {
-    Listi::Job j;
-    j.action = a;
-    j.sources = panes[source]->Selected();
-    if (a == Listi::Action::Copy || a == Listi::Action::Move)
-      j.destination = panes[1 - source]->Path();
-    return j;
-  }
-  void BulkRename() {
-    if (actionArea->Pending()) {
-      queue->ErrorInfo("Finish or cancel the open question first.");
-      return;
-    }
-    if (bulkRenameWindow.IsValid() &&
-        bulkRenameWindow.SendMessage(kBulkRename) == B_OK)
-      return;
-    try {
-      auto job = Listi::FreezeBulkRename(panes[source]->Path(),
-                                         panes[source]->Selected());
-      bulkRenameWindow =
-          Listi::OpenBulkRenameWindow(std::move(job), BMessenger(this));
-    } catch (const std::exception &e) {
-      PostMainWindowNotice(e.what());
-    }
-  }
-  void Operation(Listi::Action a) {
-    if (actionArea->Pending()) {
-      queue->ErrorInfo("Finish or cancel the open question first.");
-      return;
-    }
-    if (prefs.SinglePane() &&
-        (a == Listi::Action::Copy || a == Listi::Action::Move)) {
-      PostMainWindowNotice(
-          "Use Copy or Cut, then navigate and Paste. Panel transfers need Tvískipt or Smiðja.");
-      return;
-    }
-    auto job = Snapshot(a);
-    if ((a == Listi::Action::Trash || a == Listi::Action::Delete) &&
-        !job.sources.empty() &&
-        Listi::ParseLocation(job.sources.front()).Archive()) {
-      ArchiveAction(kRemoveArchive);
-      return;
-    }
-    if (a != Listi::Action::MakeDirectory && job.sources.empty()) {
-      PostMainWindowNotice("Select one or more files in the active panel first.");
-      return;
-    }
-    if (a == Listi::Action::Rename || a == Listi::Action::MakeDirectory) {
-      if (a == Listi::Action::Rename && job.sources.size() > 1) {
-        BulkRename();
-        return;
-      }
-      job.destination = panes[source]->Path();
-      if (a == Listi::Action::MakeDirectory)
-        job.sources.clear();
-      if (job.destination == "@disks") {
-        PostMainWindowNotice("Open a folder first.");
-        return;
-      }
-      try {
-        Listi::FreezeLocalJob(job, job.destination);
-        Listi::FreezeArchiveTargets(job);
-        if (Listi::ParseLocation(job.destination).Archive())
-          Listi::PrepareArchiveEditTarget(
-              Listi::ParseLocation(job.destination).archive);
-      } catch (const std::exception &e) {
-        PostMainWindowNotice(e.what());
-        return;
-      }
-      auto message = Listi::EncodeJob(job, kNameAccepted);
-      AskInline(
-          a == Listi::Action::Rename ? "Rename selected entry"
-                                     : "Create a folder in the active panel",
-          a == Listi::Action::Rename ? "Rename" : "Create folder", message,
-          a == Listi::Action::Rename
-              ? Listi::LocationLeaf(job.sources[0]).c_str()
-              : "New folder");
-      return;
-    }
-    try {
-      if (a == Listi::Action::Copy || a == Listi::Action::Move) {
-        auto transfer = Listi::PrepareTransfer(std::move(job));
-        if (transfer.action == Listi::Action::MoveArchive ||
-            transfer.action == Listi::Action::EditArchive)
-          ConfirmArchiveAddition(transfer);
-        else
-          queue->Enqueue(transfer);
-        return;
-      }
-      Listi::FreezeLocalJob(job);
-      Listi::FreezeArchiveTargets(job);
-    } catch (const std::exception &e) {
-      PostMainWindowNotice(e.what());
-      return;
-    }
-    auto m = Listi::EncodeJob(job, kConfirm);
-    BString text;
-    if (a == Listi::Action::Trash)
-      text << "Move " << int32(job.sources.size())
-           << " selected entries to this volume's Trash?\n\nYou can restore "
-              "them from Trash.\n"
-           << job.sources[0].c_str();
-    else if (a == Listi::Action::Restore)
-      text << "Restore " << int32(job.sources.size())
-           << " selected entries to their original folders?\n\nExisting files "
-              "will not be overwritten.";
-    else if (a == Listi::Action::Delete)
-      text << "Permanently delete " << int32(job.sources.size())
-           << " selected entries?\n\nThis cannot be undone.\n"
-           << job.sources[0].c_str();
-    AskInline(text,
-              a == Listi::Action::Trash     ? "Move to Trash"
-              : a == Listi::Action::Restore ? "Restore"
-                                            : "Delete permanently",
-              m);
-  }
   void Open(uint32 action) {
     auto selected = panes[source]->Selected();
     if (selected.size() != 1) {
@@ -642,6 +471,8 @@ public:
     clipboard = std::make_unique<Listi::ClipboardFlow>(*actionArea, *queue);
     fileDrop = std::make_unique<Listi::FileDropFlow>(
         *actionArea, *queue, BMessenger(this), service);
+    fileOperations = std::make_unique<Listi::FileOperationFlow>(
+        *actionArea, *queue, *clipboard, BMessenger(this));
     actionArea->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     actionArea->GroupLayout()->SetInsets(8, 6, 8, 6);
     actionArea->Hide();
@@ -748,6 +579,9 @@ public:
       queue->ErrorInfo("Switch to Files in the affected panel before using this command.");
       return;
     }
+    if (fileOperations->Handle(*m, *panes[source], *panes[1 - source],
+                               prefs.SinglePane()))
+      return;
     switch (m->what) {
     case Listi::kShowShelf:
       Listi::OpenShelfWindow(BMessenger(this), shelf, shelfWindow);
@@ -1077,41 +911,9 @@ public:
       }
       break;
     }
-    case kCreateArchive:
-    case kExtractArchive:
-    case kAddArchive:
-    case kRemoveArchive:
-      ArchiveAction(m->what);
-      break;
-    case Listi::kArchiveAddChosen: {
-      try {
-        ConfirmArchiveAddition(Listi::ArchiveActions::ReadAdditions(*m));
-      } catch (const std::exception &e) {
-        PostMainWindowNotice(e.what());
-      }
-      break;
-    }
-    case Listi::kArchiveEditAccepted: {
-      auto job = Listi::DecodeSubmittedJob(
-          *m, {Listi::Action::EditArchive, Listi::Action::MoveArchive});
-      if (!job || m->GetInt32("which", 0) != 1)
-        break;
-      const std::string lease = m->GetString("clipboardLease", "");
-      if (!lease.empty() && !clipboard->AcceptArchivePaste(*job, lease))
-        break;
-      queue->Enqueue(*job);
-      break;
-    }
     case 'apfg':
       Listi::ForgetArchivePasswords();
       break;
-    case kArchiveAccepted: {
-      if (auto job =
-              Listi::DecodeSubmittedJob(*m, {Listi::Action::CreateArchive,
-                                             Listi::Action::ExtractArchive}))
-        queue->Enqueue(*job);
-      break;
-    }
     case kResumeArchiveEdits:
       ResumeArchiveEditors(prefs.editor.String());
       break;
@@ -1149,79 +951,6 @@ public:
             pane->ShowStatus(status.c_str());
           }
         }
-      }
-      break;
-    }
-    case kCopy:
-      Operation(Listi::Action::Copy);
-      break;
-    case kMove:
-      Operation(Listi::Action::Move);
-      break;
-    case kDelete:
-      Operation(Listi::Action::Trash);
-      break;
-    case kRestore:
-      Operation(Listi::Action::Restore);
-      break;
-    case kPermanentDelete:
-      Operation(Listi::Action::Delete);
-      break;
-    case kDuplicate:
-      NamedEntry(Listi::Action::Duplicate);
-      break;
-    case kCreateLink:
-      NamedEntry(Listi::Action::Link);
-      break;
-    case kNamedEntryAccepted: {
-      auto job = Listi::DecodeSubmittedJob(
-          *m, {Listi::Action::Link, Listi::Action::Duplicate});
-      if (job) {
-        job->entryName = m->GetString("name", "");
-        job->relativeLink = m->GetInt32("which", 1) != 2;
-        queue->Enqueue(*job);
-      }
-      break;
-    }
-    case kRename:
-      Operation(Listi::Action::Rename);
-      break;
-    case kBulkRename:
-      BulkRename();
-      break;
-    case kUndoBulkRename:
-      if (!m->IsSourceRemote() && !actionArea->Pending() && queue->EnqueueBulkRenameUndo())
-        queue->Show();
-      break;
-    case kBulkRenameAccepted: {
-      if (auto job = Listi::DecodeSubmittedJob(*m, {Listi::Action::BulkRename}))
-        queue->Enqueue(*job);
-      break;
-    }
-    case kMkdir:
-      Operation(Listi::Action::MakeDirectory);
-      break;
-    case kConfirm: {
-      auto job = Listi::DecodeSubmittedJob(*m, {Listi::Action::Trash,
-                                                Listi::Action::Restore,
-                                                Listi::Action::Delete});
-      if (job && m->GetInt32("which", 0) == 1)
-        queue->Enqueue(*job);
-      break;
-    }
-    case kNameAccepted: {
-      auto job = Listi::DecodeSubmittedJob(
-          *m, {Listi::Action::Rename, Listi::Action::MakeDirectory});
-      if (!job)
-        break;
-      try {
-        job->destination =
-            Listi::ChildLocation(job->destination, m->GetString("name", ""));
-        if (Listi::ParseLocation(job->destination).Archive())
-          *job = Listi::PrepareArchiveMutation(*job);
-        queue->Enqueue(*job);
-      } catch (const std::exception &e) {
-        PostMainWindowNotice(e.what());
       }
       break;
     }
