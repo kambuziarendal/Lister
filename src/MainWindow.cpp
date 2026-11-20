@@ -12,7 +12,7 @@
 #include "FileClipboard.h"
 #include "FileDrop.h"
 #include "FlatViewWindow.h"
-#include "FileContextMenu.h"
+#include "PaneContextMenu.h"
 #include "FunctionButtonBank.h"
 #include "NamedEntry.h"
 #include "JobSnapshot.h"
@@ -60,7 +60,6 @@
 #include <memory>
 #include <optional>
 #include <set>
-#include <sys/stat.h>
 #include <unistd.h>
 using Listi::PanelPage;
 
@@ -1173,168 +1172,19 @@ public:
       if (owner < 0 || owner > 1 || hosts[owner]->Current() != PanelPage::Files ||
           ((prefs.SinglePane() || quickView) && owner != source))
         break;
-      source = owner;
-      for (int i = 0; i < 2; ++i)
-        panes[i]->SetSource(i == source);
-      const auto selected = panes[source]->Selected();
-      const std::string folder = panes[source]->Path(),
-                        destination = panes[1 - source]->Path();
-      const bool background = m->GetBool("folderContext", false);
-      if (!background && selected.empty())
-        break;
-      const bool folderLocal = folder != "@disks" && !Listi::IsVirtual(folder);
-      bool local = true;
-      for (const auto &path : selected)
-        local &= !Listi::IsVirtual(path);
+      ActivatePanel(owner);
       try {
-        BMessage snapshot;
-        std::exception_ptr fileSnapshotError;
-        Listi::Job shelfSnapshot{Listi::Action::Copy, selected, ""};
-        bool canAddToShelf = false;
-        if (!selected.empty() && local) {
-          try {
-            snapshot = Listi::MakeFileSelection(selected);
-          } catch (...) {
-            fileSnapshotError = std::current_exception();
-          }
-          // Shelf accepts overlapping folders and distinct hard-link names;
-          // the native transfer clipboard has stricter rules for those.
-          if (folder != "@disks" &&
-              selected.size() <= Listi::Shelf::kMaximumEntries) {
-            try {
-              FreezeLocalJob(shelfSnapshot);
-              canAddToShelf = true;
-            } catch (const std::runtime_error &) {
-              // An unavailable selection cannot be saved to the Shelf.
-            }
-          }
-        }
-        struct stat folderBefore {};
-        if (folderLocal && (stat(folder.c_str(), &folderBefore) ||
-                            !S_ISDIR(folderBefore.st_mode)))
-          throw std::runtime_error(
-              "The folder is unavailable. Open the menu again.");
-        struct stat before {};
-        const bool destinationKnown = !stat(destination.c_str(), &before);
-        BPoint screen;
-        if (m->FindPoint("screen", &screen) != B_OK)
-          break;
-        ContextMenuOptions options;
-        options.folder = background;
-        options.selected = selected.size();
-        options.directory = m->GetBool("directory", false);
-        options.local = local;
-        options.dual = !prefs.SinglePane() && hosts[1 - owner]->Current() == PanelPage::Files;
-        options.folderLocal = folderLocal;
-        const auto folderLocation = Listi::ParseLocation(folder);
-        options.folderArchive = folderLocation.Archive();
-        options.archiveAdd =
-            folderLocation.Archive() ||
-            (selected.size() == 1 && local && !options.directory);
-        options.archiveRemove = !selected.empty();
-        std::string selectedArchive;
-        for (const auto &path : selected) {
-          auto selectedLocation = Listi::ParseLocation(path);
-          if (!selectedLocation.Archive() ||
-              (!selectedArchive.empty() &&
-               selectedArchive != selectedLocation.archive)) {
-            options.archiveRemove = false;
-            break;
-          }
-          selectedArchive = selectedLocation.archive;
-        }
-        options.fileType = panes[owner]->SelectedFileType();
-        options.sort = panes[owner]->Sorting();
-        options.view = panes[owner]->CurrentView();
-        options.singlePane = prefs.SinglePane();
-        options.rememberView = prefs.folderModes.count(folder);
-        options.addToShelf = canAddToShelf;
-        options.restoreSidebar = panes[owner]->SidebarCanBeRestored();
-        options.addShortcut =
-            options.directory && selected.size() == 1 && savedNavigation.CanEditPlaces() &&
-            !savedNavigation.Places().Find(selected.front()) &&
-            savedNavigation.Places().Items().size() < Listi::SavedPlaces::Limit;
-        const auto choice = ShowContextMenu(screen, options);
-        const uint32 action = choice.what;
-        if (!action)
-          break;
-        if (source != owner || selected != panes[owner]->Selected() ||
-            folder != panes[owner]->Path() ||
-            destination != panes[1 - owner]->Path())
-          throw std::runtime_error(
-              "The panel changed. Open the file menu again.");
-        if (action == kRestoreSidebar) {
-          BMessage restore(kRestoreSidebar);
-          panes[owner]->MessageReceived(&restore);
-          break;
-        }
-        if (action == kAddShortcut) {
-          if (!options.addShortcut)
-            break;
-          // A shortcut stores an address, not a clipboard reference. Volume
-          // roots and other browsable folders need no clipboard eligibility.
-          struct stat shortcut {};
-          if (local && (stat(selected.front().c_str(), &shortcut) ||
-                        !S_ISDIR(shortcut.st_mode)))
-            throw std::runtime_error("The selected folder is unavailable.");
-          BMessage request(kPlaceAction);
-          request.AddInt32("action", 0);
-          request.AddString("path", selected.front().c_str());
-          request.AddInt32("pane", owner);
-          MessageReceived(&request);
-          break;
-        }
-        if (action == Listi::kAddToShelf) {
-          if (options.addToShelf)
-            AddToShelf(shelfSnapshot.expectedSources);
-          break;
-        }
-        if (choice.folder) {
-          struct stat folderAfter {};
-          if (folderLocal && (stat(folder.c_str(), &folderAfter) ||
-                              folderBefore.st_dev != folderAfter.st_dev ||
-                              folderBefore.st_ino != folderAfter.st_ino))
-            throw std::runtime_error(
-                "The folder changed. Open the menu again.");
-          if (action == kSort) {
-            panes[owner]->Sort({choice.value, choice.ascending});
-            break;
-          }
-          if (action == kGridMode || action == kRememberView ||
-              action == kForgetView) {
-            BMessage command(action);
-            if (action == kGridMode)
-              command.AddInt32("mode", choice.value);
-            panes[owner]->MessageReceived(&command);
-            break;
-          }
-          if (action == kProperties) {
-            OpenFileProperties(folder, BMessenger(panes[owner]));
-            break;
-          }
-          if (action == kRefresh) {
-            panes[owner]->Reload();
-            break;
-          }
-        } else if (local && action != kCopyPaths) {
-          if (fileSnapshotError)
-            std::rethrow_exception(fileSnapshotError);
-          Listi::ReadFileClipboard(snapshot);
-        }
-        if (action == kCopy || action == kMove || action == kCreateLink) {
-          struct stat after {};
-          if (destinationKnown &&
-              (stat(destination.c_str(), &after) ||
-               before.st_dev != after.st_dev || before.st_ino != after.st_ino))
-            throw std::runtime_error(
-                "The destination changed. Open the file menu again.");
-        }
-        BMessage command(action);
-        // Dispatch before any queued activation/navigation message can redirect it.
-        if (action == kInvoke)
-          panes[owner]->MessageReceived(&command);
-        else
-          MessageReceived(&command);
+        auto result = Listi::RunPaneContextMenu(
+            *m, *panes[owner], *panes[1 - owner], owner, source,
+            prefs.SinglePane(),
+            !prefs.SinglePane() && hosts[1 - owner]->Current() == PanelPage::Files,
+            prefs.folderModes.count(panes[owner]->Path()), savedNavigation.Places(),
+            savedNavigation.CanEditPlaces());
+        // Keep dispatch synchronous so a queued activation cannot redirect it.
+        if (result.command.what == Listi::kAddToShelf)
+          AddToShelf(result.shelfSources);
+        else if (result.command.what)
+          MessageReceived(&result.command);
       } catch (const std::exception &e) {
         PostMainWindowNotice(e.what());
       }
