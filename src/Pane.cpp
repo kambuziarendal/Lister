@@ -553,22 +553,6 @@ void Pane::Reload() {
   Navigate(path);
 }
 std::vector<std::string> Pane::Selected() const { return entries.Selected(); }
-bool Pane::SelectSameFileType() {
-  if (scanning || !entries.SelectSameFileType())
-    return false;
-  SendSelection();
-  return true;
-}
-size_t Pane::MatchPattern(const char *pattern, bool apply) {
-  const size_t count = entries.MatchPattern(pattern, apply);
-  if (apply && count > 0)
-    SendSelection();
-  return count;
-}
-void Pane::Select(int mode) {
-  entries.Select(mode);
-  SendSelection();
-}
 void Pane::ContextMenu(const std::string &path, BPoint screen) {
   if (scanning)
     return;

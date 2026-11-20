@@ -1,0 +1,143 @@
+// SPDX-License-Identifier: MIT
+#include "Pane.h"
+#include "ArchiveEditor.h"
+#include "ImagePreview.h"
+#include "InlineAction.h"
+#include "MainWindow.h"
+#include "OpenWith.h"
+#include "OperationQueue.h"
+#include "PropertiesWindow.h"
+#include "VirtualFile.h"
+
+namespace {
+constexpr uint32 kPreviewPattern = 'sppv';
+}
+
+bool Pane::HandleSelectionCommand(const BMessage &request, InlineAction &prompt,
+                                  OperationQueue &queue) {
+  switch (request.what) {
+  case kSelectPattern:
+  case kPreviewPattern:
+  case Listi::kApplyPattern:
+    SelectByPattern(request, prompt, queue);
+    return true;
+  case kSelectType:
+    if (!scanning && entries.SelectSameFileType())
+      SendSelection();
+    else
+      PostMainWindowNotice(
+          "Choose a file with a filename extension. Only visible files of that "
+          "type are selected; folders and links are excluded.");
+    return true;
+  case kAll:
+  case kNone:
+  case kInvert: {
+    const int mode =
+        request.what == kInvert ? 2 : (request.what == kAll ? 1 : 0);
+    entries.Select(mode);
+    SendSelection();
+    return true;
+  }
+  default:
+    return false;
+  }
+}
+
+size_t Pane::MatchPattern(const char *pattern, bool apply) {
+  const size_t count = entries.MatchPattern(pattern, apply);
+  if (apply && count > 0)
+    SendSelection();
+  return count;
+}
+
+void Pane::SelectByPattern(const BMessage &request, InlineAction &prompt,
+                           OperationQueue &queue) {
+  const int64 revision = SelectionRevision();
+  const char *busy = "Finish or cancel the open question first.";
+  if (request.what == kSelectPattern) {
+    if (revision < 0) {
+      SetStatus("Load a folder before selecting by pattern.");
+      return;
+    }
+    BMessage preview(kPreviewPattern);
+    preview.AddInt32("pane", id);
+    preview.AddInt64("revision", revision);
+    if (!prompt.Ask(
+            "Match visible names, including folders. Use * or ? (case-sensitive).",
+            "Preview", preview, "*"))
+      queue.ErrorInfo(busy);
+    return;
+  }
+  if (revision < 0 || request.GetInt32("pane", -1) != id ||
+      request.GetInt64("revision", -1) != revision) {
+    SetStatus("Panel contents changed. Start Select by pattern again.");
+    return;
+  }
+  const char *pattern = request.GetString("name", "");
+  const bool apply = request.what == Listi::kApplyPattern;
+  const size_t count = MatchPattern(pattern, apply);
+  if (count == 0) {
+    SetStatus("0 matches. Selection unchanged.");
+  } else if (!apply) {
+    BMessage accepted(request);
+    accepted.what = Listi::kApplyPattern;
+    auto question =
+        std::to_string(count) +
+        (count == 1 ? " visible entry matches " : " visible entries match ") +
+        pattern + ". Replace the selection?";
+    if (!prompt.Ask(question.c_str(), "Select", accepted))
+      queue.ErrorInfo(busy);
+  }
+}
+
+bool Pane::HandleOpenCommand(
+    uint32 action, const BString &editor, const BMessenger &service,
+    const std::function<ImagePreview *()> &openPreview) {
+  const char *missingSelection;
+  switch (action) {
+  case kOpenWith:
+    missingSelection = "Select one local file for Open with.";
+    break;
+  case kProperties:
+    missingSelection = "Select one local file or folder for Properties.";
+    break;
+  case kPreviewOtherPanel:
+  case kView:
+  case kEdit:
+  case kEditExternally:
+  case kOpenSystem:
+    missingSelection = "Select exactly one file.";
+    break;
+  default:
+    return false;
+  }
+
+  const auto path = SelectedPath();
+  if (path.empty()) {
+    PostMainWindowNotice(missingSelection);
+  } else if (action == kOpenWith) {
+    OpenWithFile(path);
+  } else if (action == kProperties) {
+    OpenFileProperties(path, BMessenger(this));
+  } else if (action == kPreviewOtherPanel) {
+    openPreview();
+  } else if (action == kEdit && !Listi::IsVirtual(path)) {
+    if (auto *target = openPreview())
+      target->BeginEditing(path);
+  } else if (action == kView) {
+    ImagePreview::OpenWindow(path);
+  } else {
+    const bool externalEdit = action != kOpenSystem;
+    if (externalEdit && Listi::ParseLocation(path).Archive()) {
+      OpenArchiveEditor(path, editor.String());
+    } else {
+      BMessage open(kOpenPaths);
+      open.AddString("path", path.c_str());
+      open.AddString("mode", externalEdit ? "edit" : "system");
+      if (externalEdit)
+        open.AddString("application", editor);
+      service.SendMessage(&open);
+    }
+  }
+  return true;
+}

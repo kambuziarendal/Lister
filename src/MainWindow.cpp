@@ -49,7 +49,6 @@ void PostMainWindowNotice(const char *text) {
 }
 
 namespace {
-constexpr uint32 kPreviewPattern = 'sppv', kApplyPattern = 'spap';
 class MainWindow : public BWindow {
   Preferences prefs;
   BMessenger searchWindow;
@@ -98,7 +97,7 @@ class MainWindow : public BWindow {
     case kDelete: case kRestore: case kPermanentDelete: case kRename:
     case kBulkRename: case kMkdir: case kAddArchive: case kRemoveArchive:
     case kAll: case kNone: case kInvert: case kSelectType: case kSelectPattern:
-    case kApplyPattern: case kGridMode: case Listi::kAddToShelf:
+    case Listi::kApplyPattern: case kGridMode: case Listi::kAddToShelf:
     case Listi::kFlatView:
       return split->Panel(source).Current() == PanelPage::Files;
     default:
@@ -131,39 +130,6 @@ class MainWindow : public BWindow {
                  const char *initial = nullptr) {
     if (!actionArea->Ask(text, button, result, initial))
       queue->ErrorInfo("Finish or cancel the open question first.");
-  }
-  void SelectByPattern(const BMessage &request) {
-    auto *pane = panes[source];
-    const int64 revision = pane->SelectionRevision();
-    if (request.what == kSelectPattern) {
-      if (revision < 0) {
-        pane->ShowStatus("Load a folder before selecting by pattern.");
-        return;
-      }
-      BMessage preview(kPreviewPattern);
-      preview.AddInt32("pane", source);
-      preview.AddInt64("revision", revision);
-      AskInline("Match visible names, including folders. Use * or ? (case-sensitive).",
-                "Preview", preview, "*");
-      return;
-    }
-    if (revision < 0 || request.GetInt32("pane", -1) != source ||
-        request.GetInt64("revision", -1) != revision) {
-      pane->ShowStatus("Panel contents changed. Start Select by pattern again.");
-      return;
-    }
-    const char *pattern = request.GetString("name", "");
-    const size_t count = pane->MatchPattern(pattern, request.what == kApplyPattern);
-    if (count == 0) {
-      pane->ShowStatus("0 matches. Selection unchanged.");
-    } else if (request.what == kPreviewPattern) {
-      BMessage apply(request);
-      apply.what = kApplyPattern;
-      auto prompt = std::to_string(count) +
-                    (count == 1 ? " visible entry matches " : " visible entries match ") +
-                    pattern + ". Replace the selection?";
-      AskInline(prompt.c_str(), "Select", apply);
-    }
   }
   int source = 0;
   std::unique_ptr<Listi::ClipboardFlow> clipboard;
@@ -238,42 +204,11 @@ class MainWindow : public BWindow {
     }
     ApplyWorkspace();
   }
-  void Open(uint32 action) {
-    const auto path = panes[source]->SelectedPath();
-    if (path.empty()) {
-      PostMainWindowNotice("Select exactly one file.");
-      return;
-    }
-    const bool editInPanel = action == kEdit && !Listi::IsVirtual(path);
-    if (action == kPreviewOtherPanel || editInPanel) {
-      ImagePreview *target;
-      if (prefs.IsSmidja()) {
-        target = OpenPanelPreview(1 - source);
-        if (!target)
-          return;
-      } else {
-        SetQuickView(true);
-        target = &split->Inspector();
-      }
-      if (editInPanel)
-        target->BeginEditing(path);
-      return;
-    }
-    if (action == kView) {
-      ImagePreview::OpenWindow(path);
-      return;
-    }
-    const bool externalEdit = action != kOpenSystem;
-    if (externalEdit && Listi::ParseLocation(path).Archive()) {
-      OpenArchiveEditor(path, prefs.editor.String());
-      return;
-    }
-    BMessage m(kOpenPaths);
-    m.AddString("path", path.c_str());
-    m.AddString("mode", externalEdit ? "edit" : "system");
-    if (externalEdit)
-      m.AddString("application", prefs.editor);
-    service.SendMessage(&m);
+  ImagePreview *OpenSelectionPreview() {
+    if (prefs.IsSmidja())
+      return OpenPanelPreview(1 - source);
+    SetQuickView(true);
+    return &split->Inspector();
   }
 
 public:
@@ -395,6 +330,11 @@ public:
     }
     if (fileOperations->Handle(*m, *panes[source], *panes[1 - source],
                                prefs.SinglePane()))
+      return;
+    auto &pane = *panes[source];
+    if (pane.HandleSelectionCommand(*m, *actionArea, *queue) ||
+        pane.HandleOpenCommand(m->what, prefs.editor, service,
+                               [this] { return OpenSelectionPreview(); }))
       return;
     switch (m->what) {
     case Listi::kShowShelf:
@@ -688,22 +628,6 @@ public:
     case kResumeArchiveEdits:
       ResumeArchiveEditors(prefs.editor.String());
       break;
-    case kOpenWith: {
-      const auto path = panes[source]->SelectedPath();
-      if (path.empty())
-        PostMainWindowNotice("Select one local file for Open with.");
-      else
-        OpenWithFile(path);
-      break;
-    }
-    case kProperties: {
-      const auto path = panes[source]->SelectedPath();
-      if (path.empty())
-        PostMainWindowNotice("Select one local file or folder for Properties.");
-      else
-        OpenFileProperties(path, BMessenger(panes[source]));
-      break;
-    }
     case kClipboardSaveText:
     case kClipboardSaveImage:
     case kClipboardCopy:
@@ -755,32 +679,6 @@ public:
       break;
     case kCompareFolders:
       OpenFolderCompare(panes[source]->Path(), panes[1 - source]->Path());
-      break;
-    case kSelectPattern:
-    case kPreviewPattern:
-    case kApplyPattern:
-      SelectByPattern(*m);
-      break;
-    case kSelectType:
-      if (!panes[source]->SelectSameFileType())
-        PostMainWindowNotice(
-            "Choose a file with a filename extension. Only visible files of that type are selected; folders and links are excluded.");
-      break;
-    case kAll:
-      panes[source]->Select(1);
-      break;
-    case kNone:
-      panes[source]->Select(0);
-      break;
-    case kInvert:
-      panes[source]->Select(2);
-      break;
-    case kPreviewOtherPanel:
-    case kView:
-    case kEdit:
-    case kEditExternally:
-    case kOpenSystem:
-      Open(m->what);
       break;
     case kOpenPaths:
       service.SendMessage(m);

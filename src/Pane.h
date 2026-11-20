@@ -11,15 +11,22 @@
 #include <StringView.h>
 #include <TextControl.h>
 #include <View.h>
+#include <functional>
 class FileDetails;
 class FileGrid;
+class ImagePreview;
+class InlineAction;
+class OperationQueue;
 class PaneSidebar;
 class MillerColumns;
 class BCardView;
 class BGroupView;
 class BSplitView;
 class BMenuField;
-namespace Listi { class Shelf; }
+namespace Listi {
+class Shelf;
+inline constexpr uint32 kApplyPattern = 'spap';
+}
 class BMessageRunner;
 class Pane : public BView {
 public:
@@ -38,8 +45,11 @@ public:
   void SetSource(bool);
   void Apply(const Preferences &);
   void SetWorkspace(const Preferences &);
-  void Select(int mode);
-  bool SelectSameFileType();
+  bool HandleSelectionCommand(const BMessage &, InlineAction &,
+                              OperationQueue &);
+  bool HandleOpenCommand(uint32, const BString &editor,
+                         const BMessenger &service,
+                         const std::function<ImagePreview *()> &openPreview);
   int64 SelectionRevision() const {
     return locationValid && !scanning ? selectionRevision : -1;
   }
@@ -82,6 +92,7 @@ private:
   BString path = "/boot/home";
   PaneModel entries;
   int64 selectionRevision = 0;
+  void SelectByPattern(const BMessage &, InlineAction &, OperationQueue &);
   std::vector<std::string> attributeColumns;
   bool attributeDetails = false;
   IconCache icons;

@@ -468,17 +468,48 @@ int main() {
   assert(firstPlace && firstPlace->IsMarked() && nextPlace && !nextPlace->IsMarked());
   // A folder change updates selection without replacing the command object.
   assert(firstPlace->Message()->AddBool("identity probe", true) == B_OK);
+  auto promptButton = [&](const char *label) -> BButton * {
+    auto *question = window->FindView("question");
+    if (!question)
+      return nullptr;
+    auto *prompt = question->Parent();
+    auto *buttons = prompt->ChildAt(prompt->CountChildren() - 1);
+    for (int32 i = 0; i < buttons->CountChildren(); ++i) {
+      auto *button = dynamic_cast<BButton *>(buttons->ChildAt(i));
+      if (button && std::string(button->Label()) == label)
+        return button;
+    }
+    return nullptr;
+  };
+
+  // A pattern preview must not authorize replacing a new folder's selection,
+  // even when the pattern still matches entries there.
+  const auto marker = elsewhere + "/another.txt";
+  assert(std::ofstream(marker) << "also matches *");
+  send(kSelectPattern);
+  auto *preview = promptButton("Preview");
+  assert(preview && preview->Invoke() == B_OK);
+  waitFor([&] { return promptButton("Select") != nullptr; });
+  pane->Navigate(elsewhere.c_str());
+  waitFor([&] { return !pane->IsScanning(); });
+  assert(pane->MatchPattern("*", false) == 1 && pane->Selected().empty());
+  auto *applyPattern = promptButton("Select");
+  assert(applyPattern && applyPattern->Invoke() == B_OK);
+  auto *paneStatus = dynamic_cast<BStringView *>(pane->FindView("status"));
+  assert(paneStatus);
+  waitFor([&] {
+    return std::string(paneStatus->Text()) ==
+           "Panel contents changed. Start Select by pattern again.";
+  });
+  assert(pane->Selected().empty());
+  assert(unlink(marker.c_str()) == 0);
+  pane->Navigate(sourcePath.c_str());
+  waitFor([&] { return !pane->IsScanning(); });
+  firstPlace = go->Menu()->FindItem("Original");
+  assert(firstPlace && firstPlace->IsMarked());
+
   send(kMkdir);
-  auto *question = window->FindView("question");
-  assert(question);
-  auto *prompt = question->Parent();
-  auto *buttons = prompt->ChildAt(prompt->CountChildren() - 1);
-  BButton *confirm = nullptr;
-  for (int32 i = 0; i < buttons->CountChildren(); ++i) {
-    auto *button = dynamic_cast<BButton *>(buttons->ChildAt(i));
-    if (button && std::string(button->Label()) == "Create folder")
-      confirm = button;
-  }
+  auto *confirm = promptButton("Create folder");
   assert(confirm);
   pane->Navigate(elsewhere.c_str());
   waitFor([&] { return !pane->IsScanning(); });
