@@ -10,6 +10,7 @@
 #include "../src/SavedPlaces.h"
 #include "../src/SavedSearches.h"
 #include "../src/WindowKeyFilter.h"
+#include "../src/WorkspaceSplit.h"
 #include <Application.h>
 #include <Button.h>
 #include <GridView.h>
@@ -23,6 +24,7 @@
 #include <StringItem.h>
 #include <cassert>
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <unistd.h>
 
@@ -66,9 +68,53 @@ static void CheckFunctionButtons() {
   assert(grid() && grid()->CountChildren() == 0 && fallback->CountItems() == 0);
 }
 
+static void CheckWorkspaceSplit() {
+  auto *first = new BView("first", 0);
+  auto *second = new BView("second", 0);
+  auto *inspector = new BView("inspector", 0);
+  Listi::WorkspaceSplit split(first, second, inspector);
+  auto near = [](float a, float b) { return std::fabs(a - b) < 0.0001f; };
+
+  WorkspaceLayout layout;
+  layout.panelsStacked = true;
+  layout.splitWeights[0] = 0.3f;
+  layout.splitWeights[1] = 0.5f;
+  layout.splitWeights[2] = 0.2f;
+  split.PlaceInspector(true, layout.splitWeights[2]);
+  split.ApplyGeometry(layout, false, 0);
+  assert(split.Orientation() == B_VERTICAL);
+  assert(split.IsCollapsible(0) && !split.IsCollapsible(1) &&
+         !split.IsCollapsible(2));
+  assert(near(split.ItemWeight(0), 0.2f));
+  assert(near(split.ItemWeight(1), 0.3f));
+  assert(near(split.ItemWeight(2), 0.5f));
+
+  split.SetInspectorVisible(false);
+  assert(inspector->IsHidden(inspector));
+  split.SetItemWeight(1, 0.6f, true);
+  split.SetItemWeight(2, 0.4f, true);
+  split.RememberWeights(layout, false);
+  assert(near(layout.splitWeights[0], 0.48f));
+  assert(near(layout.splitWeights[1], 0.32f));
+  assert(near(layout.splitWeights[2], 0.2f));
+
+  layout.workspace = Workspace::einn;
+  split.ApplyGeometry(layout, false, 1);
+  assert(split.Spacing() == 0 && split.SplitterSize() == 0);
+  split.SetInspectorVisible(true);
+  split.SetPaneVisible(0, false);
+  split.ApplyGeometry(layout, true, 1);
+  assert(split.Spacing() > 0 && split.SplitterSize() > 0);
+  assert(!inspector->IsHidden(inspector) && first->IsHidden(first));
+  assert(near(split.ItemWeight(0), 0.48f));
+  split.RememberWeights(layout, true);
+  assert(near(layout.splitWeights[2], 0.2f));
+}
+
 int main() {
   BApplication app("application/x-vnd.Listi-MainWindowRoutingTest");
   CheckFunctionButtons();
+  CheckWorkspaceSplit();
   auto *window = CreateMainWindow(Preferences{}, BMessenger{}, {}, false, {}, false);
   auto *menu = dynamic_cast<BMenuBar *>(window->FindView("menu"));
   assert(menu);

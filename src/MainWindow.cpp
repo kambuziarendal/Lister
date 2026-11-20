@@ -38,7 +38,7 @@
 #include "WindowKeyFilter.h"
 #include "WindowScripting.h"
 #include "WorkspaceEditor.h"
-#include <array>
+#include "WorkspaceSplit.h"
 #include <Alert.h>
 #include <Application.h>
 #include <algorithm>
@@ -72,31 +72,6 @@ void PostMainWindowNotice(const char *text) {
 
 namespace {
 constexpr uint32 kPreviewPattern = 'sppv', kApplyPattern = 'spap';
-constexpr uint32 kSplitChanged = 'swgt';
-
-class WorkspaceSplit : public BSplitView {
-public:
-  WorkspaceSplit() : BSplitView(B_HORIZONTAL, 6) {}
-
-  void MouseDown(BPoint where) override {
-    for (int32 i = 0; i < CountItems(); ++i)
-      before[i] = ItemWeight(i);
-    BSplitView::MouseDown(where);
-  }
-
-  void MouseUp(BPoint where) override {
-    BSplitView::MouseUp(where);
-    for (int32 i = 0; i < CountItems(); ++i) {
-      if (before[i] != ItemWeight(i)) {
-        Window()->PostMessage(kSplitChanged);
-        break;
-      }
-    }
-  }
-
-private:
-  std::array<float, 3> before{};
-};
 constexpr uint32 kImageDropConvert = 'dcvi';
 constexpr uint32 kClipboardFileAccepted = 'ctac';
 constexpr uint32 kNamedEntryAccepted = 'nacc', kDropAccepted = 'dacc',
@@ -199,15 +174,11 @@ class MainWindow : public BWindow {
   }
   bool quickView = false;
   MainWindowMenu *menu;
-  BSplitView *split;
+  Listi::WorkspaceSplit *split;
   BSplitView *terminalSplit;
   std::unique_ptr<Listi::TerminalDock> terminalDock;
   BGroupView *topTools, *bottomTools;
-  bool inspectorOnLeft = false;
   bool bankOnTop = false, commandOnTop = false;
-  float splitterSize = 0;
-  bool paneVisible[2] = {true, true};
-  bool previewVisible = true;
   void Save() {
     auto saved = prefs.Save();
     saved.what = kSavePreferences;
@@ -225,7 +196,7 @@ class MainWindow : public BWindow {
         inspector->ShowFile(hosts[pane]->Current() == PanelPage::Preview
                                 ? visibleFile(1 - pane) : "");
     }
-    preview->ShowFile(previewVisible ? visibleFile(source) : "");
+    preview->ShowFile(split->InspectorVisible() ? visibleFile(source) : "");
   }
   InlineAction *actionArea;
   void CloseAction() {
@@ -506,43 +477,12 @@ class MainWindow : public BWindow {
       (commandOnTop ? topTools : bottomTools)->AddChild(command);
     }
   }
-  int SplitIndex(int logicalIndex) const {
-    if (inspectorOnLeft)
-      return logicalIndex == 2 ? 0 : logicalIndex + 1;
-    return logicalIndex;
-  }
-  void SetSplitWeights() {
-    for (int i = 0; i < 3; ++i)
-      split->SetItemWeight(SplitIndex(i), prefs.splitWeights[i], true);
-  }
-  void RememberSplitWeights() {
-    if (prefs.SinglePane() || quickView)
-      return;
-    // Keep the inspector's previous share when it is not participating.
-    const bool inspectorExpanded =
-        previewVisible && !preview->IsHidden(preview);
-    const int count = inspectorExpanded ? 3 : 2;
-    const float totalShare = inspectorExpanded ? 1 : 1 - prefs.splitWeights[2];
-    float raw[3]{}, total = 0;
-    for (int i = 0; i < count; ++i) {
-      raw[i] = split->ItemWeight(SplitIndex(i));
-      total += raw[i];
-    }
-    if (total <= 0)
-      return;
-    for (int i = 0; i < count; ++i)
-      prefs.splitWeights[i] = raw[i] * totalShare / total;
-  }
   void ApplyPreviewVisibility() {
-    const bool showPreview = quickView || (prefs.Preview() && !prefs.SinglePane() && !PanelPreviewVisible());
+    const bool showPreview =
+        quickView || (prefs.Preview() && !prefs.SinglePane() &&
+                      !PanelPreviewVisible());
     preview->SetQuickViewCloseVisible(quickView);
-    if (showPreview != previewVisible) {
-      previewVisible = showPreview;
-      if (showPreview && preview->IsHidden(preview))
-        preview->Show();
-      else if (!showPreview && !preview->IsHidden(preview))
-        preview->Hide();
-    }
+    split->SetInspectorVisible(showPreview);
     menu->SetPreview(prefs, quickView || PanelPreviewVisible());
     UpdatePreview();
   }
@@ -586,36 +526,18 @@ class MainWindow : public BWindow {
   }
   void ApplyWorkspace() {
     const bool previewFirst = quickView ? source == 1 : prefs.inspectorLeft;
-    if (inspectorOnLeft != previewFirst) {
-      split->GetLayout()->RemoveView(preview);
-      inspectorOnLeft = previewFirst;
-      split->AddChild(SplitIndex(2), preview, prefs.splitWeights[2]);
-      for (int i = 0; i < 3; ++i)
-        split->SetCollapsible(SplitIndex(i), i == 2);
-    }
+    split->PlaceInspector(previewFirst, prefs.splitWeights[2]);
     PlaceTools();
     UpdateBank(Bounds().Width());
     for (int i = 0; i < 2; ++i) {
       hosts[i]->EnableTools(prefs.IsSmidja());
       const bool visible = i == source || (!quickView && !prefs.SinglePane());
-      if (visible != paneVisible[i]) {
-        paneVisible[i] = visible;
-        if (visible)
-          hosts[i]->Show();
-        else
-          hosts[i]->Hide();
-      }
+      split->SetPaneVisible(i, visible);
       panes[i]->SetWorkspace(prefs);
       panes[i]->SetSource(i == source);
     }
     ApplyPreviewVisibility();
-    split->SetOrientation(prefs.panelsStacked ? B_VERTICAL : B_HORIZONTAL);
-    const bool oneView = prefs.SinglePane() && !quickView;
-    split->SetSpacing(oneView ? 0 : 6);
-    split->SetSplitterSize(oneView ? 0 : splitterSize);
-    SetSplitWeights();
-    if (quickView)
-      split->SetItemWeight(SplitIndex(2), prefs.splitWeights[1 - source], true);
+    split->ApplyGeometry(prefs, quickView, source);
     menu->SetWorkspace(prefs, quickView);
     queue->SetCompact(prefs.SinglePane());
     const bool showCommand = prefs.command && !prefs.SinglePane();
@@ -773,7 +695,7 @@ class MainWindow : public BWindow {
     if (action == kPreviewOtherPanel || editInPanel) {
       ImagePreview *target = preview;
       if (prefs.IsSmidja()) {
-        if (previewVisible && !preview->CloseEditor())
+        if (split->InspectorVisible() && !preview->CloseEditor())
           return;
         OpenPanelPreview(1 - source);
         target = PanelPreview(1 - source);
@@ -821,19 +743,10 @@ public:
     menu = new MainWindowMenu();
     panes[0] = new Pane(0, prefs, shelf);
     panes[1] = new Pane(1, prefs, shelf);
-    split = new WorkspaceSplit();
-    splitterSize = split->SplitterSize();
-    for (int pane = 0; pane < 2; ++pane) {
+    for (int pane = 0; pane < 2; ++pane)
       hosts[pane] = new Listi::PanelTools(pane, panes[pane]);
-      split->AddChild(hosts[pane]);
-    }
     preview = new ImagePreview();
-    split->AddChild(preview);
-    split->SetItemWeight(0, 0.39, false);
-    split->SetItemWeight(1, 0.39, false);
-    split->SetItemWeight(2, 0.22, true);
-    split->SetCollapsible(0, false);
-    split->SetCollapsible(1, false);
+    split = new Listi::WorkspaceSplit(hosts[0], hosts[1], preview);
     terminalSplit = new BSplitView(B_VERTICAL, 6);
     terminalDock = std::make_unique<Listi::TerminalDock>(
         terminalSplit, split, BMessenger(this));
@@ -1094,7 +1007,7 @@ public:
         if (hosts[pane]->Current() == PanelPage::Preview) {
           ClosePanelPreview(pane);
         } else {
-          if (previewVisible && !preview->CloseEditor())
+          if (split->InspectorVisible() && !preview->CloseEditor())
             break;
           OpenPanelPreview(pane);
           ApplyPreviewVisibility();
@@ -1111,7 +1024,7 @@ public:
     case kPreviewToggle:
       if (prefs.SinglePane() || quickView || PanelPreviewVisible())
         break;
-      if (previewVisible && !preview->CloseEditor())
+      if (split->InspectorVisible() && !preview->CloseEditor())
         break;
       prefs.SetPreview(!prefs.Preview());
       ApplyPreviewVisibility();
@@ -1878,8 +1791,8 @@ public:
       service.SendMessage(&open);
       break;
     }
-    case kSplitChanged:
-      RememberSplitWeights();
+    case Listi::kSplitChanged:
+      split->RememberWeights(prefs, quickView);
       Save();
       break;
     case kToggleBank:
