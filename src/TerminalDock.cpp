@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: MIT
 #include "TerminalDock.h"
+#include "Common.h"
+#include "MainWindow.h"
+#include "VirtualFile.h"
 
 #include <GroupLayout.h>
 #include <Screen.h>
 #include <SplitView.h>
 #include <Window.h>
 #include <algorithm>
+#include <cstring>
 
 namespace Listi {
 namespace {
@@ -98,6 +102,81 @@ TerminalDock::~TerminalDock() {
       // Quit directly: requesting a normal window close would redock instead.
       looper->Quit();
     }
+  }
+}
+
+std::optional<TerminalRestartPrompt>
+TerminalDock::Open(const BMessage &message, int lister, const char *directory) {
+  auto *terminalPanel = Docked(lister);
+  if (!terminalPanel) {
+    FocusFloating(lister);
+    return std::nullopt;
+  }
+  const bool floating = message.what == kShowFloatingTerminal;
+  const bool hasSession = terminalPanel->Active();
+  const bool here = message.what == kTerminal;
+  const char *path = message.GetString("folder", directory);
+  if (message.HasString("folder") &&
+      (message.GetInt64("session", -1) != terminalPanel->SessionId() ||
+       message.GetInt64("terminal placement", -1) !=
+           terminalPanel->Placement()))
+    return std::nullopt;
+  if (!hasSession || here) {
+    if (!strcmp(path, "@disks") || IsVirtual(path)) {
+      PostMainWindowNotice("Open a local folder first.");
+      return std::nullopt;
+    }
+    if (hasSession && terminalPanel->StartFolder() != path) {
+      if (!message.HasString("folder")) {
+        BMessage accepted(message.what);
+        accepted.AddString("folder", path);
+        accepted.AddInt32("terminal lister", lister);
+        accepted.AddInt64("session", terminalPanel->SessionId());
+        accepted.AddInt64("terminal placement", terminalPanel->Placement());
+        BString prompt("Close the current CLI and start a new shell in ");
+        prompt << path << "? Any running command will stop.";
+        return TerminalRestartPrompt{prompt, accepted};
+      }
+      terminalPanel->Stop();
+    }
+    if (!terminalPanel->Active()) {
+      if (const int error = terminalPanel->Start(path)) {
+        BString detail("Could not open Listi CLI: ");
+        detail << strerror(error);
+        PostMainWindowNotice(detail);
+        return std::nullopt;
+      }
+    }
+  }
+  Show(lister);
+  if (!floating || !Float(terminalPanel->Placement()))
+    terminalPanel->Focus();
+  return std::nullopt;
+}
+
+void TerminalDock::ApplyPlacement(const BMessage &message) {
+  switch (message.what) {
+  case kTerminalBelow:
+    SetSide(TerminalSide::Below);
+    break;
+  case kTerminalBeside:
+    SetSide(TerminalSide::Right);
+    break;
+  case kTerminalAbove:
+    SetSide(TerminalSide::Above);
+    break;
+  case kTerminalLeft:
+    SetSide(TerminalSide::Left);
+    break;
+  case kToggleTerminalSide:
+    Move(message.GetInt64("terminal placement", -1));
+    break;
+  case kFloatTerminal:
+    Float(message.GetInt64("terminal placement", -1));
+    break;
+  case kDockTerminal:
+    Dock(message.GetInt64("terminal placement", -1));
+    break;
   }
 }
 

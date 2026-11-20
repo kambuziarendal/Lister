@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "TerminalDock.h"
+#include "Common.h"
 
 #include <Application.h>
 #include <Button.h>
@@ -80,12 +81,26 @@ public:
   }
 
   TerminalPanel *Start(const fs::path &path, int lister = 0) {
+    const BMessage open(lister == 0 ? kLeftCLI : kRightCLI);
+    dock->Open(open, lister, path.c_str());
     auto *panel = dock->Docked(lister);
-    if (!panel || panel->Start(path.c_str()) != 0)
-      return nullptr;
-    dock->Show(lister);
-    panel->Focus();
-    return panel;
+    return panel && panel->Active() ? panel : nullptr;
+  }
+
+  bool RejectStaleRestart(const fs::path &otherPath) {
+    auto *panel = dock->Docked(0);
+    const auto session = panel->SessionId();
+    const auto folder = panel->StartFolder();
+    auto prompt = dock->Open(BMessage(kTerminal), 0, otherPath.c_str());
+    if (!prompt || prompt->accepted.GetInt64("session", -1) != session ||
+        prompt->accepted.GetInt64("terminal placement", -1) != panel->Placement() ||
+        std::string(prompt->accepted.GetString("folder", "")) != otherPath)
+      return false;
+    if (prompt->accepted.ReplaceInt64("terminal placement", -1) != B_OK)
+      return false;
+    return !dock->Open(prompt->accepted, 0, otherPath.c_str()) &&
+           panel->Active() && panel->StartFolder() == folder &&
+           panel->SessionId() == session;
   }
 
   bool DockIs(orientation direction, int32 workspaceIndex) const {
@@ -100,19 +115,14 @@ public:
   }
 
   void MessageReceived(BMessage *message) override {
-    const int64 serial = message->GetInt64("terminal placement", -1);
     switch (message->what) {
     case kToggleTerminalSide:
-      dock->Move(serial);
-      return;
     case kFloatTerminal:
-      dock->Float(serial);
-      return;
     case kDockTerminal:
-      dock->Dock(serial);
+      dock->ApplyPlacement(*message);
       return;
     case kCloseTerminal:
-      dock->Close(serial);
+      dock->Close(message->GetInt64("terminal placement", -1));
       return;
     default:
       BWindow::MessageReceived(message);
@@ -235,6 +245,10 @@ int main() {
             return panel != nullptr;
           }),
           "start CLI in the file window");
+    Check(WithWindow(main, [&](BWindow &) {
+            return owner->RejectStaleRestart(rightFixture.path);
+          }),
+          "restart confirmation captures the shell and rejects stale placement");
     Check(Enter(main, "token=live; printf ready > ready; read answer; "
                       "printf '%s:%s' \"$token\" \"$answer\" > result") &&
               Until([&] { return Read(fixture.path / "ready") == "ready"; }),

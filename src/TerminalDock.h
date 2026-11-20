@@ -2,11 +2,19 @@
 #pragma once
 
 #include "TerminalPanel.h"
+#include <Message.h>
+#include <String.h>
+#include <optional>
 
 class BSplitView;
 class BView;
 
 namespace Listi {
+
+struct TerminalRestartPrompt {
+  BString text;
+  BMessage accepted;
+};
 
 // Called only with the file window locked. The detached window never locks
 // the file window; its controls send requests back to this owner.
@@ -15,6 +23,11 @@ public:
   TerminalDock(BSplitView *split, BView *workspace, BMessenger owner);
   ~TerminalDock();
 
+  // Opening in another directory can require a confirmed restart. The
+  // returned prompt captures both the shell and its current placement.
+  std::optional<TerminalRestartPrompt> Open(const BMessage &request, int lister,
+                                            const char *directory);
+  void ApplyPlacement(const BMessage &request);
   TerminalPanel *Docked(int lister) const;
   bool HasFocus() const;
   bool FocusFloating(int lister);

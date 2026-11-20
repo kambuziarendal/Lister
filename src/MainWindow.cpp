@@ -1410,16 +1410,13 @@ public:
       service.SendMessage(m);
       break;
     case Listi::kTerminalBelow:
-      terminalDock->SetSide(Listi::TerminalSide::Below);
-      break;
     case Listi::kTerminalBeside:
-      terminalDock->SetSide(Listi::TerminalSide::Right);
-      break;
     case Listi::kTerminalAbove:
-      terminalDock->SetSide(Listi::TerminalSide::Above);
-      break;
     case Listi::kTerminalLeft:
-      terminalDock->SetSide(Listi::TerminalSide::Left);
+    case Listi::kToggleTerminalSide:
+    case Listi::kFloatTerminal:
+    case Listi::kDockTerminal:
+      terminalDock->ApplyPlacement(*m);
       break;
     case kTerminal:
     case Listi::kLeftCLI:
@@ -1430,62 +1427,10 @@ public:
                          : m->GetInt32("terminal lister", source);
       if (lister < 0 || lister > 1)
         break;
-      auto *terminalPanel = terminalDock->Docked(lister);
-      if (!terminalPanel) {
-        terminalDock->FocusFloating(lister);
-        break;
-      }
-      const bool floating = m->what == Listi::kShowFloatingTerminal;
-      const bool hasSession = terminalPanel->Active();
-      const bool here = m->what == kTerminal;
-      const char *path = m->GetString("folder", panes[lister]->Path());
-      if (m->HasString("folder") &&
-          (m->GetInt64("session", -1) != terminalPanel->SessionId() ||
-           m->GetInt64("terminal placement", -1) !=
-               terminalPanel->Placement()))
-        break;
-      if (!hasSession || here) {
-        if (!strcmp(path, "@disks") || Listi::IsVirtual(path)) {
-          PostMainWindowNotice("Open a local folder first.");
-          break;
-        }
-        if (hasSession && terminalPanel->StartFolder() != path) {
-          if (!m->HasString("folder")) {
-            BMessage accepted(m->what);
-            accepted.AddString("folder", path);
-            accepted.AddInt32("terminal lister", lister);
-            accepted.AddInt64("session", terminalPanel->SessionId());
-            accepted.AddInt64("terminal placement", terminalPanel->Placement());
-            BString prompt("Close the current CLI and start a new shell in ");
-            prompt << path << "? Any running command will stop.";
-            AskInline(prompt.String(), "Start new CLI", accepted);
-            break;
-          }
-          terminalPanel->Stop();
-        }
-        if (!terminalPanel->Active()) {
-          if (const int error = terminalPanel->Start(path)) {
-            BString detail("Could not open Listi CLI: ");
-            detail << strerror(error);
-            PostMainWindowNotice(detail);
-            break;
-          }
-        }
-      }
-      terminalDock->Show(lister);
-      if (!floating || !terminalDock->Float(terminalPanel->Placement()))
-        terminalPanel->Focus();
+      if (auto prompt = terminalDock->Open(*m, lister, panes[lister]->Path()))
+        AskInline(prompt->text.String(), "Start new CLI", prompt->accepted);
       break;
     }
-    case Listi::kToggleTerminalSide:
-      terminalDock->Move(m->GetInt64("terminal placement", -1));
-      break;
-    case Listi::kFloatTerminal:
-      terminalDock->Float(m->GetInt64("terminal placement", -1));
-      break;
-    case Listi::kDockTerminal:
-      terminalDock->Dock(m->GetInt64("terminal placement", -1));
-      break;
     case Listi::kCloseTerminal:
       if (terminalDock->Close(m->GetInt64("terminal placement", -1))) {
         Activate();
