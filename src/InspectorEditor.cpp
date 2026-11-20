@@ -2,7 +2,7 @@
 #include "InspectorEditor.h"
 #include "ExplicitSubmit.h"
 #include "InspectorDocument.h"
-#include "InspectorSyntax.h"
+#include "InspectorTextView.h"
 
 #include <Alert.h>
 #include <Application.h>
@@ -10,7 +10,6 @@
 #include <Clipboard.h>
 #include <GroupLayout.h>
 #include <GroupView.h>
-#include <Input.h>
 #include <LayoutBuilder.h>
 #include <Layout.h>
 #include <MenuBar.h>
@@ -25,7 +24,6 @@
 #include <algorithm>
 #include <charconv>
 #include <cctype>
-#include <deque>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -96,57 +94,6 @@ private:
   InspectorEditor *editor;
 };
 
-struct Change {
-  int32 offset;
-  bool insert;
-  std::string bytes;
-};
-using Edit = std::vector<Change>;
-
-// Keep the changes made by one native input event together. This includes
-// selection replacement, paste, drag edits and our own replace-all action.
-class EditorText : public BTextView {
-public:
-  EditorText() : BTextView("editor text") {}
-  bool recording = false;
-  bool composing = false;
-  void MessageReceived(BMessage *message) override {
-    if (message->what == B_INPUT_METHOD_EVENT) {
-      const int32 op = message->GetInt32("be:opcode", -1);
-      if (op == B_INPUT_METHOD_STARTED)
-        composing = true;
-      else if (op == B_INPUT_METHOD_STOPPED ||
-               (op == B_INPUT_METHOD_CHANGED &&
-                message->GetBool("be:confirmed", false)))
-        composing = false;
-    }
-    BTextView::MessageReceived(message);
-  }
-  Edit pending;
-  uint64 revision = 0;
-
-  std::string_view Content() const {
-    return {Text(), static_cast<size_t>(TextLength())};
-  }
-
-protected:
-  void InsertText(const char *text, int32 size, int32 at,
-                  const text_run_array *) override {
-    if (recording && size > 0)
-      pending.push_back({at, true, std::string(text, size)});
-    // Files are plain text. Never import font runs from a rich clipboard.
-    BTextView::InsertText(text, size, at, nullptr);
-    ++revision;
-  }
-
-  void DeleteText(int32 from, int32 to) override {
-    if (recording && to > from)
-      pending.push_back({from, false, std::string(Text() + from, to - from)});
-    BTextView::DeleteText(from, to);
-    ++revision;
-  }
-};
-
 BButton *Button(const char *label, uint32 action) {
   return new BButton(label, new BMessage(action));
 }
@@ -162,8 +109,7 @@ BStringView *FlexibleLabel(const char *name, const char *text) {
 class InspectorEditor : public BGroupView {
   const std::string path, leaf;
   std::unique_ptr<Inspector::Document> document;
-  Inspector::Syntax::Family language;
-  EditorText *body;
+  Inspector::InspectorTextView *body;
   BGroupView *findBar, *lineBar;
   BTextControl *find, *replacement, *line;
   BStringView *position, *feedback, *location;
@@ -173,9 +119,7 @@ class InspectorEditor : public BGroupView {
   BeforeEditorDispatch *dispatch = nullptr;
   Listi::ExplicitSubmit *submit[3] = {};
   BMenuItem *undoItem, *redoItem, *wrapItem, *saveItem;
-  std::deque<Edit> undo, redo;
-  size_t undoBytes = 0;
-  bool dirty = false, needsColour = true;
+  bool dirty = false;
   uint64 lastRevision = 0, feedbackRevision = 0;
   int32 lastPosition = -1;
   std::unique_ptr<BMessageRunner> timer;
@@ -183,7 +127,7 @@ class InspectorEditor : public BGroupView {
   bool Changed() const { return body->Content() != document->Text(); }
 
   void Status(const std::string &message) {
-    feedbackRevision = body->revision;
+    feedbackRevision = body->Revision();
     feedback->SetText(message.c_str());
     feedback->SetToolTip(message.c_str());
   }
@@ -196,66 +140,6 @@ class InspectorEditor : public BGroupView {
       Window()->SetTitle(("Listi: " + leaf + (dirty ? " *" : "")).c_str());
     saveButton->SetEnabled(dirty);
     saveItem->SetEnabled(dirty);
-  }
-
-  static size_t Cost(const Edit &edit) {
-    size_t bytes = 0;
-    for (const auto &change : edit)
-      bytes += sizeof(Change) + change.bytes.size();
-    return bytes;
-  }
-
-  void FinishEdit() {
-    if (body->pending.empty() || body->composing)
-      return;
-    if (feedbackRevision != body->revision)
-      Status("");
-    undoBytes += Cost(body->pending);
-    undo.push_back(std::move(body->pending));
-    body->pending.clear();
-    redo.clear();
-    while (undo.size() > 1 &&
-           (undo.size() > 512 || undoBytes > 16 * 1024 * 1024)) {
-      undoBytes -= Cost(undo.front());
-      undo.pop_front();
-    }
-    UpdateDirty();
-  }
-
-  void ApplyHistory(bool forward) {
-    auto &from = forward ? redo : undo;
-    auto &to = forward ? undo : redo;
-    if (from.empty())
-      return;
-    auto &edit = from.back();
-    const size_t bytes = Cost(edit);
-    int32 caret = 0;
-    body->recording = false;
-    auto apply = [&](const Change &change) {
-      caret = change.offset;
-      const int32 size = static_cast<int32>(change.bytes.size());
-      if (forward == change.insert) {
-        body->Insert(caret, change.bytes.data(), size);
-        caret += size;
-      } else {
-        body->Delete(caret, caret + size);
-      }
-    };
-    if (forward) {
-      for (const auto &change : edit)
-        apply(change);
-      undoBytes += bytes;
-    } else {
-      for (auto it = edit.rbegin(); it != edit.rend(); ++it)
-        apply(*it);
-      undoBytes -= bytes;
-    }
-    body->recording = true;
-    to.push_back(std::move(edit));
-    from.pop_back();
-    Select(caret, caret);
-    UpdateDirty();
-    Status(forward ? "Redone" : "Undone");
   }
 
   void Select(int32 from, int32 to) {
@@ -284,44 +168,9 @@ class InspectorEditor : public BGroupView {
     }
   }
 
-  void Colour() {
-    using namespace Inspector::Syntax;
-    const auto content = body->Content();
-    const rgb_color normal = ui_color(B_DOCUMENT_TEXT_COLOR);
-    const rgb_color background = ui_color(B_DOCUMENT_BACKGROUND_COLOR);
-    // Do not feed thousands of BFont objects into the native layout on large
-    // files. Plain formatting never limits editing, navigation or saving.
-    auto runs = ColourRuns(content, content.size() > 128 * 1024 ? Family::Plain
-                                                                : language);
-    if (runs.size() > 4096)
-      runs = {{0, Ink::Text}};
-    const bool dark = background.Brightness() < 128;
-    const rgb_color palette[] = {
-        normal,
-        dark ? rgb_color{143, 193, 151, 255} : rgb_color{52, 105, 61, 255},
-        dark ? rgb_color{243, 177, 135, 255} : rgb_color{146, 65, 23, 255},
-        dark ? rgb_color{159, 192, 255, 255} : rgb_color{45, 75, 154, 255},
-        dark ? rgb_color{217, 168, 240, 255} : rgb_color{120, 52, 142, 255}};
-    text_run_array *styles = BTextView::AllocRunArray(runs.size());
-    if (!styles)
-      return;
-    for (size_t i = 0; i < runs.size(); ++i) {
-      styles->runs[i].offset = runs[i].offset;
-      styles->runs[i].font = *be_fixed_font;
-      styles->runs[i].color = palette[static_cast<size_t>(runs[i].ink)];
-    }
-    body->SetRunArray(0, body->TextLength(), styles);
-    BTextView::FreeRunArray(styles);
-    needsColour = false;
-  }
-
   void Tick() {
-    const bool changed = lastRevision != body->revision;
-    // SetRunArray cancels active input methods in BTextView.
-    if (changed)
-      needsColour = true;
-    if (needsColour && !body->composing)
-      Colour();
+    const bool changed = lastRevision != body->Revision();
+    body->RefreshColours();
     int32 from, to;
     body->GetSelection(&from, &to);
     if (changed || lastPosition != from) {
@@ -337,7 +186,7 @@ class InspectorEditor : public BGroupView {
       position->SetText(label.c_str());
       lastPosition = from;
     }
-    lastRevision = body->revision;
+    lastRevision = body->Revision();
   }
 
   void ShowBar(BGroupView *active) {
@@ -496,22 +345,10 @@ public:
                   std::unique_ptr<Inspector::Document> source, BHandler *owner)
       : BGroupView("inspector editor", B_VERTICAL, 0), path(file),
         leaf(file.substr(file.rfind('/') + 1)), document(std::move(source)),
-        language(Inspector::Syntax::Language(path, document->Text())),
         closeTarget(owner) {
     menu = BuildMenu();
-    body = new EditorText;
-    body->SetFontAndColor(be_fixed_font);
-    body->SetViewUIColor(B_DOCUMENT_BACKGROUND_COLOR);
-    body->SetLowUIColor(B_DOCUMENT_BACKGROUND_COLOR);
-    body->SetHighUIColor(B_DOCUMENT_TEXT_COLOR);
-    body->SetStylable(true);
-    body->SetDoesUndo(false);
-    body->SetWordWrap(language == Inspector::Syntax::Family::Plain ||
-                      language == Inspector::Syntax::Family::Markdown);
+    body = new Inspector::InspectorTextView(path, document->Text());
     wrapItem->SetMarked(body->DoesWordWrap());
-    body->SetInsets(8, 6, 8, 6);
-    body->SetTabWidth(be_fixed_font->StringWidth("    "));
-    body->SetText(document->Text().c_str());
     auto scroll =
         new BScrollView("editor scroll", body, 0, true, true, B_NO_BORDER);
     scroll->SetExplicitMinSize(BSize(360, 140));
@@ -566,7 +403,6 @@ public:
     findBar->Hide();
     lineBar->Hide();
     UpdateDirty();
-    body->recording = true;
   }
 
   void AddStandaloneShortcuts() {
@@ -643,8 +479,12 @@ public:
   }
 
   void BeforeDispatch() {
-    FinishEdit();
-    bool canUndo = !undo.empty(), canRedo = !redo.empty();
+    if (body->FinishEdit()) {
+      if (feedbackRevision != body->Revision())
+        Status("");
+      UpdateDirty();
+    }
+    bool canUndo = body->CanUndo(), canRedo = body->CanRedo();
     auto text = FocusedText();
     if (text && text != body) {
       bool isRedo = false;
@@ -743,8 +583,10 @@ public:
         if (text->UndoState(&isRedo) != B_UNDO_UNAVAILABLE &&
             isRedo == (m->what == kRedo))
           text->Undo(be_clipboard);
-      } else
-        ApplyHistory(m->what == kRedo);
+      } else if (body->ApplyHistory(m->what == kRedo)) {
+        UpdateDirty();
+        Status(m->what == kRedo ? "Redone" : "Undone");
+      }
       return true;
     }
     case B_CUT:
@@ -786,7 +628,7 @@ public:
       Raise();
       return true;
     case B_COLORS_UPDATED:
-      needsColour = true;
+      body->InvalidateColours();
       break;
     }
     return false;
