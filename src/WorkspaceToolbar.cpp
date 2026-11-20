@@ -1,0 +1,109 @@
+// SPDX-License-Identifier: MIT
+#include "WorkspaceToolbar.h"
+
+#include "Common.h"
+#include "ExplicitSubmit.h"
+#include "FunctionButtonBank.h"
+#include "MainWindowMenu.h"
+#include "ViewVisibility.h"
+#include <GroupLayout.h>
+#include <GroupView.h>
+#include <TextControl.h>
+#include <TextView.h>
+#include <Window.h>
+
+namespace Listi {
+
+WorkspaceToolbar::WorkspaceToolbar(BWindow &window, MainWindowMenu &menu,
+                                   Preferences &prefs)
+    : fWindow(window), fMenu(menu), fPrefs(prefs),
+      fTop(new BGroupView(B_VERTICAL, 5)),
+      fBottom(new BGroupView(B_VERTICAL, 5)),
+      fBank(new FunctionButtonBank(menu)),
+      fCommand(new BTextControl("Command:", "", nullptr)) {
+  fTop->SetName("top workspace tools");
+  fTop->GroupLayout()->SetInsets(8, 4, 8, 4);
+  fBottom->SetName("bottom workspace tools");
+  fBottom->GroupLayout()->SetInsets(8, 4, 8, 8);
+  fCommand->TextView()->AddFilter(
+      new ExplicitSubmit(BMessenger(&window), BMessage(kCommand)));
+  fCommand->SetToolTip(
+      "Runs a shell command in the active directory using Terminal.");
+  fBottom->AddChild(fBank);
+  fBottom->AddChild(fCommand);
+}
+
+const char *WorkspaceToolbar::CommandText() const { return fCommand->Text(); }
+
+void WorkspaceToolbar::Arrange() {
+  auto *bankZone = fPrefs.bankTop ? fTop : fBottom;
+  if (fBank->Parent() != bankZone) {
+    (fPrefs.bankTop ? fBottom : fTop)->GroupLayout()->RemoveView(fBank);
+    bankZone->GroupLayout()->AddView(int32(0), fBank);
+  }
+  auto *commandZone = fPrefs.commandTop ? fTop : fBottom;
+  if (fCommand->Parent() != commandZone) {
+    (fPrefs.commandTop ? fBottom : fTop)->GroupLayout()->RemoveView(fCommand);
+    commandZone->AddChild(fCommand);
+  }
+  ChooseDensity(fWindow.Bounds().Width());
+}
+
+void WorkspaceToolbar::ApplyVisibility(bool promptPending) {
+  SetViewVisible(fCommand, fPrefs.command && !fPrefs.SinglePane());
+  Refresh(promptPending);
+}
+
+void WorkspaceToolbar::Resize(float width, bool promptPending) {
+  ChooseDensity(width);
+  Refresh(promptPending);
+}
+
+void WorkspaceToolbar::ChooseDensity(float width) {
+  fBank->SetActions(fPrefs.actionButtons, fPrefs.adaptive && width < 850);
+}
+
+void WorkspaceToolbar::SetBankVisible(bool visible) {
+  SetViewVisible(fBank, visible);
+  for (auto *zone : {fTop, fBottom}) {
+    const bool hasBank = fBank->Parent() == zone && !fBank->IsHidden(fBank);
+    const bool hasCommand =
+        fCommand->Parent() == zone && !fCommand->IsHidden(fCommand);
+    SetViewVisible(zone, hasBank || hasCommand);
+  }
+}
+
+void WorkspaceToolbar::Refresh(bool promptPending) {
+  const bool available = !fPrefs.SinglePane() && !fPrefs.actionButtons.empty();
+  const bool requested = fPrefs.ActionButtonsVisible();
+  const bool visible = available && requested && !promptPending;
+  bool overflow = false;
+  SetBankVisible(visible);
+  if (visible) {
+    // Showing a layout item invalidates layout but does not run it inline.
+    // Measure before the window's auto-size pass can impose a larger frame.
+    auto minimum = fWindow.GetLayout()->MinSize();
+    const auto bounds = fWindow.Bounds();
+    if (minimum.width > bounds.Width() && !fBank->IsCompact()) {
+      fBank->SetActions(fPrefs.actionButtons, true);
+      minimum = fWindow.GetLayout()->MinSize();
+    }
+    overflow =
+        minimum.width > bounds.Width() || minimum.height > bounds.Height();
+    if (overflow)
+      SetBankVisible(false);
+  }
+  fMenu.SetFunctionButtonState(available, requested, overflow);
+}
+
+bool WorkspaceToolbar::Toggle(bool promptPending) {
+  if (fPrefs.SinglePane() || fPrefs.actionButtons.empty())
+    return false;
+  auto &choice =
+      fPrefs.IsSmidja() ? fPrefs.smidjaButtons : fPrefs.tviskiptButtons;
+  choice = !fPrefs.ActionButtonsVisible();
+  Refresh(promptPending);
+  return true;
+}
+
+} // namespace Listi

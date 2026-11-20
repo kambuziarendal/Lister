@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 #include "MainWindow.h"
-#include "ViewVisibility.h"
 #include "MainWindowMenu.h"
 #include "ApplicationServices.h"
 #include "ArchivePasswords.h"
@@ -10,13 +9,11 @@
 #include "FileOperationFlow.h"
 #include "FlatViewWindow.h"
 #include "PaneContextMenu.h"
-#include "FunctionButtonBank.h"
 #include "JobSnapshot.h"
 #include "ArchiveEditor.h"
 #include "FolderCompare.h"
 #include "PropertiesWindow.h"
 #include "OpenWith.h"
-#include "ExplicitSubmit.h"
 #include "SavedNavigationController.h"
 #include "SearchWindow.h"
 #include "Shelf.h"
@@ -33,13 +30,12 @@
 #include "WindowScripting.h"
 #include "WorkspaceEditor.h"
 #include "WorkspaceSplit.h"
+#include "WorkspaceToolbar.h"
 #include <Application.h>
 #include <exception>
 #include <GroupView.h>
 #include <LayoutBuilder.h>
 #include <SplitView.h>
-#include <TextControl.h>
-#include <TextView.h>
 #include <Window.h>
 #include <cstring>
 #include <map>
@@ -115,10 +111,10 @@ class MainWindow : public BWindow {
       panes[i]->SetSource(i == source);
   }
   bool quickView = false;
-  MainWindowMenu *menu;
+  MainWindowMenu *menu = new MainWindowMenu();
+  Listi::WorkspaceToolbar toolbar{*this, *menu, prefs};
   Listi::WorkspaceSplit *split;
   std::unique_ptr<Listi::TerminalDock> terminalDock;
-  BGroupView *topTools, *bottomTools;
   void Save() {
     auto saved = prefs.Save();
     saved.what = kSavePreferences;
@@ -128,7 +124,7 @@ class MainWindow : public BWindow {
   void CloseAction() {
     actionArea->Close();
     clipboard->CancelPrompt();
-    RefreshBank();
+    toolbar.Refresh(actionArea->Pending());
     split->Panel(source).FocusCurrent();
   }
   void AskInline(const char *text, const char *button, const BMessage &result,
@@ -174,58 +170,7 @@ class MainWindow : public BWindow {
   std::unique_ptr<Listi::FileDropFlow> fileDrop;
   std::unique_ptr<Listi::FileOperationFlow> fileOperations;
   OperationQueue *queue;
-  Listi::FunctionButtonBank *bank = nullptr;
-  BTextControl *command;
   BMessenger service;
-  void UpdateToolZones() {
-    for (auto *zone : {topTools, bottomTools}) {
-      const bool hasBank = bank->Parent() == zone && !bank->IsHidden(bank);
-      const bool hasCommand = command->Parent() == zone && !command->IsHidden(command);
-      Listi::SetViewVisible(zone, hasBank || hasCommand);
-    }
-  }
-  void SetBankVisible(bool visible) {
-    Listi::SetViewVisible(bank, visible);
-    UpdateToolZones();
-  }
-  void ShowBank(bool visible) {
-    const bool dual = !prefs.SinglePane() && !prefs.actionButtons.empty();
-    visible = visible && dual;
-    bool bankOverflow = false;
-    SetBankVisible(visible);
-    if (visible) {
-      // Showing a layout item invalidates layout but does not run it inline.
-      // Measure before the window's auto-size pass can impose a larger frame.
-      auto minimum = GetLayout()->MinSize();
-      if (minimum.width > Bounds().Width() && !bank->IsCompact()) {
-        bank->SetActions(prefs.actionButtons, true);
-        minimum = GetLayout()->MinSize();
-      }
-      bankOverflow = minimum.width > Bounds().Width() ||
-                     minimum.height > Bounds().Height();
-      if (bankOverflow)
-        SetBankVisible(false);
-    }
-    menu->SetFunctionButtonState(dual, prefs.ActionButtonsVisible(), bankOverflow);
-  }
-  void RefreshBank() {
-    ShowBank(prefs.ActionButtonsVisible() && !actionArea->Pending());
-  }
-  void UpdateBank(float width) {
-    bank->SetActions(prefs.actionButtons, prefs.adaptive && width < 850);
-  }
-  void PlaceTools() {
-    auto *bankZone = prefs.bankTop ? topTools : bottomTools;
-    if (bank->Parent() != bankZone) {
-      (prefs.bankTop ? bottomTools : topTools)->GroupLayout()->RemoveView(bank);
-      bankZone->GroupLayout()->AddView(int32(0), bank);
-    }
-    auto *commandZone = prefs.commandTop ? topTools : bottomTools;
-    if (command->Parent() != commandZone) {
-      (prefs.commandTop ? bottomTools : topTools)->GroupLayout()->RemoveView(command);
-      commandZone->AddChild(command);
-    }
-  }
   void RefreshPanelViews() {
     split->UpdateInspector(prefs, quickView, source);
     menu->SetPreview(prefs, quickView || split->HasPanelPreview());
@@ -260,8 +205,7 @@ class MainWindow : public BWindow {
   void ApplyWorkspace() {
     const bool previewFirst = quickView ? source == 1 : prefs.inspectorLeft;
     split->PlaceInspector(previewFirst, prefs.splitWeights[2]);
-    PlaceTools();
-    UpdateBank(Bounds().Width());
+    toolbar.Arrange();
     for (int i = 0; i < 2; ++i) {
       split->Panel(i).EnableTools(prefs.IsSmidja());
       split->SetPaneVisible(i,
@@ -273,9 +217,8 @@ class MainWindow : public BWindow {
     split->ApplyGeometry(prefs, quickView, source);
     menu->SetWorkspace(prefs, quickView);
     queue->SetCompact(prefs.SinglePane());
-    Listi::SetViewVisible(command, prefs.command && !prefs.SinglePane());
-    UpdateToolZones();
-    RefreshBank();
+    // Fit the buttons after the rest of the workspace has its final geometry.
+    toolbar.ApplyVisibility(actionArea->Pending());
   }
   void SetWorkspace(Workspace value) {
     if (prefs.workspace == value || !split->CloseEditors())
@@ -342,7 +285,6 @@ public:
         prefs(p), savedNavigation(svc, saved, writable, queries, queriesWritable),
         service(svc) {
     source = prefs.SinglePane() ? prefs.singlePane : 0;
-    menu = new MainWindowMenu();
     panes[0] = new Pane(0, prefs, shelf);
     panes[1] = new Pane(1, prefs, shelf);
     split = new Listi::WorkspaceSplit(new Listi::PanelTools(0, *panes[0]),
@@ -350,14 +292,9 @@ public:
     auto *terminalSplit = new BSplitView(B_VERTICAL, 6);
     terminalDock = std::make_unique<Listi::TerminalDock>(
         terminalSplit, split, BMessenger(this));
-    bank = new Listi::FunctionButtonBank(*menu);
-    command = new BTextControl("Command:", "", nullptr);
-    command->TextView()->AddFilter(
-        new Listi::ExplicitSubmit(BMessenger(this), BMessage(kCommand)));
-    command->SetToolTip(
-        "Runs a shell command in the active directory using Terminal.");
     queue = new OperationQueue(BMessenger(this));
-    actionArea = new InlineAction(BMessenger(this), [this] { ShowBank(false); });
+    actionArea = new InlineAction(BMessenger(this),
+                                  [this] { toolbar.Refresh(true); });
     clipboard = std::make_unique<Listi::ClipboardFlow>(*actionArea, *queue);
     fileDrop = std::make_unique<Listi::FileDropFlow>(
         *actionArea, *queue, BMessenger(this), service);
@@ -366,21 +303,13 @@ public:
     actionArea->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     actionArea->GroupLayout()->SetInsets(8, 6, 8, 6);
     actionArea->Hide();
-    topTools = new BGroupView(B_VERTICAL, 5);
-    topTools->SetName("top workspace tools");
-    topTools->GroupLayout()->SetInsets(8, 4, 8, 4);
-    bottomTools = new BGroupView(B_VERTICAL, 5);
-    bottomTools->SetName("bottom workspace tools");
-    bottomTools->GroupLayout()->SetInsets(8, 4, 8, 8);
-    bottomTools->AddChild(bank);
-    bottomTools->AddChild(command);
     BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
         .Add(menu, 0)
-        .Add(topTools, 0)
+        .Add(toolbar.Top(), 0)
         .Add(terminalSplit)
         .Add(actionArea, 0)
         .Add(queue->View(), 0)
-        .Add(bottomTools, 0);
+        .Add(toolbar.Bottom(), 0);
     // Child visibility must not impose a transient maximum on the window.
     // Apply after attachment: Haiku replaces layout explicit-data proxies.
     GetLayout()->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
@@ -394,10 +323,7 @@ public:
   }
   void FrameResized(float width, float height) override {
     BWindow::FrameResized(width, height);
-    if (bank) {
-      UpdateBank(width);
-      RefreshBank();
-    }
+    toolbar.Resize(width, actionArea->Pending());
   }
 
   status_t GetSupportedSuites(BMessage *m) override {
@@ -538,7 +464,7 @@ public:
         else
           clipboard->CancelPrompt();
       }
-      RefreshBank();
+      toolbar.Refresh(actionArea->Pending());
       if (!actionArea->Pending() && !terminalDock->HasFocus())
         split->Panel(source).FocusCurrent();
       break;
@@ -899,7 +825,7 @@ public:
       launch.AddString("path", panes[source]->Path());
       launch.AddString("mode", m->what == Listi::kTerminalWindow ? "terminal"
                                                                : "command");
-      launch.AddString("command", command->Text());
+      launch.AddString("command", toolbar.CommandText());
       launch.AddString("application", prefs.terminal);
       service.SendMessage(&launch);
       break;
@@ -913,13 +839,8 @@ public:
       Save();
       break;
     case kToggleBank:
-      if (!prefs.SinglePane() && !prefs.actionButtons.empty()) {
-        auto &choice = prefs.workspace == Workspace::smidja
-                           ? prefs.smidjaButtons : prefs.tviskiptButtons;
-        choice = !prefs.ActionButtonsVisible();
-        RefreshBank();
+      if (toolbar.Toggle(actionArea->Pending()))
         Save();
-      }
       break;
     case kOpenWorkspaceEditor:
       if (actionArea->Pending())

@@ -80,10 +80,12 @@ static void CheckToolPlacement(BWindow *window) {
   assert(top && bottom && bank && bottom->CountChildren() == 2);
   auto *command = dynamic_cast<BTextControl *>(bottom->ChildAt(1));
   assert(command);
+  command->SetText("echo retained draft");
   for (bool above : {true, false}) {
     WorkspaceLayout layout;
     layout.bankTop = layout.commandTop = above;
     layout.command = true;
+    layout.actionButtons = {2};
     BMessage apply(kApplyWorkspaceEditor), saved, profiles;
     layout.Archive(saved);
     apply.AddMessage("layout", &saved);
@@ -93,9 +95,42 @@ static void CheckToolPlacement(BWindow *window) {
     auto *empty = above ? bottom : top;
     assert(target->CountChildren() == 2 && empty->CountChildren() == 0);
     assert(target->ChildAt(0) == bank && target->ChildAt(1) == command);
+    assert(std::string(command->Text()) == "echo retained draft");
     assert(!command->IsHidden(target) && !target->IsHidden(target));
     assert(empty->IsHidden(empty));
   }
+
+  auto *menu = static_cast<BMenuBar *>(window->FindView("menu"));
+  auto *toggle = menu->FindItem(kToggleBank);
+  auto *fallback = menu->FindItem("Function actions");
+  assert(toggle && fallback && toggle->IsEnabled() && toggle->IsMarked());
+  assert(!bank->IsHidden(bank) && !fallback->IsEnabled());
+  BMessage prompt(kInlineNotice);
+  prompt.AddString("error", "Temporary question");
+  window->MessageReceived(&prompt);
+  assert(bank->IsHidden(bank) && !command->IsHidden(command));
+  assert(!bottom->IsHidden(bottom) && toggle->IsMarked() && !fallback->IsEnabled());
+  BMessage cancel(kInlineCancel);
+  window->MessageReceived(&cancel);
+  assert(!bank->IsHidden(bank));
+
+  auto selectWorkspace = [&](Workspace workspace) {
+    BMessage change(kWorkspace);
+    change.AddInt32("workspace", int32(workspace));
+    window->MessageReceived(&change);
+  };
+  BMessage hideBank(kToggleBank);
+  window->MessageReceived(&hideBank);
+  assert(!toggle->IsMarked() && bank->IsHidden(bank));
+  selectWorkspace(Workspace::askr);
+  assert(!toggle->IsEnabled() && command->IsHidden(command));
+  assert(bottom->IsHidden(bottom));
+  selectWorkspace(Workspace::smidja);
+  assert(toggle->IsEnabled() && toggle->IsMarked() && !command->IsHidden(command));
+  selectWorkspace(Workspace::tviskipt);
+  assert(toggle->IsEnabled() && !toggle->IsMarked() && bank->IsHidden(bank));
+  assert(std::string(command->Text()) == "echo retained draft");
+  window->MessageReceived(&hideBank);
 }
 
 static void CheckWorkspaceSplit(Listi::WorkspaceSplit &split, BView *first) {
