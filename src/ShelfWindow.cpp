@@ -537,6 +537,7 @@ public:
       RenderCollections({});
       Status(e.what());
     }
+    BeginResolve({}, 0, {});
   }
 
   void WindowActivated(bool active) override {
@@ -549,9 +550,8 @@ public:
     try {
       switch (message->what) {
       case kShowShelf:
-        Render();
         Activate();
-        return;
+        [[fallthrough]];
       case kRefreshShelf:
         Render();
         BeginResolve({}, 0, {});

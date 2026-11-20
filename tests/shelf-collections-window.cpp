@@ -242,9 +242,11 @@ int main() {
           }) && Until([&] { return NarrowShelf(window); }),
           "narrow Shelf fits direct controls and keeps every action available");
 
-    Check(Menu(window, "Save current Shelf...") &&
-              Until([&] { return NamePrompt(window, "Cancelled", "Cancel"); }) &&
-              Until([&] { return PromptClosed(window); }) && !fs::exists(store),
+    Check(Until([&] { return Menu(window, "Save current Shelf..."); }),
+          "invoke Save current Shelf after native window resize");
+    Check(Until([&] { return NamePrompt(window, "Cancelled", "Cancel"); }),
+          "invoke Cancel in the visible naming prompt");
+    Check(Until([&] { return PromptClosed(window); }) && !fs::exists(store),
           "cancel name prompt without creating settings");
     Check(Menu(window, "Save current Shelf...") &&
               Until([&] { return NamePrompt(window, "Dinner", "Save"); }) &&
@@ -310,6 +312,22 @@ int main() {
           "relink does not silently overwrite the saved collection");
     messenger.SendMessage(B_QUIT_REQUESTED);
     Check(Until([&] { return !messenger.IsValid(); }), "close Shelf window");
+
+    // The model outlives the Shelf window. Reopening must resolve saved
+    // references again rather than displaying the last cached "Ready" state.
+    fs::rename(moved, original);
+    const auto collection = ShelfCollections::Load(store);
+    shelf->Load(collection.Find("Dinner")->entries, shelf->Snapshot().revision);
+    const auto renamed = fixture.root / "renamed-while-closed";
+    fs::rename(original, renamed);
+    OpenShelfWindow({}, shelf, messenger, store);
+    Check(Until([&] {
+            const auto restored = shelf->Snapshot();
+            return restored.entries[0].path == renamed.string() &&
+                   restored.entries[0].State() == ShelfState::Ready;
+          }), "reopening Shelf resolves a rename while its window was closed");
+    messenger.SendMessage(B_QUIT_REQUESTED);
+    Check(Until([&] { return !messenger.IsValid(); }), "close reopened Shelf");
   } catch (const std::exception &e) {
     std::cerr << "FAIL " << e.what() << '\n';
     return 1;

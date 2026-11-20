@@ -65,9 +65,8 @@ std::string LeafName(const std::string &path) {
   return path.substr(path.find_last_of('/') + 1);
 }
 
-bool SafeCandidate(const std::string &path, const std::string &trash,
-                   const std::set<std::string> &reserved) {
-  if (reserved.count(path) || path.size() < 2 ||
+bool SafeCandidate(const std::string &path, const std::string &trash) {
+  if (path.size() < 2 ||
       (!trash.empty() &&
        (path == trash || path.rfind(trash + "/", 0) == 0)))
     return false;
@@ -84,7 +83,6 @@ bool SafeCandidate(const std::string &path, const std::string &trash,
 // Follow the known parent directory, not a filesystem-wide scan. The shared
 // budget caps total enumeration per refresh, including absent entries.
 void ResolveInParent(ShelfEntry &entry, dev_t volume, size_t &budget,
-                     const std::set<std::string> &reserved,
                      const std::string &trash) {
   const auto &proof = *entry.proof;
   node_ref parentRef(volume, ino_t(proof.parent.inode));
@@ -119,7 +117,7 @@ void ResolveInParent(ShelfEntry &entry, dev_t volume, size_t &budget,
   struct stat current;
   if (candidate.GetPath(&found) != B_OK ||
       (entry.path != found.Path() &&
-       !SafeCandidate(found.Path(), trash, reserved)) ||
+       !SafeCandidate(found.Path(), trash)) ||
       candidate.GetStat(&current) != B_OK || current.st_dev != volume ||
       !MatchesEntry(proof, current))
     return;
@@ -128,7 +126,6 @@ void ResolveInParent(ShelfEntry &entry, dev_t volume, size_t &budget,
 }
 
 void ResolveByName(ShelfEntry &entry, dev_t device, size_t &budget,
-                   const std::set<std::string> &reserved,
                    const std::string &trash) {
   const auto leaf = LeafName(entry.path);
   // Query equality interprets glob metacharacters. Don't accidentally start
@@ -144,8 +141,8 @@ void ResolveByName(ShelfEntry &entry, dev_t device, size_t &budget,
     return;
 
   std::string matched;
-  struct stat current;
-  ShelfNodeStamp parentStamp;
+  struct stat current {};
+  ShelfNodeStamp parentStamp{};
   const auto &proof = *entry.proof;
   for (;;) {
     BEntry candidate;
@@ -163,7 +160,7 @@ void ResolveByName(ShelfEntry &entry, dev_t device, size_t &budget,
       continue;
     if (!matched.empty() ||
         (entry.path != path.Path() &&
-         !SafeCandidate(path.Path(), trash, reserved)))
+         !SafeCandidate(path.Path(), trash)))
       return;
     BEntry parent;
     struct stat parentStat;
@@ -212,9 +209,7 @@ void ResolveShelfReferences(std::vector<ShelfEntry> &entries) {
         return entry.restored && entry.proof;
       }))
     return;
-  std::set<std::string> reserved;
-  for (const auto &entry : entries)
-    reserved.insert(entry.path);
+  const auto original = entries;
   std::vector<std::pair<dev_t, VolumeProof>> volumes;
   BVolumeRoster roster;
   BVolume mounted;
@@ -247,10 +242,38 @@ void ResolveShelfReferences(std::vector<ShelfEntry> &entries) {
     const auto &[device, volume] = *matched;
     // Do not open a path merely because it was recorded in settings.
     // Inspect entries anchored in the verified BFS parent or its name index.
-    ResolveInParent(entry, device, budget, reserved, volume.trash);
+    ResolveInParent(entry, device, budget, volume.trash);
     if (entry.unresolved)
-      ResolveByName(entry, device, budget, reserved, volume.trash);
-    reserved.insert(entry.path);
+      ResolveByName(entry, device, budget, volume.trash);
+  }
+
+  // Resolve the whole set before reserving paths. A rename batch may have
+  // exchanged two names: both references are safe if both identities match.
+  std::map<std::string, std::vector<size_t>> movingTo;
+  std::vector<std::string> occupied;
+  for (size_t i = 0; i < entries.size(); ++i) {
+    if (entries[i].path == original[i].path)
+      occupied.push_back(entries[i].path);
+    else
+      movingTo[entries[i].path].push_back(i);
+  }
+  for (const auto &[path, claims] : movingTo)
+    if (claims.size() > 1)
+      occupied.push_back(path);
+  // An unresolved reference keeps its old path. Do not take that path, or
+  // any old path retained as a consequence of rejecting another move.
+  while (!occupied.empty()) {
+    auto claim = movingTo.find(occupied.back());
+    occupied.pop_back();
+    if (claim == movingTo.end())
+      continue;
+    for (auto i : claim->second) {
+      entries[i] = original[i];
+      entries[i].unresolved = true;
+      entries[i].restoredState = ShelfState::Ambiguous;
+      occupied.push_back(entries[i].path);
+    }
+    movingTo.erase(claim);
   }
 }
 } // namespace Listi

@@ -54,6 +54,42 @@ std::string Read(const fs::path &file) {
 }
 }
 
+static void CheckExchangedNames(const fs::path &folder) {
+  fs::create_directory(folder);
+  const auto a = folder / "a";
+  const auto b = folder / "b";
+  const auto tmp = folder / "temp";
+  std::ofstream(a) << "first";
+  std::ofstream(b) << "second";
+  Shelf shelf;
+  shelf.Add({a.string(), b.string()});
+  ShelfCollections collections;
+  collections.Put("Pair", shelf.Snapshot(), false);
+  const auto records = (folder / "records").string();
+  collections.Save(records);
+
+  fs::rename(a, tmp);
+  fs::rename(b, a);
+  fs::rename(tmp, b);
+  Load(shelf, records, "Pair");
+  const auto swapped = shelf.Snapshot();
+  Check(swapped.entries[0].path == b.string() &&
+            swapped.entries[1].path == a.string() &&
+            swapped.entries[0].State() == ShelfState::Ready &&
+            swapped.entries[1].State() == ShelfState::Ready,
+        "reloading exchanged names follows both originals");
+
+  fs::remove(a);
+  Load(shelf, records, "Pair");
+  const auto blocked = shelf.Snapshot();
+  Check(blocked.entries[0].path == a.string() &&
+            blocked.entries[1].path == b.string() &&
+            blocked.entries[0].State() != ShelfState::Ready &&
+            blocked.entries[1].State() != ShelfState::Ready &&
+            Refused([&] { CheckShelfSources(blocked, Action::Move); }),
+        "an unavailable reference retains its path; no duplicate or wrong move");
+}
+
 int main(int argc, char **argv) {
   try {
     // Optional two-process probe for restart and mount-cycle verification.
@@ -81,6 +117,7 @@ int main(int argc, char **argv) {
       return 0;
     }
     Fixture fixture;
+    CheckExchangedNames(fixture.root / "exchange");
     auto folder = fixture.root / "known";
     const auto movedFolder = fixture.root / "known-renamed";
     const auto other = fixture.root / "unrelated";
@@ -113,6 +150,24 @@ int main(int argc, char **argv) {
               restored.entries[1].State() == ShelfState::Ready &&
               restored.entries[1].path == link.string(),
           "load records into a new Shelf and match symlink without following");
+
+    const auto previousFolder = fixture.root / "previous-parent";
+    fs::rename(folder, previousFolder);
+    fs::create_directory(folder);
+    fs::rename(previousFolder / "original", original);
+    const auto oldParent = restored.entries[0].proof->parent;
+    reopened.RefreshSavedReferences();
+    restored = reopened.Snapshot();
+    Check(restored.entries[0].path == original.string() &&
+              !(restored.entries[0].proof->parent == oldParent),
+          "refresh updates a changed BFS parent even when the path stayed the same");
+    fs::rename(original, renamed);
+    reopened.RefreshSavedReferences();
+    Check(reopened.Snapshot().entries[0].path == renamed.string(),
+          "a later rename is found in the refreshed parent");
+    fs::rename(renamed, previousFolder / "original");
+    fs::remove(folder);
+    fs::rename(previousFolder, folder);
 
     fs::rename(original, sameName);
     std::ofstream(original) << "indexed decoy";

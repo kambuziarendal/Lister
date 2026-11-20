@@ -149,7 +149,9 @@ void Shelf::RefreshSavedReferences() {
     auto &updated = next.entries[i];
     if (old.path != updated.path || old.unresolved != updated.unresolved ||
         old.restoredState != updated.restoredState ||
-        old.identity.device != updated.identity.device) {
+        old.identity.device != updated.identity.device ||
+        (old.proof && updated.proof &&
+         !(old.proof->parent == updated.proof->parent))) {
       current.entries = std::move(next.entries);
       ++current.revision;
       return;
