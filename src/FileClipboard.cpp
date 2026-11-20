@@ -198,12 +198,18 @@ std::vector<ClipboardItem> ReadFileClipboard(const BMessage &message) {
   return items;
 }
 
-BMessage MakeFileSelection(const std::vector<std::string> &paths, bool cut) {
+BMessage MakeFileSelection(const std::vector<std::string> &paths, bool cut,
+                           const std::map<std::string, NodeIdentity> &expected) {
   if (paths.empty() || paths.size() > kMaximumEntries)
     throw std::runtime_error("Select between 1 and 1024 local entries first.");
   BMessage message;
   for (const auto &path : paths) {
     auto node = Identity(path);
+    if (!expected.empty()) {
+      const auto row = expected.find(path);
+      if (row == expected.end() || !Same(node, row->second))
+        throw std::runtime_error(path + ": selection changed. Select the entry again.");
+    }
     Allowed(path, node);
     BEntry entry(path.c_str(), false);
     entry_ref ref;
@@ -218,7 +224,8 @@ BMessage MakeFileSelection(const std::vector<std::string> &paths, bool cut) {
 }
 
 void PutFileClipboard(const std::vector<std::string> &paths, bool cut,
-                      BClipboard *clipboard) {
+                      BClipboard *clipboard,
+                      const std::map<std::string, NodeIdentity> &expected) {
   if (std::any_of(paths.begin(), paths.end(), [](const auto &path) {
         return ParseLocation(path).Archive();
       })) {
@@ -245,7 +252,7 @@ void PutFileClipboard(const std::vector<std::string> &paths, bool cut,
     Commit(clipboard, message);
     return;
   }
-  auto message = MakeFileSelection(paths, cut);
+  auto message = MakeFileSelection(paths, cut, expected);
   auto items = ReadFileClipboard(message);
   {
     ClipboardLock lock(clipboard);

@@ -314,13 +314,15 @@ std::string CurrentFolder(const Job &job) {
 } // namespace
 
 Job FreezeBulkRename(const std::string &folder,
-                     const std::vector<std::string> &selection) {
+                     const std::vector<std::string> &selection,
+                     const std::map<std::string, NodeIdentity> &expected) {
   if (selection.size() < 2 || folder.empty() || folder.front() != '/')
     throw std::runtime_error(
         "Select at least two entries in one local folder.");
   Job job;
   job.action = Action::BulkRename;
   job.sources = selection;
+  job.expectedSources = expected;
   std::set<std::string> unique;
   for (const auto &source : selection) {
     if (Join(folder, Leaf(source)) != source ||

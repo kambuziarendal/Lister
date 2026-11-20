@@ -80,13 +80,14 @@ void ValidateNewEntryName(const std::string &folder, const std::string &name) {
         "That name already exists. Choose a different name; nothing will be replaced.");
 }
 Job PrepareNamedEntry(Action action, const std::vector<std::string> &selection,
-                      const std::string &linkDestination) {
+                      const std::string &linkDestination,
+                      const std::map<std::string, NodeIdentity> &expected) {
   if (action != Action::Duplicate && action != Action::Link)
     throw std::runtime_error("Unsupported named entry action.");
   if (selection.size() != 1 || IsVirtual(selection[0]))
     throw std::runtime_error(
         "Select exactly one local file, folder or symbolic link.");
-  auto items = ReadFileClipboard(MakeFileSelection(selection));
+  auto items = ReadFileClipboard(MakeFileSelection(selection, false, expected));
   const auto &item = items.front();
   Job job;
   job.action = action;

@@ -26,9 +26,11 @@ void PutPathsAsText(const std::vector<std::string> &,
 bool HasClipboardFiles(const BMessage &);
 // Tracker's native file-reference wire format. No text paths or credentials.
 std::vector<ClipboardItem> ReadFileClipboard(const BMessage &);
-BMessage MakeFileSelection(const std::vector<std::string> &, bool cut = false);
+BMessage MakeFileSelection(const std::vector<std::string> &, bool cut = false,
+                           const std::map<std::string, NodeIdentity> &expected = {});
 void PutFileClipboard(const std::vector<std::string> &, bool cut,
-                      BClipboard *clipboard = be_clipboard);
+                      BClipboard *clipboard = be_clipboard,
+                      const std::map<std::string, NodeIdentity> &expected = {});
 ClipboardPaste PrepareFilePaste(const std::string &destination,
                                 BClipboard *clipboard = be_clipboard);
 // Consume only successfully moved roots, and never a newer clipboard selection.

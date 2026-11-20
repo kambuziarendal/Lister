@@ -16,6 +16,8 @@ int main() {
     auto e = std::make_unique<PaneEntry>();
     char name[24]; snprintf(name, sizeof(name), "item-%05d", i);
     e->name = name; e->path = std::string("/fixture/") + name;
+    e->device = 1;
+    e->node = i + 1;
     paths.push_back(e->path); model.Add(std::move(e));
   }
   auto parent = std::make_unique<PaneEntry>();
@@ -31,6 +33,10 @@ int main() {
   model.SetSelection({paths[0], paths[0], "/fixture", "/missing"}, paths[0]);
   check(model.Selected() == std::vector<std::string>{paths[0]}, "duplicate, parent and absent entries excluded");
   check(model.OnlySelected() && model.OnlySelected()->path == paths[0], "one visible target");
+  const auto nodes = model.SelectedLocalIdentities();
+  check(nodes.size() == 1 && nodes.at(paths[0]).device == 1 &&
+            nodes.at(paths[0]).inode == 1,
+        "file operations inherit the original identity from the selected visible row");
   model.RestoreSelection({paths[1], paths[1]});
   check(model.Selected().size() == 2, "restore extends existing selection");
   check(model.MatchPattern("*", false) == paths.size(), "wildcard excludes the parent row");
@@ -56,9 +62,28 @@ int main() {
   auto duplicate = std::make_unique<PaneEntry>();
   duplicate->name = "item-00000";
   duplicate->path = paths[0];
+  duplicate->device = 1;
+  duplicate->node = 1;
   model.Add(std::move(duplicate));
   model.Filter("item-00000");
   check(model.Selected().size() == 2 && !model.OnlySelected(), "same-path rows are ambiguous");
+  bool ambiguous = false;
+  try {
+    model.SelectedLocalIdentities();
+  } catch (const std::runtime_error &) {
+    ambiguous = true;
+  }
+  check(ambiguous, "ambiguous local selection cannot authorize a file operation");
   model.SetSelection({}, "");
   check(model.Selected().empty() && model.Focused() == nullptr, "empty selection clears focus");
+
+  PaneModel remote;
+  auto member = std::make_unique<PaneEntry>();
+  member->name = "child";
+  member->path = "sftp://example.invalid/child";
+  remote.Add(std::move(member));
+  remote.Filter("");
+  remote.Select(1);
+  check(remote.Selected().size() == 1 && remote.SelectedLocalIdentities().empty(),
+        "virtual selections need no local node identity");
 }

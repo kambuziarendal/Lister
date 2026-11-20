@@ -51,7 +51,8 @@ std::vector<ClipboardItem> ReadDragRefs(const BMessage &message) {
   return items;
 }
 }
-BMessage MakeFileDrag(const std::vector<std::string> &paths) {
+BMessage MakeFileDrag(const std::vector<std::string> &paths,
+                      const std::map<std::string, NodeIdentity> &expected) {
   if (std::any_of(paths.begin(), paths.end(),
                   [](const auto &path) { return IsVirtual(path); })) {
     if (paths.empty() || paths.size() > 1024)
@@ -65,7 +66,7 @@ BMessage MakeFileDrag(const std::vector<std::string> &paths) {
     }
     return drag;
   }
-  auto selection = MakeFileSelection(paths);
+  auto selection = MakeFileSelection(paths, false, expected);
   BMessage drag(B_SIMPLE_DATA);
   for (const auto &item : ReadFileClipboard(selection))
     Require(drag.AddRef("refs", &item.ref));

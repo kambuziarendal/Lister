@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <fnmatch.h>
 #include <limits>
+#include <stdexcept>
 #include <strings.h>
 std::string FileTypeKey(const std::string &name) {
   std::string folded = name;
@@ -116,6 +117,24 @@ std::vector<std::string> PaneModel::Selected() const {
       result.push_back(entry->path);
   return result;
 }
+std::map<std::string, Listi::NodeIdentity>
+PaneModel::SelectedLocalIdentities() const {
+  std::map<std::string, Listi::NodeIdentity> nodes;
+  for (const auto *row : visible) {
+    if (row->parent || !IsSelected(row->path) || row->path.empty() ||
+        row->path.front() != '/')
+      continue;
+    if (row->device < 0 || row->device > std::numeric_limits<int32_t>::max() ||
+        row->node < 0)
+      throw std::runtime_error("Refresh and select the entry again: " + row->path);
+    const Listi::NodeIdentity identity{int32_t(row->device), row->node};
+    if (!nodes.emplace(row->path, identity).second)
+      throw std::runtime_error("Duplicate selected row. Refresh the folder: " +
+                               row->path);
+  }
+  return nodes;
+}
+
 const PaneEntry *PaneModel::OnlySelected() const {
   if (selection.size() != 1)
     return nullptr;

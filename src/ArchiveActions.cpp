@@ -14,6 +14,20 @@
 
 namespace Listi {
 
+namespace {
+void RequireScannedSources(const Pane &pane, const Job &job) {
+  // Split archives can have additional guards for parts not selected in the
+  // panel. Match each selected local row, not the size of the full part set.
+  for (const auto &[path, displayed] : pane.SelectedLocalIdentities()) {
+    const auto found = job.expectedSources.find(path);
+    if (found == job.expectedSources.end() ||
+        found->second.device != displayed.device ||
+        found->second.inode != displayed.inode)
+      throw std::runtime_error("The selected entry was replaced: " + path);
+  }
+}
+} // namespace
+
 ArchiveActions::ArchiveActions() = default;
 ArchiveActions::~ArchiveActions() = default;
 
@@ -24,6 +38,7 @@ void ArchiveActions::ShowJobWindow(bool extract, const Pane &source,
     return;
   }
   auto job = PrepareArchiveJob(extract, source.Selected());
+  RequireScannedSources(source, job);
   std::string folder = destination.Path();
   if (folder == "@disks" || IsVirtual(folder)) {
     auto loc = ParseLocation(job.sources[0]);
@@ -51,6 +66,8 @@ void ArchiveActions::ShowAddPicker(const Pane &source, BMessenger owner) {
   if (lstat(archiveAddTarget.c_str(), &st) || !S_ISREG(st.st_mode))
     throw std::runtime_error("Choose one local writable archive.");
   auto target = PrepareArchiveEditTarget(archiveAddTarget, archiveAddFolder);
+  if (!location.Archive())
+    RequireScannedSources(source, target);
   auto chosen = EncodeJob(target, kArchiveAddChosen);
   archiveAddPicker.reset(new BFilePanel(
       B_OPEN_PANEL, &owner, nullptr,

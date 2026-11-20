@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Exercise the actual window and menu without writing real user preferences.
+#include "../src/ArchiveActions.h"
 #include "../src/Common.h"
 #include "../src/FunctionButtonBank.h"
 #include "../src/ImagePreview.h"
@@ -29,7 +30,9 @@
 #include <cassert>
 #include <cctype>
 #include <cmath>
+#include <cstring>
 #include <fstream>
+#include <stdexcept>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -325,8 +328,12 @@ int main() {
   // explicit navigation below should invalidate the pattern preview.
   const auto otherFolder = std::string(temp) + "/elsewhere";
   assert(mkdir(otherFolder.c_str(), 0700) == 0);
-  const auto marker = otherFolder + "/another.txt";
-  assert(std::ofstream(marker) << "also matches *");
+  const auto marker = otherFolder + "/another.zip";
+  const char emptyZip[22] = {'P', 'K', 5, 6};
+  auto writeArchive = [&] {
+    assert(std::ofstream(marker, std::ios::binary).write(emptyZip, sizeof(emptyZip)));
+  };
+  writeArchive();
   auto *pane = static_cast<Pane *>(original);
   pane->Navigate(temp);
   window->Show();
@@ -505,6 +512,64 @@ int main() {
            "Panel contents changed. Start Select by pattern again.";
   });
   assert(pane->Selected().empty());
+  // The window lock keeps monitor notifications queued. Simulate a file
+  // replaced after the scan but before its selected row is acted on.
+  assert(pane->MatchPattern("another.zip", true) == 1);
+  auto archiveDialog = [&](const char *title) -> BWindow * {
+    for (int32 i = 0; i < app.CountWindows(); ++i) {
+      auto *candidate = app.WindowAt(i);
+      if (candidate && candidate->Title() && !std::strcmp(candidate->Title(), title))
+        return candidate;
+    }
+    return nullptr;
+  };
+  send(kCreateArchive);
+  auto *create = archiveDialog("Listi: Create archive");
+  assert(create && create->Lock());
+  create->Quit();
+  {
+    Listi::ArchiveActions actions;
+    actions.ShowAddPicker(*pane, BMessenger(window));
+  }
+  send(kDelete);
+  assert(promptButton("Move to Trash"));
+  send(kInlineCancel);
+  assert(!promptButton("Move to Trash"));
+  const auto originalMarker = marker + ".original";
+  assert(rename(marker.c_str(), originalMarker.c_str()) == 0);
+  writeArchive();
+  // The fixture's BApplication does not dispatch service errors; independently
+  // check that no earlier question can block the following commands.
+  assert(!window->FindView("question"));
+  send(kDelete);
+  assert(!promptButton("Move to Trash"));
+  assert(!window->FindView("question"));
+  send(kDuplicate);
+  assert(!promptButton("Duplicate"));
+  assert(!window->FindView("question"));
+  send(kCreateArchive);
+  assert(!archiveDialog("Listi: Create archive"));
+  send(kExtractArchive);
+  assert(!archiveDialog("Listi: Extract archive"));
+  Listi::ArchiveActions actions;
+  auto refusesReplacement = [&](auto open) {
+    try {
+      open();
+    } catch (const std::runtime_error &error) {
+      return std::string(error.what()).find("selected entry was replaced") !=
+             std::string::npos;
+    }
+    return false;
+  };
+  for (bool extract : {false, true})
+    assert(refusesReplacement([&] {
+      actions.ShowJobWindow(extract, *pane, *rightPane, BMessenger(window));
+    }));
+  assert(refusesReplacement([&] {
+    actions.ShowAddPicker(*pane, BMessenger(window));
+  }));
+  assert(access(originalMarker.c_str(), F_OK) == 0);
+  assert(unlink(originalMarker.c_str()) == 0);
   assert(unlink(marker.c_str()) == 0);
   pane->Navigate(sourcePath.c_str());
   waitFor([&] { return !pane->IsScanning(); });

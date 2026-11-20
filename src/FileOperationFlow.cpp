@@ -68,7 +68,8 @@ void FileOperationFlow::AskNamedEntry(Action action, const Pane &source,
                                       const Pane &target) {
   if (!CanBegin())
     return;
-  auto job = PrepareNamedEntry(action, source.Selected(), target.Path());
+  auto job = PrepareNamedEntry(action, source.Selected(), target.Path(),
+                               source.SelectedLocalIdentities());
   const bool duplicate = action == Action::Duplicate;
   std::string text = std::string(duplicate ? "Duplicate: " : "Link to: ") +
                      job.sources[0] + "\nIn: " + job.destination;
@@ -86,7 +87,8 @@ void FileOperationFlow::ShowBulkRename(const Pane &source) {
   if (bulkRenameWindow.IsValid() &&
       bulkRenameWindow.SendMessage(kBulkRename) == B_OK)
     return;
-  auto job = FreezeBulkRename(source.Path(), source.Selected());
+  auto job = FreezeBulkRename(source.Path(), source.Selected(),
+                              source.SelectedLocalIdentities());
   bulkRenameWindow = OpenBulkRenameWindow(std::move(job), owner);
 }
 
@@ -102,7 +104,10 @@ void FileOperationFlow::BeginOperation(Action action, const Pane &source,
   }
   Job job;
   job.action = action;
-  job.sources = source.Selected();
+  if (action != Action::MakeDirectory) {
+    job.sources = source.Selected();
+    job.expectedSources = source.SelectedLocalIdentities();
+  }
   if (isTransfer)
     job.destination = target.Path();
   if ((action == Action::Trash || action == Action::Delete) &&
@@ -121,8 +126,6 @@ void FileOperationFlow::BeginOperation(Action action, const Pane &source,
       return;
     }
     job.destination = source.Path();
-    if (!rename)
-      job.sources.clear();
     if (job.destination == "@disks") {
       PostMainWindowNotice("Open a folder first.");
       return;

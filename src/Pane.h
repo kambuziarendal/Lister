@@ -58,6 +58,9 @@ public:
   size_t MatchPattern(const char *pattern, bool apply);
   std::string SelectedFileType() const { return entries.FocusedFileType(); }
   std::vector<std::string> Selected() const;
+  std::map<std::string, Listi::NodeIdentity> SelectedLocalIdentities() const {
+    return entries.SelectedLocalIdentities();
+  }
   std::string SelectedPath() const {
     const auto *entry = entries.OnlySelected();
     return entry ? entry->path : "";

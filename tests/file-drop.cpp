@@ -58,6 +58,17 @@ try{
  Hooks replace;replace.conflict=[](const auto&){return Decision::Replace;};result=Run(job,replace);Check(result.completed==1 && !Exists(a+"/two") && Read(b+"/two")=="second","explicit move commits then removes original");
  job=PrepareFileDrop(MakeFileDrag({f}),b);rename(f.c_str(),(a+"/old").c_str());Write(f,"replacement");
  Check(Reject([&]{PrepareFileDrop(drag,b);}),"source replaced during drag rejected");
+ Check(Reject([&]{MakeFileDrag({f}, job.expectedSources);}),
+       "a replaced panel row cannot begin a new drag of the replacement");
+ BClipboard testClip("listi-panel-snapshot-test", true);
+ PutFileClipboard({outside}, false, &testClip);
+ Check(Reject([&]{PutFileClipboard({f}, true, &testClip, job.expectedSources);}),
+       "a replaced panel row cannot put the replacement on the cut clipboard");
+ Check(testClip.Lock(), "read retained clipboard");
+ const auto retained = ReadFileClipboard(*testClip.Data());
+ testClip.Unlock();
+ Check(retained.size() == 1 && retained.front().path == outside && !retained.front().cut,
+       "failed cut preserves the preceding clipboard selection");
  Check(Reject([&] { PrepareTransfer(job); }),
        "re-preparing a captured transfer never refreshes a replaced source");
  result=Run(job,replace);Check(result.completed==0 && !result.errors.empty() && Read(f)=="replacement","source replaced during question rejected");

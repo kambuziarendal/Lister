@@ -62,7 +62,8 @@ void ClipboardFlow::Begin(uint32 action, Pane &pane) {
                                              : "Paths copied as text.");
         return;
       }
-      PutFileClipboard(selected, action == kClipboardCut);
+      PutFileClipboard(selected, action == kClipboardCut, be_clipboard,
+                       pane.SelectedLocalIdentities());
       BString status;
       status
           << int32(selected.size())

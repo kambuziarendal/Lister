@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #pragma once
+#include "FileOperation.h"
 #include <cstdint>
 #include <memory>
 #include <set>
@@ -46,6 +47,7 @@ public:
     return selection.count(path);
   }
   std::vector<std::string> Selected() const;
+  std::map<std::string, Listi::NodeIdentity> SelectedLocalIdentities() const;
   const PaneEntry *OnlySelected() const;
   SelectionSummary Summary() const;
   void Select(int mode);

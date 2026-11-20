@@ -35,7 +35,7 @@ PaneContextMenuResult RunPaneContextMenu(
   bool canAddToShelf = false;
   if (!selected.empty() && local) {
     try {
-      snapshot = Listi::MakeFileSelection(selected);
+      snapshot = Listi::MakeFileSelection(selected, false, pane.SelectedLocalIdentities());
     } catch (...) {
       fileSnapshotError = std::current_exception();
     }
@@ -44,6 +44,7 @@ PaneContextMenuResult RunPaneContextMenu(
     if (folder != "@disks" &&
         selected.size() <= Listi::Shelf::kMaximumEntries) {
       try {
+        shelfSnapshot.expectedSources = pane.SelectedLocalIdentities();
         FreezeLocalJob(shelfSnapshot);
         canAddToShelf = true;
       } catch (const std::runtime_error &) {

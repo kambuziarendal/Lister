@@ -56,7 +56,8 @@ bool ShelfController::Handle(const BMessage &message, Pane &active,
 void ShelfController::Add(Pane &active,
                           const std::map<std::string, NodeIdentity> &expected) {
   try {
-    const auto added = fShelf->Add(active.Selected(), expected);
+    const auto added = fShelf->Add(
+        active.Selected(), expected.empty() ? active.SelectedLocalIdentities() : expected);
     BString status;
     if (added)
       status << int32(added) << " added to Shelf. Open it from the Listi menu.";

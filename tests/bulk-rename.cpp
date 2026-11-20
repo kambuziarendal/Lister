@@ -255,6 +255,8 @@ int main() {
     if (rename(a.c_str(), oldA.c_str()))
       throw std::runtime_error("Cannot move original source aside");
     Write(a, "different entry");
+    Check(Reject([&] { FreezeBulkRename(folder, batch.sources, batch.expectedSources); }),
+          "opening a new preview cannot adopt a replacement for a selected row");
     const auto stale = PreviewBulkRename(batch, {});
     result = Run(job, {});
     Check(stale.blocked == 1 && result.completed == 0 &&
