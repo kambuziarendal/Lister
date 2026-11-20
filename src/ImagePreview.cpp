@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 #include "ImagePreview.h"
+#include "ViewVisibility.h"
 #include "BitmapMailbox.h"
 #include "Common.h"
+#include <LayoutBuilder.h>
 #include <Window.h>
 #include "InspectorContent.h"
 #include "InspectorDocument.h"
@@ -359,6 +361,18 @@ BBitmap *LoadPreviewBitmap(const std::string &source,
     throw;
   }
 }
+void ImagePreview::OpenWindow(const std::string &path) {
+  auto window = new BWindow(BRect(120, 100, 900, 650), path.c_str(),
+                            B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS);
+  auto inspector = new ImagePreview(true);
+  inspector->ShowFile(path);
+  BLayoutBuilder::Group<>(window, B_VERTICAL, 0).Add(inspector);
+  window->AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY,
+                      new BMessage(B_QUIT_REQUESTED));
+  window->AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
+  window->Show();
+}
+
 ImagePreview::ImagePreview(bool standalone)
     : BView("inspector", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE |
                              B_FRAME_EVENTS | B_SUPPORTS_LAYOUT),
@@ -478,8 +492,7 @@ bool ImagePreview::BeginEditing(const std::string &p) {
   pendingFile.reset();
   ++*generation;
   replies->Clear();
-  if (!textScroll->IsHidden(textScroll))
-    textScroll->Hide();
+  Listi::SetViewVisible(textScroll, false);
   delete bitmap;
   bitmap = nullptr;
   UpdateControls();
@@ -517,8 +530,7 @@ void ImagePreview::Request(int requestedPage, bool playback) {
   caption = path.empty() ? "Select a file to inspect"
                         : playback ? "Playing preview (up to 15 seconds)"
                                    : "Loading preview…";
-  if (!textScroll->IsHidden(textScroll))
-    textScroll->Hide();
+  Listi::SetViewVisible(textScroll, false);
   if (!path.empty() && loader) {
     BMessage m(kLoad);
     m.AddInt64("serial", serial);
@@ -531,12 +543,6 @@ void ImagePreview::Request(int requestedPage, bool playback) {
   UpdateControls();
 }
 void ImagePreview::UpdateControls() {
-  auto show = [](BView *view, bool visible) {
-    if (visible && view->IsHidden(view))
-      view->Show();
-    else if (!visible && !view->IsHidden(view))
-      view->Hide();
-  };
   const bool pdf = !editor && kind == Inspector::Kind::Pdf;
   const bool media =
       !editor && (kind == Inspector::Kind::Audio || kind == Inspector::Kind::Video);
@@ -549,16 +555,16 @@ void ImagePreview::UpdateControls() {
   fileAction->SetLabel(label);
   fileAction->ResizeToPreferred();
   fileAction->SetEnabled(media || canEdit);
-  show(fileAction, !editor && ready && !path.empty() &&
+  Listi::SetViewVisible(fileAction, !editor && ready && !path.empty() &&
                        (sourceText || unknown || (media && local)));
-  show(detachEditor, editor);
-  show(doneEditing, editor);
+  Listi::SetViewVisible(detachEditor, editor);
+  Listi::SetViewVisible(doneEditing, editor);
   previous->SetEnabled(pdf && page > 1);
   next->SetEnabled(pdf && page != lastPage);
-  show(previous, pdf);
-  show(photoActions, !editor && kind == Inspector::Kind::Image && bitmap);
-  show(next, pdf);
-  show(play, media);
+  Listi::SetViewVisible(previous, pdf);
+  Listi::SetViewVisible(photoActions, !editor && kind == Inspector::Kind::Image && bitmap);
+  Listi::SetViewVisible(next, pdf);
+  Listi::SetViewVisible(play, media);
   play->SetLabel(playing ? "Stop preview" : "Play preview");
   LayoutControls();
   Invalidate();
@@ -769,13 +775,8 @@ void ImagePreview::MouseUp(BPoint where) {
 }
 
 void ImagePreview::SetQuickViewCloseVisible(bool visible) {
-  if (visible == !closeQuickView->IsHidden(closeQuickView))
-    return;
-  if (visible)
-    closeQuickView->Show();
-  else
-    closeQuickView->Hide();
-  FrameResized(Bounds().Width(), Bounds().Height());
+  if (Listi::SetViewVisible(closeQuickView, visible))
+    FrameResized(Bounds().Width(), Bounds().Height());
 }
 
 void ImagePreview::FrameResized(float, float) {

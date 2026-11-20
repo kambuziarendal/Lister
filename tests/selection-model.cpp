@@ -26,9 +26,11 @@ int main() {
   auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
   printf("20 full selections of 10000 entries: %lld us\n", (long long)us);
   check(model.Selected() == paths, "large selection preserves visible order");
+  check(!model.OnlySelected(), "multiple rows are not a single inspection target");
   check(model.Focused()->path == paths.back(), "focus preserved");
   model.SetSelection({paths[0], paths[0], "/fixture", "/missing"}, paths[0]);
   check(model.Selected() == std::vector<std::string>{paths[0]}, "duplicate, parent and absent entries excluded");
+  check(model.OnlySelected() && model.OnlySelected()->path == paths[0], "one visible target");
   model.RestoreSelection({paths[1], paths[1]});
   check(model.Selected().size() == 2, "restore extends existing selection");
   check(model.MatchPattern("*", false) == paths.size(), "wildcard excludes the parent row");
@@ -51,6 +53,12 @@ int main() {
         "pattern selection respects the current literal filter");
   model.SetSelection(paths, paths[0]);
   check(model.Selected() == std::vector<std::string>{paths[0]}, "hidden entries excluded");
+  auto duplicate = std::make_unique<PaneEntry>();
+  duplicate->name = "item-00000";
+  duplicate->path = paths[0];
+  model.Add(std::move(duplicate));
+  model.Filter("item-00000");
+  check(model.Selected().size() == 2 && !model.OnlySelected(), "same-path rows are ambiguous");
   model.SetSelection({}, "");
   check(model.Selected().empty() && model.Focused() == nullptr, "empty selection clears focus");
 }

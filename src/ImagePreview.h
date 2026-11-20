@@ -16,6 +16,7 @@ class ThemeTextView;
 class ImagePreview : public BView {
 public:
   explicit ImagePreview(bool standalone = false);
+  static void OpenWindow(const std::string &path);
   ~ImagePreview();
   void AttachedToWindow() override;
   void DetachedFromWindow() override;

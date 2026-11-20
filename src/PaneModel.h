@@ -46,6 +46,7 @@ public:
     return selection.count(path);
   }
   std::vector<std::string> Selected() const;
+  const PaneEntry *OnlySelected() const;
   SelectionSummary Summary() const;
   void Select(int mode);
   std::string FocusedFileType() const;

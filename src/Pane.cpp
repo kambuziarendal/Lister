@@ -577,13 +577,8 @@ void Pane::ContextMenu(const std::string &path, BPoint screen) {
     request.AddInt32("pane", id);
     request.AddPoint("screen", screen);
     request.AddBool("folderContext", true);
-    const auto selected = entries.Selected();
-    if (selected.size() == 1)
-      for (auto entry : entries.Visible())
-        if (entry->path == selected.front()) {
-          request.AddBool("directory", entry->directory);
-          break;
-        }
+    if (auto *entry = entries.OnlySelected())
+      request.AddBool("directory", entry->directory);
     Window()->MessageReceived(&request);
     return;
   }
@@ -669,9 +664,8 @@ void Pane::SendSelection(bool gesture) {
   if (Window() && !gesture) {
     BMessage changed(kPreviewSelection);
     changed.AddInt32("pane", id);
-    auto selected = Selected();
-    if (selected.size() == 1) {
-      auto found = transfers.find(selected[0]);
+    if (auto *entry = entries.OnlySelected()) {
+      auto found = transfers.find(entry->path);
       if (found != transfers.end() && !found->second.error.empty())
         changed.AddString("operationError", found->second.error.c_str());
     }

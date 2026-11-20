@@ -46,6 +46,10 @@ public:
   size_t MatchPattern(const char *pattern, bool apply);
   std::string SelectedFileType() const { return entries.FocusedFileType(); }
   std::vector<std::string> Selected() const;
+  std::string SelectedPath() const {
+    const auto *entry = entries.OnlySelected();
+    return entry ? entry->path : "";
+  }
   const char *Path() const { return path.String(); }
   bool CancelSelectionGesture();
   void FocusList();

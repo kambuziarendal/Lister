@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "PanelTools.h"
+#include "ViewVisibility.h"
 
 #include "ImagePreview.h"
 #include "Pane.h"
@@ -77,12 +78,7 @@ void PanelTools::EnableTools(bool enabled) {
     ShowPage(PanelPage::Files);
   const bool show =
       enabled && (Page(PanelPage::Search) || Page(PanelPage::Preview));
-  if (show == tabs->IsHidden(tabs)) {
-    if (show)
-      tabs->Show();
-    else
-      tabs->Hide();
-  }
+  SetViewVisible(tabs, show);
 }
 
 void PanelTools::FocusCurrent() {
@@ -133,10 +129,7 @@ void PanelTools::UpdatePreview(const PanelTools &opposite) {
 }
 
 std::string PanelTools::SelectedFile() const {
-  if (current != PanelPage::Files)
-    return {};
-  auto selection = files.Selected();
-  return selection.size() == 1 ? selection.front() : "";
+  return current == PanelPage::Files ? files.SelectedPath() : "";
 }
 
 void PanelTools::Open(PanelPage page, BView *view) {
@@ -145,8 +138,7 @@ void PanelTools::Open(PanelPage page, BView *view) {
   AddChild(view);
   view->Hide();
   buttons[index]->Show();
-  if (tabs->IsHidden(tabs))
-    tabs->Show();
+  SetViewVisible(tabs, true);
   ShowPage(page);
 }
 

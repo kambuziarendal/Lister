@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "MainWindow.h"
+#include "ViewVisibility.h"
 #include "MainWindowMenu.h"
 #include "ApplicationServices.h"
 #include "ArchivePasswords.h"
@@ -129,10 +130,8 @@ class MainWindow : public BWindow {
   bool quickView = false;
   MainWindowMenu *menu;
   Listi::WorkspaceSplit *split;
-  BSplitView *terminalSplit;
   std::unique_ptr<Listi::TerminalDock> terminalDock;
   BGroupView *topTools, *bottomTools;
-  bool bankOnTop = false, commandOnTop = false;
   void Save() {
     auto saved = prefs.Save();
     saved.what = kSavePreferences;
@@ -191,22 +190,15 @@ class MainWindow : public BWindow {
   Listi::FunctionButtonBank *bank = nullptr;
   BTextControl *command;
   BMessenger service;
-  static void SetToolVisible(BView *tool, bool visible) {
-    if (tool->IsHidden(tool) != visible)
-      return;
-    if (visible)
-      tool->Show();
-    else
-      tool->Hide();
-  }
   void UpdateToolZones() {
-    const bool showBank = !bank->IsHidden(bank);
-    const bool showCommand = !command->IsHidden(command);
-    SetToolVisible(topTools, (showBank && bankOnTop) || (showCommand && commandOnTop));
-    SetToolVisible(bottomTools, (showBank && !bankOnTop) || (showCommand && !commandOnTop));
+    for (auto *zone : {topTools, bottomTools}) {
+      const bool hasBank = bank->Parent() == zone && !bank->IsHidden(bank);
+      const bool hasCommand = command->Parent() == zone && !command->IsHidden(command);
+      Listi::SetViewVisible(zone, hasBank || hasCommand);
+    }
   }
   void SetBankVisible(bool visible) {
-    SetToolVisible(bank, visible);
+    Listi::SetViewVisible(bank, visible);
     UpdateToolZones();
   }
   void ShowBank(bool visible) {
@@ -236,18 +228,15 @@ class MainWindow : public BWindow {
     bank->SetActions(prefs.actionButtons, prefs.adaptive && width < 850);
   }
   void PlaceTools() {
-    if (bankOnTop != prefs.bankTop) {
-      auto oldGroup = bankOnTop ? topTools : bottomTools;
-      oldGroup->GroupLayout()->RemoveView(bank);
-      bankOnTop = prefs.bankTop;
-      auto newGroup = bankOnTop ? topTools : bottomTools;
-      newGroup->GroupLayout()->AddView(int32(0), bank);
+    auto *bankZone = prefs.bankTop ? topTools : bottomTools;
+    if (bank->Parent() != bankZone) {
+      bank->RemoveSelf();
+      bankZone->GroupLayout()->AddView(int32(0), bank);
     }
-    if (commandOnTop != prefs.commandTop) {
-      auto oldGroup = commandOnTop ? topTools : bottomTools;
-      oldGroup->GroupLayout()->RemoveView(command);
-      commandOnTop = prefs.commandTop;
-      (commandOnTop ? topTools : bottomTools)->AddChild(command);
+    auto *commandZone = prefs.commandTop ? topTools : bottomTools;
+    if (command->Parent() != commandZone) {
+      command->RemoveSelf();
+      commandZone->AddChild(command);
     }
   }
   void RefreshPanelViews() {
@@ -297,7 +286,7 @@ class MainWindow : public BWindow {
     split->ApplyGeometry(prefs, quickView, source);
     menu->SetWorkspace(prefs, quickView);
     queue->SetCompact(prefs.SinglePane());
-    SetToolVisible(command, prefs.command && !prefs.SinglePane());
+    Listi::SetViewVisible(command, prefs.command && !prefs.SinglePane());
     UpdateToolZones();
     RefreshBank();
   }
@@ -320,12 +309,12 @@ class MainWindow : public BWindow {
     ApplyWorkspace();
   }
   void Open(uint32 action) {
-    auto selected = panes[source]->Selected();
-    if (selected.size() != 1) {
+    const auto path = panes[source]->SelectedPath();
+    if (path.empty()) {
       PostMainWindowNotice("Select exactly one file.");
       return;
     }
-    const bool editInPanel = action == kEdit && !Listi::IsVirtual(selected.front());
+    const bool editInPanel = action == kEdit && !Listi::IsVirtual(path);
     if (action == kPreviewOtherPanel || editInPanel) {
       ImagePreview *target;
       if (prefs.IsSmidja()) {
@@ -337,28 +326,20 @@ class MainWindow : public BWindow {
         target = &split->Inspector();
       }
       if (editInPanel)
-        target->BeginEditing(selected.front());
+        target->BeginEditing(path);
       return;
     }
     if (action == kView) {
-      auto window = new BWindow(BRect(120, 100, 900, 650), selected[0].c_str(),
-                                B_TITLED_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS);
-      auto inspector = new ImagePreview(true);
-      inspector->ShowFile(selected[0]);
-      BLayoutBuilder::Group<>(window, B_VERTICAL, 0).Add(inspector);
-      window->AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY,
-                          new BMessage(B_QUIT_REQUESTED));
-      window->AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
-      window->Show();
+      ImagePreview::OpenWindow(path);
       return;
     }
     const bool externalEdit = action != kOpenSystem;
-    if (externalEdit && Listi::ParseLocation(selected[0]).Archive()) {
-      OpenArchiveEditor(selected[0], prefs.editor.String());
+    if (externalEdit && Listi::ParseLocation(path).Archive()) {
+      OpenArchiveEditor(path, prefs.editor.String());
       return;
     }
     BMessage m(kOpenPaths);
-    m.AddString("path", selected[0].c_str());
+    m.AddString("path", path.c_str());
     m.AddString("mode", externalEdit ? "edit" : "system");
     if (externalEdit)
       m.AddString("application", prefs.editor);
@@ -379,7 +360,7 @@ public:
     panes[1] = new Pane(1, prefs, shelf);
     split = new Listi::WorkspaceSplit(new Listi::PanelTools(0, *panes[0]),
                                       new Listi::PanelTools(1, *panes[1]));
-    terminalSplit = new BSplitView(B_VERTICAL, 6);
+    auto *terminalSplit = new BSplitView(B_VERTICAL, 6);
     terminalDock = std::make_unique<Listi::TerminalDock>(
         terminalSplit, split, BMessenger(this));
     bank = new Listi::FunctionButtonBank(*menu);
@@ -818,19 +799,19 @@ public:
       ResumeArchiveEditors(prefs.editor.String());
       break;
     case kOpenWith: {
-      auto selected = panes[source]->Selected();
-      if (selected.size() != 1)
+      const auto path = panes[source]->SelectedPath();
+      if (path.empty())
         PostMainWindowNotice("Select one local file for Open with.");
       else
-        OpenWithFile(selected[0]);
+        OpenWithFile(path);
       break;
     }
     case kProperties: {
-      auto selected = panes[source]->Selected();
-      if (selected.size() != 1)
+      const auto path = panes[source]->SelectedPath();
+      if (path.empty())
         PostMainWindowNotice("Select one local file or folder for Properties.");
       else
-        OpenFileProperties(selected[0], BMessenger(panes[source]));
+        OpenFileProperties(path, BMessenger(panes[source]));
       break;
     }
     case kClipboardSaveText:

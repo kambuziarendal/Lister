@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "WorkspaceSplit.h"
+#include "ViewVisibility.h"
 
 #include "ImagePreview.h"
 #include "PanelTools.h"
@@ -59,10 +60,7 @@ void WorkspaceSplit::SetInspectorVisible(bool visible) {
     return;
 
   inspectorVisible = visible;
-  if (visible && inspector->IsHidden(inspector))
-    inspector->Show();
-  else if (!visible && !inspector->IsHidden(inspector))
-    inspector->Hide();
+  SetViewVisible(inspector, visible);
 }
 
 void WorkspaceSplit::ApplyGeometry(const WorkspaceLayout &layout, bool quickView,

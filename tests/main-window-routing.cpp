@@ -2,6 +2,7 @@
 // Exercise the actual window and menu without writing real user preferences.
 #include "../src/Common.h"
 #include "../src/FunctionButtonBank.h"
+#include "../src/ImagePreview.h"
 #include "../src/MainWindow.h"
 #include "../src/MainWindowMenu.h"
 #include "../src/Pane.h"
@@ -70,11 +71,8 @@ static void CheckFunctionButtons() {
   assert(grid() && grid()->CountChildren() == 0 && fallback->CountItems() == 0);
 }
 
-static void CheckWorkspaceSplit() {
-  auto *first = new BView("first", 0);
-  auto *second = new BView("second", 0);
-  auto *inspector = new BView("inspector", 0);
-  Listi::WorkspaceSplit split(first, second, inspector);
+static void CheckWorkspaceSplit(Listi::WorkspaceSplit &split, BView *first) {
+  auto *inspector = &split.Inspector();
   auto near = [](float a, float b) { return std::fabs(a - b) < 0.0001f; };
 
   WorkspaceLayout layout;
@@ -116,7 +114,6 @@ static void CheckWorkspaceSplit() {
 int main() {
   BApplication app("application/x-vnd.Listi-MainWindowRoutingTest");
   CheckFunctionButtons();
-  CheckWorkspaceSplit();
   auto *window = CreateMainWindow(Preferences{}, BMessenger{}, {}, false, {}, false);
   auto *menu = dynamic_cast<BMenuBar *>(window->FindView("menu"));
   assert(menu);
@@ -418,6 +415,9 @@ int main() {
   assert(access((elsewhere + "/New folder").c_str(), F_OK) != 0);
   assert(rmdir(created.c_str()) == 0 && rmdir(elsewhere.c_str()) == 0);
   assert(unlink(file.c_str()) == 0 && rmdir(temp) == 0);
+  auto *split = dynamic_cast<Listi::WorkspaceSplit *>(left->Parent());
+  assert(split);
+  CheckWorkspaceSplit(*split, left);
   window->Quit();
   puts("Main window: menu shortcuts and workspace routing OK");
 }

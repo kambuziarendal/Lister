@@ -116,6 +116,21 @@ std::vector<std::string> PaneModel::Selected() const {
       result.push_back(entry->path);
   return result;
 }
+const PaneEntry *PaneModel::OnlySelected() const {
+  if (selection.size() != 1)
+    return nullptr;
+  const PaneEntry *match = nullptr;
+  for (const auto *row : visible) {
+    if (row->parent || row->path != *selection.begin())
+      continue;
+    // Duplicate visible rows with the same path aren't an unambiguous selection.
+    if (match)
+      return nullptr;
+    match = row;
+  }
+  return match;
+}
+
 SelectionSummary PaneModel::Summary() const {
   SelectionSummary result;
   // Cached listing metadata only: no filesystem/network calls during selection.
