@@ -8,8 +8,7 @@
 #include "Common.h"
 #include "BulkRename.h"
 #include "BulkRenameWindow.h"
-#include "ClipboardTextFile.h"
-#include "FileClipboard.h"
+#include "ClipboardFlow.h"
 #include "FileDropFlow.h"
 #include "FlatViewWindow.h"
 #include "PaneContextMenu.h"
@@ -57,8 +56,6 @@
 #include <fstream>
 #include <iterator>
 #include <memory>
-#include <optional>
-#include <set>
 #include <unistd.h>
 using Listi::PanelPage;
 
@@ -70,7 +67,6 @@ void PostMainWindowNotice(const char *text) {
 
 namespace {
 constexpr uint32 kPreviewPattern = 'sppv', kApplyPattern = 'spap';
-constexpr uint32 kClipboardFileAccepted = 'ctac';
 constexpr uint32 kNamedEntryAccepted = 'nacc', kConfirm = 'cfir';
 class MainWindow : public BWindow {
   Preferences prefs;
@@ -197,16 +193,7 @@ class MainWindow : public BWindow {
   InlineAction *actionArea;
   void CloseAction() {
     actionArea->Close();
-    pendingClipboardFile.reset();
-    if (archiveClipboardPending) {
-      try {
-        Listi::FinishFilePaste(clipboardPaste, {});
-      } catch (const std::exception &e) {
-        PostMainWindowNotice(e.what());
-      }
-      clipboardPaste = {};
-      archiveClipboardPending = false;
-    }
+    clipboard->CancelPrompt();
     RefreshBank();
     FocusPage(source);
   }
@@ -251,7 +238,7 @@ class MainWindow : public BWindow {
     }
   }
   int source = 0;
-  int64 clipboardSerial = 0;
+  std::unique_ptr<Listi::ClipboardFlow> clipboard;
   std::unique_ptr<Listi::FileDropFlow> fileDrop;
   Listi::ArchiveActions archiveActions;
   void ArchiveAction(uint32 action) {
@@ -274,9 +261,8 @@ class MainWindow : public BWindow {
       PostMainWindowNotice(e.what());
     }
   }
-  void ConfirmArchiveAddition(const Listi::Job &job,
-                              const std::string &lease = {}) {
-    auto prompt = Listi::ArchiveActions::ConfirmAddition(job, lease);
+  void ConfirmArchiveAddition(const Listi::Job &job) {
+    auto prompt = Listi::ArchiveActions::ConfirmAddition(job, {});
     AskInline(prompt.text.String(), prompt.button, prompt.accepted);
   }
   void NamedEntry(Listi::Action action) {
@@ -300,104 +286,6 @@ class MainWindow : public BWindow {
       actionArea->Ask(text.c_str(), duplicate ? "Duplicate" : "Relative link",
                       accepted, job.entryName.c_str(),
                       duplicate ? nullptr : "Absolute link");
-    } catch (const std::exception &e) {
-      PostMainWindowNotice(e.what());
-    }
-  }
-  std::optional<Listi::ClipboardFile> pendingClipboardFile;
-  void AskToSaveClipboardFile(Listi::ClipboardContent content) {
-    if (actionArea->Pending()) {
-      queue->ErrorInfo("Finish or cancel the open question first.");
-      return;
-    }
-    try {
-      auto file = Listi::PrepareClipboardFile(panes[source]->Path(), content);
-      const auto prompt = (content == Listi::ClipboardContent::Image
-                               ? "Save clipboard PNG in: "
-                               : "Save clipboard text in: ") +
-                          file.folder;
-      BMessage accepted(kClipboardFileAccepted);
-      accepted.AddString("newEntryIn", file.folder.c_str());
-      ShowBank(false);
-      if (actionArea->Ask(prompt.c_str(), "Save", accepted,
-                          file.suggestedName.c_str()))
-        pendingClipboardFile = std::move(file);
-    } catch (const std::exception &e) {
-      PostMainWindowNotice(e.what());
-    }
-  }
-  void SaveClipboardFile(const std::string &name) {
-    if (!pendingClipboardFile)
-      return;
-    auto file = std::move(*pendingClipboardFile);
-    pendingClipboardFile.reset();
-    try {
-      Listi::SaveClipboardFile(file, name);
-      const auto status = "Saved " + name;
-      for (auto pane : panes) {
-        if (pane->Path() == file.folder) {
-          pane->Reload();
-          pane->ShowStatus(status.c_str());
-        }
-      }
-    } catch (const std::exception &e) {
-      PostMainWindowNotice(e.what());
-    }
-  }
-  Listi::ClipboardPaste clipboardPaste;
-  bool archiveClipboardPending = false;
-  std::set<int64> clipboardJobs;
-  std::vector<std::string> clipboardMoved;
-  void ClipboardAction(uint32 action) {
-    if (actionArea->Pending()) {
-      queue->ErrorInfo("Finish or cancel the open question first.");
-      return;
-    }
-    try {
-      if (action != kClipboardPaste) {
-        auto selected = panes[source]->Selected();
-        if (action == kCopyPaths) {
-          Listi::PutPathsAsText(selected);
-          panes[source]->ShowStatus(selected.size() == 1
-                                        ? "Path copied as text."
-                                        : "Paths copied as text.");
-          return;
-        }
-        Listi::PutFileClipboard(selected, action == kClipboardCut);
-        BString status;
-        status
-            << int32(selected.size())
-            << (action == kClipboardCut
-                    ? " marked for moving. Paste in a destination folder."
-                    : " copied to clipboard. Paste in a destination folder.");
-        panes[source]->ShowStatus(status);
-        return;
-      }
-      if (!clipboardJobs.empty()) {
-        queue->ErrorInfo(
-            "A clipboard transfer is still running. Let it finish before pasting again.");
-        return;
-      }
-      if (auto content = Listi::DetectClipboardSaveContent()) {
-        AskToSaveClipboardFile(*content);
-        return;
-      }
-      clipboardPaste = Listi::PrepareFilePaste(panes[source]->Path());
-      if (clipboardPaste.jobs.size() == 1 &&
-          (clipboardPaste.jobs[0].action == Listi::Action::EditArchive ||
-           clipboardPaste.jobs[0].action == Listi::Action::MoveArchive)) {
-        archiveClipboardPending = !clipboardPaste.lease.empty();
-        ConfirmArchiveAddition(clipboardPaste.jobs[0], clipboardPaste.lease);
-        if (!archiveClipboardPending)
-          clipboardPaste = {};
-        return;
-      }
-      clipboardMoved.clear();
-      for (auto job : clipboardPaste.jobs) {
-        job.tag = ++clipboardSerial;
-        clipboardJobs.insert(job.tag);
-        queue->Enqueue(job);
-      }
     } catch (const std::exception &e) {
       PostMainWindowNotice(e.what());
     }
@@ -754,6 +642,8 @@ public:
         "Runs a shell command in the active directory using Terminal.");
     queue = new OperationQueue(BMessenger(this));
     actionArea = new InlineAction(BMessenger(this));
+    clipboard = std::make_unique<Listi::ClipboardFlow>(
+        *actionArea, *queue, [this] { ShowBank(false); });
     fileDrop = std::make_unique<Listi::FileDropFlow>(
         *actionArea, *queue, BMessenger(this), service, [this] { ShowBank(false); });
     actionArea->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
@@ -843,13 +733,13 @@ public:
           "Saved places or searches are still being written. Please try quitting again shortly.");
       return false;
     }
-    if (queue->Busy() || !clipboardJobs.empty()) {
+    if (queue->Busy() || clipboard->Busy()) {
       queue->Show();
       PostMainWindowNotice("File operations are still running. Let them finish, or use "
              "Cancel all before quitting.");
       return false;
     }
-    if (archiveClipboardPending)
+    if (clipboard->ArchivePromptPending())
       CloseAction();
     be_app->PostMessage(B_QUIT_REQUESTED);
     return true;
@@ -947,10 +837,12 @@ public:
                 BMessage(kInlineCancel));
       break;
     case kInlineClosed:
-      if (!actionArea->Pending())
-        pendingClipboardFile.reset();
-      if (!actionArea->Pending() && archiveClipboardPending)
-        CloseAction();
+      if (!actionArea->Pending()) {
+        if (clipboard->ArchivePromptPending())
+          CloseAction();
+        else
+          clipboard->CancelPrompt();
+      }
       RefreshBank();
       if (!actionArea->Pending() && !terminalDock->HasFocus())
         FocusPage(source);
@@ -1209,14 +1101,8 @@ public:
       if (!job || m->GetInt32("which", 0) != 1)
         break;
       const std::string lease = m->GetString("clipboardLease", "");
-      if (!lease.empty()) {
-        if (!archiveClipboardPending || lease != clipboardPaste.lease)
-          break;
-        job->tag = ++clipboardSerial;
-        clipboardJobs.insert(job->tag);
-        clipboardMoved.clear();
-        archiveClipboardPending = false;
-      }
+      if (!lease.empty() && !clipboard->AcceptArchivePaste(*job, lease))
+        break;
       queue->Enqueue(*job);
       break;
     }
@@ -1250,20 +1136,26 @@ public:
       break;
     }
     case kClipboardSaveText:
-      AskToSaveClipboardFile(Listi::ClipboardContent::Text);
-      break;
     case kClipboardSaveImage:
-      AskToSaveClipboardFile(Listi::ClipboardContent::Image);
-      break;
-    case kClipboardFileAccepted:
-      SaveClipboardFile(m->GetString("name", ""));
-      break;
     case kClipboardCopy:
     case kClipboardCut:
     case kClipboardPaste:
     case kCopyPaths:
-      ClipboardAction(m->what);
+      clipboard->Begin(m->what, *panes[source]);
       break;
+    case Listi::kClipboardFileAccepted: {
+      const char *name = m->GetString("name", "");
+      if (auto folder = clipboard->SaveFile(name)) {
+        const auto status = std::string("Saved ") + name;
+        for (auto *pane : panes) {
+          if (pane->Path() == *folder) {
+            pane->Reload();
+            pane->ShowStatus(status.c_str());
+          }
+        }
+      }
+      break;
+    }
     case kCopy:
       Operation(Listi::Action::Copy);
       break;
@@ -1356,20 +1248,7 @@ public:
         queue->PresentEvent(done);
         if (done.what != kJobDone)
           continue;
-        if (clipboardJobs.erase(done.GetInt64("tag", 0))) {
-          const char *path;
-          for (int32 i = 0; done.FindString("moved", i, &path) == B_OK; ++i)
-            clipboardMoved.emplace_back(path);
-          if (clipboardJobs.empty()) {
-            try {
-              Listi::FinishFilePaste(clipboardPaste, clipboardMoved);
-            } catch (const std::exception &e) {
-              PostMainWindowNotice(e.what());
-            }
-            clipboardPaste = {};
-            clipboardMoved.clear();
-          }
-        }
+        clipboard->JobFinished(done);
         for (auto p : panes)
           p->MessageReceived(&done);
         RefreshShelf();
