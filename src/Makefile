@@ -6,6 +6,7 @@ SRCS += MainWindow.cpp MainWindowMenu.cpp SavedNavigationController.cpp PaneSide
 SRCS += MillerColumns.cpp TransferCommand.cpp JobResultsView.cpp
 SRCS += ArchiveJobPreparation.cpp ArchiveJobChecks.cpp
 SRCS += FlatViewWindow.cpp WorkspaceLayout.cpp WorkspaceEditor.cpp InspectorContent.cpp InspectorDocument.cpp InspectorEditor.cpp InspectorPhoto.cpp
+SRCS += InspectorTextView.cpp SearchResultsView.cpp
 SRCS += TerminalDock.cpp TerminalPanel.cpp TerminalSession.cpp $(wildcard vendor/libvterm/src/*.c)
 LOCAL_INCLUDE_PATHS += vendor/libvterm/include
 LIBS = shared translation media be columnlistview tracker $(STDCPPLIBS)
