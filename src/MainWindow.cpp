@@ -88,18 +88,12 @@ class MainWindow : public BWindow {
       pane->SetPlaces(savedNavigation.Places(), savedNavigation.CanEditPlaces());
   }
   Pane *panes[2];
-  Listi::PanelTools *hosts[2];
-  ImagePreview *preview;
-  bool PanelPreviewVisible() const {
-    return hosts[0]->Current() == PanelPage::Preview ||
-           hosts[1]->Current() == PanelPage::Preview;
-  }
   bool ToolAllowsCommand(uint32 action) const {
     switch (action) {
     case kCopy: case kMove: case kSame: case kCreateLink: case kDuplicate:
     case kCompareFolders: case kCreateArchive: case kExtractArchive:
-      return hosts[0]->Current() == PanelPage::Files &&
-             hosts[1]->Current() == PanelPage::Files;
+      return split->Panel(0).Current() == PanelPage::Files &&
+             split->Panel(1).Current() == PanelPage::Files;
     case kClipboardCopy: case kClipboardCut: case kClipboardPaste: case kCopyPaths:
     case kClipboardSaveText: case kClipboardSaveImage: case kUndoBulkRename:
     case kEdit: case kEditExternally: case kView: case kPreviewOtherPanel:
@@ -109,24 +103,9 @@ class MainWindow : public BWindow {
     case kAll: case kNone: case kInvert: case kSelectType: case kSelectPattern:
     case kApplyPattern: case kGridMode: case Listi::kAddToShelf:
     case Listi::kFlatView:
-      return hosts[source]->Current() == PanelPage::Files;
+      return split->Panel(source).Current() == PanelPage::Files;
     default:
       return true;
-    }
-  }
-  void FocusPage(int pane) {
-    switch (hosts[pane]->Current()) {
-    case PanelPage::Files:
-      panes[pane]->FocusList();
-      break;
-    case PanelPage::Search: {
-      BMessage focus(kSearch);
-      hosts[pane]->Page(PanelPage::Search)->MessageReceived(&focus);
-      break;
-    }
-    case PanelPage::Preview:
-      hosts[pane]->Page(PanelPage::Preview)->MakeFocus();
-      break;
     }
   }
   void ActivatePanel(int pane) {
@@ -144,9 +123,8 @@ class MainWindow : public BWindow {
       recipient.SendMessage(&update, static_cast<BHandler *>(nullptr), 0);
     };
     send(searchWindow);
-    for (auto host : hosts)
-      if (auto *page = host->Page(PanelPage::Search))
-        send(BMessenger(page));
+    for (int pane = 0; pane < 2; ++pane)
+      send(split->Panel(pane).SearchMessenger());
   }
   bool quickView = false;
   MainWindowMenu *menu;
@@ -160,26 +138,12 @@ class MainWindow : public BWindow {
     saved.what = kSavePreferences;
     service.SendMessage(&saved);
   }
-  void UpdatePreview() {
-    auto visibleFile = [&](int pane) -> std::string {
-      if (hosts[pane]->Current() != PanelPage::Files)
-        return {};
-      auto selection = panes[pane]->Selected();
-      return selection.size() == 1 ? selection.front() : "";
-    };
-    for (int pane = 0; pane < 2; ++pane) {
-      if (auto *inspector = PanelPreview(pane))
-        inspector->ShowFile(hosts[pane]->Current() == PanelPage::Preview
-                                ? visibleFile(1 - pane) : "");
-    }
-    preview->ShowFile(split->InspectorVisible() ? visibleFile(source) : "");
-  }
   InlineAction *actionArea;
   void CloseAction() {
     actionArea->Close();
     clipboard->CancelPrompt();
     RefreshBank();
-    FocusPage(source);
+    split->Panel(source).FocusCurrent();
   }
   void AskInline(const char *text, const char *button, const BMessage &result,
                  const char *initial = nullptr) {
@@ -286,52 +250,36 @@ class MainWindow : public BWindow {
       (commandOnTop ? topTools : bottomTools)->AddChild(command);
     }
   }
-  void ApplyPreviewVisibility() {
-    const bool showPreview =
-        quickView || (prefs.Preview() && !prefs.SinglePane() &&
-                      !PanelPreviewVisible());
-    preview->SetQuickViewCloseVisible(quickView);
-    split->SetInspectorVisible(showPreview);
-    menu->SetPreview(prefs, quickView || PanelPreviewVisible());
-    UpdatePreview();
+  void RefreshPanelViews() {
+    split->UpdateInspector(prefs, quickView, source);
+    menu->SetPreview(prefs, quickView || split->HasPanelPreview());
   }
-  void OpenPanelPreview(int pane) {
-    if (hosts[pane]->Page(PanelPage::Preview))
-      hosts[pane]->Select(PanelPage::Preview);
-    else
-      hosts[pane]->Open(PanelPage::Preview, new ImagePreview());
+  void RefreshAndFocusPanel() {
+    RefreshPanelViews();
+    split->Panel(source).FocusCurrent();
   }
-  ImagePreview *PanelPreview(int pane) const {
-    return static_cast<ImagePreview *>(hosts[pane]->Page(PanelPage::Preview));
+  void ClosePanelTool(int pane) {
+    auto &panel = split->Panel(pane);
+    const int focus = panel.Current() == PanelPage::Preview ? 1 - pane : pane;
+    if (panel.CloseCurrent()) {
+      ActivatePanel(focus);
+      RefreshAndFocusPanel();
+    }
   }
-  bool LeavePanelPage(int pane) {
-    return hosts[pane]->Current() != PanelPage::Preview ||
-           PanelPreview(pane)->CloseEditor();
-  }
-  bool CloseWorkspaceEditors() {
-    if (!preview->CloseEditor())
-      return false;
-    for (int pane = 0; pane < 2; ++pane)
-      if (auto *page = PanelPreview(pane); page && !page->CloseEditor())
-        return false;
-    return true;
-  }
-  void ClosePanelPreview(int pane) {
-    if (!PanelPreview(pane)->CloseEditor())
-      return;
-    hosts[pane]->Close(PanelPage::Preview);
-    ActivatePanel(1 - pane);
-    ApplyPreviewVisibility();
-    FocusPage(source);
+  ImagePreview *OpenPanelPreview(int pane) {
+    auto *preview = split->OpenPanelPreview(pane);
+    if (preview)
+      RefreshAndFocusPanel();
+    return preview;
   }
   void SetQuickView(bool enabled) {
     if (quickView != enabled) {
-      if (!enabled && !preview->CloseEditor())
+      if (!enabled && !split->Inspector().CloseEditor())
         return;
       quickView = enabled;
       ApplyWorkspace();
     }
-    FocusPage(source);
+    split->Panel(source).FocusCurrent();
   }
   void ApplyWorkspace() {
     const bool previewFirst = quickView ? source == 1 : prefs.inspectorLeft;
@@ -339,13 +287,13 @@ class MainWindow : public BWindow {
     PlaceTools();
     UpdateBank(Bounds().Width());
     for (int i = 0; i < 2; ++i) {
-      hosts[i]->EnableTools(prefs.IsSmidja());
-      const bool visible = i == source || (!quickView && !prefs.SinglePane());
-      split->SetPaneVisible(i, visible);
+      split->Panel(i).EnableTools(prefs.IsSmidja());
+      split->SetPaneVisible(i,
+                            i == source || (!quickView && !prefs.SinglePane()));
       panes[i]->SetWorkspace(prefs);
       panes[i]->SetSource(i == source);
     }
-    ApplyPreviewVisibility();
+    RefreshPanelViews();
     split->ApplyGeometry(prefs, quickView, source);
     menu->SetWorkspace(prefs, quickView);
     queue->SetCompact(prefs.SinglePane());
@@ -354,14 +302,14 @@ class MainWindow : public BWindow {
     RefreshBank();
   }
   void SetWorkspace(Workspace value) {
-    if (prefs.workspace == value || !CloseWorkspaceEditors())
+    if (prefs.workspace == value || !split->CloseEditors())
       return;
     quickView = false;
     prefs.workspace = value;
     prefs.singlePane = source;
     ApplyWorkspace();
     if (!actionArea->Pending())
-      FocusPage(source);
+      split->Panel(source).FocusCurrent();
     Save();
   }
   void Apply() {
@@ -379,16 +327,14 @@ class MainWindow : public BWindow {
     }
     const bool editInPanel = action == kEdit && !Listi::IsVirtual(selected.front());
     if (action == kPreviewOtherPanel || editInPanel) {
-      ImagePreview *target = preview;
+      ImagePreview *target;
       if (prefs.IsSmidja()) {
-        if (split->InspectorVisible() && !preview->CloseEditor())
+        target = OpenPanelPreview(1 - source);
+        if (!target)
           return;
-        OpenPanelPreview(1 - source);
-        target = PanelPreview(1 - source);
-        ApplyPreviewVisibility();
-        FocusPage(source);
       } else {
         SetQuickView(true);
+        target = &split->Inspector();
       }
       if (editInPanel)
         target->BeginEditing(selected.front());
@@ -431,10 +377,8 @@ public:
     menu = new MainWindowMenu();
     panes[0] = new Pane(0, prefs, shelf);
     panes[1] = new Pane(1, prefs, shelf);
-    for (int pane = 0; pane < 2; ++pane)
-      hosts[pane] = new Listi::PanelTools(pane, panes[pane]);
-    preview = new ImagePreview();
-    split = new Listi::WorkspaceSplit(hosts[0], hosts[1], preview);
+    split = new Listi::WorkspaceSplit(new Listi::PanelTools(0, *panes[0]),
+                                      new Listi::PanelTools(1, *panes[1]));
     terminalSplit = new BSplitView(B_VERTICAL, 6);
     terminalDock = std::make_unique<Listi::TerminalDock>(
         terminalSplit, split, BMessenger(this));
@@ -477,7 +421,7 @@ public:
 
     Apply();
     PublishPlaces();
-    FocusPage(source);
+    split->Panel(source).FocusCurrent();
     ResizeTo(1140, 650);
   }
   void FrameResized(float width, float height) override {
@@ -507,12 +451,10 @@ public:
         (message->what == B_MOUSE_DOWN || message->what == B_KEY_DOWN)) {
       auto *receiver = message->what == B_MOUSE_DOWN
                            ? dynamic_cast<BView *>(target) : CurrentFocus();
-      for (auto *view = receiver; view; view = view->Parent()) {
-        for (int pane = 0; pane < 2; ++pane)
-          if (view == hosts[pane] && source != pane) {
-            ActivatePanel(pane);
-            UpdatePreview();
-          }
+      const int pane = split->PanelContaining(receiver);
+      if (pane >= 0 && source != pane) {
+        ActivatePanel(pane);
+        split->UpdatePreviews(source);
       }
     }
     BWindow::DispatchMessage(message, target);
@@ -653,21 +595,20 @@ public:
       }
       RefreshBank();
       if (!actionArea->Pending() && !terminalDock->HasFocus())
-        FocusPage(source);
+        split->Panel(source).FocusCurrent();
       break;
     case kInlineCancel:
       if (panes[source]->CancelSelectionGesture())
         break;
       if (actionArea->Pending())
         CloseAction();
-      else if (hosts[source]->Current() == PanelPage::Preview)
-        ClosePanelPreview(source);
-      else if (hosts[source]->Current() != PanelPage::Files) {
-        hosts[source]->Select(PanelPage::Files);
-        ApplyPreviewVisibility();
-        FocusPage(source);
-      } else if (PanelPreviewVisible()) {
-        ClosePanelPreview(1 - source);
+      else if (split->Panel(source).Current() == PanelPage::Preview)
+        ClosePanelTool(source);
+      else if (split->Panel(source).Current() != PanelPage::Files) {
+        split->Panel(source).Select(PanelPage::Files);
+        RefreshAndFocusPanel();
+      } else if (split->HasPanelPreview()) {
+        ClosePanelTool(1 - source);
       } else if (quickView) {
         SetQuickView(false);
       } else
@@ -679,38 +620,29 @@ public:
       if (!prefs.IsSmidja() || pane < 0 || pane > 1)
         break;
       if (m->what == Listi::kClosePanelPage) {
-        if (hosts[pane]->Current() == PanelPage::Preview) {
-          ClosePanelPreview(pane);
-          break;
-        }
-        hosts[pane]->Close(hosts[pane]->Current());
-      } else {
-        const int32 page = m->GetInt32("page", -1);
-        if (page < 0 || page > 2 || !hosts[pane]->Page(PanelPage(page)))
-          break;
-        if (PanelPage(page) != hosts[pane]->Current() && !LeavePanelPage(pane))
-          break;
-        hosts[pane]->Select(PanelPage(page));
+        ClosePanelTool(pane);
+        break;
       }
-      ActivatePanel(pane);
-      ApplyPreviewVisibility();
-      FocusPage(pane);
+      const int32 page = m->GetInt32("page", -1);
+      if (page >= int32(PanelPage::Files) &&
+          page <= int32(PanelPage::Preview) &&
+          split->Panel(pane).Select(PanelPage(page))) {
+        ActivatePanel(pane);
+        RefreshAndFocusPanel();
+      }
       break;
     }
     case kQuickView:
       if (actionArea->Pending())
         break;
       if (prefs.IsSmidja()) {
-        int pane = hosts[source]->Current() == PanelPage::Preview ? source : 1 - source;
-        if (hosts[pane]->Current() == PanelPage::Preview) {
-          ClosePanelPreview(pane);
-        } else {
-          if (split->InspectorVisible() && !preview->CloseEditor())
-            break;
+        const int pane = split->Panel(source).Current() == PanelPage::Preview
+                             ? source
+                             : 1 - source;
+        if (split->Panel(pane).Current() == PanelPage::Preview)
+          ClosePanelTool(pane);
+        else
           OpenPanelPreview(pane);
-          ApplyPreviewVisibility();
-          FocusPage(source);
-        }
         break;
       }
       SetQuickView(!quickView);
@@ -720,17 +652,17 @@ public:
         SetQuickView(false);
       break;
     case kPreviewToggle:
-      if (prefs.SinglePane() || quickView || PanelPreviewVisible())
+      if (prefs.SinglePane() || quickView || split->HasPanelPreview())
         break;
-      if (split->InspectorVisible() && !preview->CloseEditor())
+      if (!split->CloseVisibleInspectorEditor())
         break;
       prefs.SetPreview(!prefs.Preview());
-      ApplyPreviewVisibility();
+      RefreshPanelViews();
       Save();
       break;
     case kPreviewSelection:
-      if (m->GetInt32("pane", -1) == source || PanelPreviewVisible())
-        UpdatePreview();
+      if (m->GetInt32("pane", -1) == source || split->HasPanelPreview())
+        split->UpdatePreviews(source);
       if (m->GetInt32("pane", -1) == source && m->HasString("operationError"))
         queue->ErrorInfo(m->GetString("operationError", ""));
       break;
@@ -761,11 +693,12 @@ public:
     } break;
     case kActivate: {
       const int32 pane = m->GetInt32("pane", source);
-      if (pane < 0 || pane > 1 || hosts[pane]->Current() != PanelPage::Files ||
+      if (pane < 0 || pane > 1 ||
+          split->Panel(pane).Current() != PanelPage::Files ||
           ((quickView || prefs.SinglePane()) && pane != source))
         break;
       ActivatePanel(pane);
-      UpdatePreview();
+      split->UpdatePreviews(source);
       break;
     }
     case kSwitch:
@@ -778,8 +711,8 @@ public:
       if (prefs.SinglePane())
         break;
       ActivatePanel(1 - source);
-      FocusPage(source);
-      UpdatePreview();
+      split->Panel(source).FocusCurrent();
+      split->UpdatePreviews(source);
       break;
     case kSame:
       if (prefs.SinglePane())
@@ -792,15 +725,8 @@ public:
       break;
     case kSearch:
       if (prefs.IsSmidja()) {
-        if (!LeavePanelPage(source))
-          break;
-        if (!hosts[source]->Page(PanelPage::Search))
-          hosts[source]->Open(PanelPage::Search, CreatePanelSearch(
-              BMessenger(this), source, panes[source]->Path(), savedNavigation.SearchStore()));
-        else
-          hosts[source]->Select(PanelPage::Search);
-        ApplyPreviewVisibility();
-        FocusPage(source);
+        if (split->Panel(source).OpenSearch(savedNavigation.SearchStore()))
+          RefreshAndFocusPanel();
         break;
       }
       if (searchWindow.IsValid())
@@ -829,16 +755,15 @@ public:
       if (which < 0 || which > 1)
         break;
       if (quickView && source != which) {
-        if (!preview->CloseEditor())
+        if (!split->Inspector().CloseEditor())
           break;
         quickView = false;
         ApplyWorkspace();
       }
-      if (!LeavePanelPage(which))
+      if (!split->Panel(which).Select(PanelPage::Files))
         break;
-      hosts[which]->Select(PanelPage::Files);
       source = which;
-      ApplyPreviewVisibility();
+      RefreshPanelViews();
       if (prefs.SinglePane()) {
         prefs.singlePane = source;
         ApplyWorkspace();
@@ -848,14 +773,13 @@ public:
         panes[i]->SetSource(i == source);
       panes[source]->MessageReceived(m);
       Activate();
-      FocusPage(source);
+      split->Panel(source).FocusCurrent();
       break;
     }
     case kFilter:
-      if (!LeavePanelPage(source))
+      if (!split->Panel(source).Select(PanelPage::Files))
         break;
-      hosts[source]->Select(PanelPage::Files);
-      ApplyPreviewVisibility();
+      RefreshPanelViews();
       panes[source]->FocusFilter();
       break;
     case kContextMenu: {
@@ -864,7 +788,8 @@ public:
         break;
       }
       const int32 owner = m->GetInt32("pane", -1);
-      if (owner < 0 || owner > 1 || hosts[owner]->Current() != PanelPage::Files ||
+      if (owner < 0 || owner > 1 ||
+          split->Panel(owner).Current() != PanelPage::Files ||
           ((prefs.SinglePane() || quickView) && owner != source))
         break;
       ActivatePanel(owner);
@@ -872,9 +797,10 @@ public:
         auto result = Listi::RunPaneContextMenu(
             *m, *panes[owner], *panes[1 - owner], owner, source,
             prefs.SinglePane(),
-            !prefs.SinglePane() && hosts[1 - owner]->Current() == PanelPage::Files,
-            prefs.folderModes.count(panes[owner]->Path()), savedNavigation.Places(),
-            savedNavigation.CanEditPlaces());
+            !prefs.SinglePane() &&
+                split->Panel(1 - owner).Current() == PanelPage::Files,
+            prefs.folderModes.count(panes[owner]->Path()),
+            savedNavigation.Places(), savedNavigation.CanEditPlaces());
         // Keep dispatch synchronous so a queued activation cannot redirect it.
         if (result.command.what == Listi::kAddToShelf)
           AddToShelf(result.shelfSources);
@@ -1014,7 +940,7 @@ public:
       if (terminalDock->Close(m->GetInt64("terminal placement", -1))) {
         Activate();
         if (!terminalDock->HasFocus())
-          FocusPage(source);
+          split->Panel(source).FocusCurrent();
       }
       break;
     case Listi::kTerminalWindow:
@@ -1065,7 +991,7 @@ public:
       if (m->FindMessage("layout", &layoutMessage) != B_OK ||
           m->FindMessage("profiles", &profilesMessage) != B_OK)
         break;
-      if (!CloseWorkspaceEditors())
+      if (!split->CloseEditors())
         break;
       WorkspaceLayout layout;
       layout.Load(layoutMessage);
@@ -1079,7 +1005,7 @@ public:
       else
         prefs.singlePane = source;
       ApplyWorkspace();
-      FocusPage(source);
+      split->Panel(source).FocusCurrent();
       Save();
       break;
     }

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 #include "WorkspaceSplit.h"
 
+#include "ImagePreview.h"
+#include "PanelTools.h"
 #include "WorkspaceLayout.h"
 #include <Layout.h>
 #include <Window.h>
@@ -11,9 +13,9 @@ constexpr float kWorkspaceSpacing = 6;
 constexpr int kInspector = 2;
 }
 
-WorkspaceSplit::WorkspaceSplit(BView *first, BView *second, BView *preview)
+WorkspaceSplit::WorkspaceSplit(PanelTools *first, PanelTools *second)
     : BSplitView(B_HORIZONTAL, kWorkspaceSpacing), panes{first, second},
-      inspector(preview), splitterSize(SplitterSize()) {
+      inspector(new ImagePreview()), splitterSize(SplitterSize()) {
   AddChild(first);
   AddChild(second);
   AddChild(inspector);
@@ -111,5 +113,47 @@ void WorkspaceSplit::MouseUp(BPoint where) {
       break;
     }
   }
+}
+
+int WorkspaceSplit::PanelContaining(const BView *view) const {
+  for (; view; view = view->Parent()) {
+    if (view == panes[0])
+      return 0;
+    if (view == panes[1])
+      return 1;
+  }
+  return -1;
+}
+
+bool WorkspaceSplit::HasPanelPreview() const {
+  return Panel(0).Current() == PanelPage::Preview ||
+         Panel(1).Current() == PanelPage::Preview;
+}
+
+bool WorkspaceSplit::CloseEditors() {
+  return Inspector().CloseEditor() && Panel(0).CloseEditor() &&
+         Panel(1).CloseEditor();
+}
+
+bool WorkspaceSplit::CloseVisibleInspectorEditor() {
+  return !InspectorVisible() || Inspector().CloseEditor();
+}
+
+void WorkspaceSplit::UpdatePreviews(int source) {
+  Panel(0).UpdatePreview(Panel(1));
+  Panel(1).UpdatePreview(Panel(0));
+  Inspector().ShowFile(InspectorVisible() ? Panel(source).SelectedFile() : "");
+}
+
+void WorkspaceSplit::UpdateInspector(const WorkspaceLayout &layout,
+                                     bool quickView, int source) {
+  Inspector().SetQuickViewCloseVisible(quickView);
+  SetInspectorVisible(quickView || (layout.Preview() && !layout.SinglePane() &&
+                                    !HasPanelPreview()));
+  UpdatePreviews(source);
+}
+
+ImagePreview *WorkspaceSplit::OpenPanelPreview(int pane) {
+  return CloseVisibleInspectorEditor() ? &Panel(pane).OpenPreview() : nullptr;
 }
 }

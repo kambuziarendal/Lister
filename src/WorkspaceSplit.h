@@ -4,14 +4,16 @@
 #include <SplitView.h>
 #include <array>
 
+class ImagePreview;
 struct WorkspaceLayout;
 
 namespace Listi {
+class PanelTools;
 constexpr uint32 kSplitChanged = 'swgt';
 
 class WorkspaceSplit : public BSplitView {
 public:
-  WorkspaceSplit(BView *first, BView *second, BView *inspector);
+  WorkspaceSplit(PanelTools *first, PanelTools *second);
 
   void PlaceInspector(bool first, float weight);
   void SetPaneVisible(int pane, bool visible);
@@ -23,11 +25,22 @@ public:
   void MouseDown(BPoint where) override;
   void MouseUp(BPoint where) override;
 
+  PanelTools &Panel(int pane) const { return *panes[pane]; }
+  ImagePreview &Inspector() const { return *inspector; }
+  int PanelContaining(const BView *view) const;
+  bool HasPanelPreview() const;
+  bool CloseEditors();
+  bool CloseVisibleInspectorEditor();
+  void UpdatePreviews(int source);
+  void UpdateInspector(const WorkspaceLayout &layout, bool quickView,
+                       int source);
+  ImagePreview *OpenPanelPreview(int pane);
+
 private:
   int SplitIndex(int logicalIndex) const;
 
-  BView *panes[2];
-  BView *inspector;
+  PanelTools *panes[2];
+  ImagePreview *inspector;
   const float splitterSize;
   bool inspectorOnLeft = false;
   bool paneVisible[2] = {true, true};
