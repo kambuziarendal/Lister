@@ -4,6 +4,7 @@
 #include "ImagePreview.h"
 #include "InlineAction.h"
 #include "MainWindow.h"
+#include "MainWindowMenu.h"
 #include "OpenWith.h"
 #include "OperationQueue.h"
 #include "PropertiesWindow.h"
@@ -34,13 +35,17 @@ bool Pane::HandleSelectionCommand(const BMessage &request, InlineAction &prompt,
   case kInvert: {
     const int mode =
         request.what == kInvert ? 2 : (request.what == kAll ? 1 : 0);
-    entries.Select(mode);
-    SendSelection();
+    Select(mode);
     return true;
   }
   default:
     return false;
   }
+}
+
+void Pane::Select(int mode) {
+  entries.Select(mode);
+  SendSelection();
 }
 
 size_t Pane::MatchPattern(const char *pattern, bool apply) {

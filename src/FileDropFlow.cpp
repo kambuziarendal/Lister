@@ -20,7 +20,7 @@ FileDropFlow::FileDropFlow(InlineAction &actionArea, OperationQueue &queue,
                            BMessenger owner, BMessenger service)
     : actionArea(actionArea), queue(queue), owner(owner), service(service) {}
 
-void FileDropFlow::Handle(const BMessage &message) {
+bool FileDropFlow::Handle(const BMessage &message) {
   switch (message.what) {
   case kDrop: {
     if (actionArea.Pending()) {
@@ -140,7 +140,10 @@ void FileDropFlow::Handle(const BMessage &message) {
     queue.Enqueue(*job);
     break;
   }
+  default:
+    return false;
   }
+  return true;
 }
 
 } // namespace Listi

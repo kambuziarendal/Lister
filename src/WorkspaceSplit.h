@@ -24,6 +24,9 @@ public:
   void SwitchPane();
   void Focus();
   void ApplyWorkspace();
+  bool AllowsCommand(uint32 action) const;
+  void RememberPaneDisplay(const BMessage &message);
+  bool ApplyWorkspaceEdit(const BMessage &message);
   bool PrepareLayoutChange();
   void HandlePageCommand(const BMessage &message);
   void OpenSearch(const BMessage &store);

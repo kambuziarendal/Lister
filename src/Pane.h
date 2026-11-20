@@ -46,6 +46,7 @@ public:
   bool IsSource() const { return active; }
   void Apply(const Preferences &);
   void SetWorkspace(const Preferences &);
+  void Select(int mode);
   bool HandleSelectionCommand(const BMessage &, InlineAction &,
                               OperationQueue &);
   bool HandleOpenCommand(uint32, const BString &editor,

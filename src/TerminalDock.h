@@ -27,7 +27,7 @@ public:
   // returned prompt captures both the shell and its current placement.
   std::optional<TerminalRestartPrompt> Open(const BMessage &request, int lister,
                                             const char *directory);
-  void ApplyPlacement(const BMessage &request);
+  bool ApplyPlacement(const BMessage &request);
   TerminalPanel *Docked(int lister) const;
   bool HasFocus() const;
   bool FocusFloating(int lister);

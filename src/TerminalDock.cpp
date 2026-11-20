@@ -154,7 +154,7 @@ TerminalDock::Open(const BMessage &message, int lister, const char *directory) {
   return std::nullopt;
 }
 
-void TerminalDock::ApplyPlacement(const BMessage &message) {
+bool TerminalDock::ApplyPlacement(const BMessage &message) {
   switch (message.what) {
   case kTerminalBelow:
     SetSide(TerminalSide::Below);
@@ -177,7 +177,10 @@ void TerminalDock::ApplyPlacement(const BMessage &message) {
   case kDockTerminal:
     Dock(message.GetInt64("terminal placement", -1));
     break;
+  default:
+    return false;
   }
+  return true;
 }
 
 TerminalPanel *TerminalDock::Docked(int lister) const {

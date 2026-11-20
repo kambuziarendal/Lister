@@ -5,6 +5,8 @@
 #include "ImagePreview.h"
 #include "MainWindowMenu.h"
 #include "Pane.h"
+#include "FlatViewWindow.h"
+#include "ShelfWindow.h"
 #include "PanelTools.h"
 #include "WorkspaceLayout.h"
 #include <Layout.h>
@@ -173,6 +175,29 @@ bool WorkspaceSplit::ActivateFiles(int pane) {
   return true;
 }
 
+bool WorkspaceSplit::AllowsCommand(uint32 action) const {
+  if (!prefs.IsSmidja())
+    return true;
+  switch (action) {
+  case kCopy: case kMove: case kSame: case kCreateLink: case kDuplicate:
+  case kCompareFolders: case kCreateArchive: case kExtractArchive:
+    return Panel(0).Current() == PanelPage::Files &&
+           Panel(1).Current() == PanelPage::Files;
+  case kClipboardCopy: case kClipboardCut: case kClipboardPaste: case kCopyPaths:
+  case kClipboardSaveText: case kClipboardSaveImage: case kUndoBulkRename:
+  case kEdit: case kEditExternally: case kView: case kPreviewOtherPanel:
+  case kOpenWith: case kOpenSystem: case kProperties:
+  case kDelete: case kRestore: case kPermanentDelete: case kRename:
+  case kBulkRename: case kMkdir: case kAddArchive: case kRemoveArchive:
+  case kAll: case kNone: case kInvert: case kSelectType: case kSelectPattern:
+  case Listi::kApplyPattern: case kGridMode: case Listi::kAddToShelf:
+  case Listi::kFlatView:
+    return Panel(source).Current() == PanelPage::Files;
+  default:
+    return true;
+  }
+}
+
 void WorkspaceSplit::Focus() { Panel(source).FocusCurrent(); }
 
 void WorkspaceSplit::SwitchPane() {
@@ -298,6 +323,41 @@ bool WorkspaceSplit::ToggleInspector() {
     return false;
   prefs.SetPreview(!prefs.Preview());
   RefreshPanels();
+  return true;
+}
+void WorkspaceSplit::RememberPaneDisplay(const BMessage &message) {
+  for (int i = 0; i < 2; ++i) {
+    prefs.SetSidebar(i, Panel(i).Files().Sidebar());
+    prefs.SetPaneMode(i, Panel(i).Files().PaneOverride());
+  }
+  if (message.HasString("folder")) {
+    std::string folder = message.GetString("folder", "");
+    if (message.GetBool("forget", false))
+      prefs.folderModes.erase(folder);
+    else
+      prefs.folderModes[folder] = message.GetInt32("mode", 0);
+  }
+  Panel(0).Files().FolderModes(prefs.folderModes);
+  Panel(1).Files().FolderModes(prefs.folderModes);
+}
+
+bool WorkspaceSplit::ApplyWorkspaceEdit(const BMessage &message) {
+  BMessage layoutMessage, profilesMessage;
+  if (message.FindMessage("layout", &layoutMessage) != B_OK ||
+      message.FindMessage("profiles", &profilesMessage) != B_OK)
+    return false;
+  if (!PrepareLayoutChange())
+    return false;
+  WorkspaceLayout layout;
+  layout.Load(layoutMessage);
+  prefs.profiles.Load(profilesMessage);
+  if (layout.buttons != prefs.buttons)
+    prefs.smidjaButtons = prefs.tviskiptButtons = -1;
+  prefs.ApplyLayout(layout);
+  if (prefs.SinglePane())
+    SetSource(prefs.singlePane);
+  else
+    prefs.singlePane = source;
   return true;
 }
 } // namespace Listi

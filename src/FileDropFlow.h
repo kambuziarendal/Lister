@@ -16,7 +16,7 @@ class FileDropFlow {
 public:
   FileDropFlow(InlineAction &, OperationQueue &, BMessenger owner,
                BMessenger service);
-  void Handle(const BMessage &message);
+  bool Handle(const BMessage &message);
 
 private:
   InlineAction &actionArea;
