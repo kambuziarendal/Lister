@@ -17,8 +17,8 @@
 #include <unistd.h>
 using namespace Listi;
 namespace {
-enum Fault { None, Publication, Journal } fault = None;
-std::string archivePath, journalPath;
+enum Fault { None, Publication, Journal, Baseline } fault = None;
+std::string archivePath, journalPath, baselinePath;
 bool injected = false, published = false;
 std::string bytes(const std::string &p) {
   std::ifstream f(p, std::ios::binary);
@@ -71,7 +71,8 @@ bool corrupt(const std::string &root) {
 extern "C" int __real_rename(const char *, const char *);
 extern "C" int __wrap_rename(const char *from, const char *to) {
   if (!injected && ((fault == Publication && to == archivePath) ||
-                    (fault == Journal && published && to == journalPath))) {
+                    (fault == Journal && published && to == journalPath) ||
+                    (fault == Baseline && published && to == baselinePath))) {
     injected = true;
     errno = EIO;
     return -1;
@@ -95,7 +96,7 @@ int main() {
     failures += !ok;
     std::cout << (ok ? "PASS " : "FAIL ") << label << std::endl;
   };
-  for (int scenario = 0; scenario < 3; ++scenario) {
+  for (int scenario = 0; scenario < 4; ++scenario) {
     fault = None;
     injected = published = false;
     auto job = PrepareArchiveJob(false, {root + "/item"});
@@ -127,6 +128,7 @@ int main() {
     auto session = ArchiveEditSession::Open(ChildLocation(url, "item"),
                                             root + "/sessions");
     journalPath = Join(session->Directory(), "session");
+    baselinePath = Join(session->Directory(), "saved");
     auto original = bytes(archivePath);
     writeFile(session->WorkingFile(), "editor corruption probe");
     Hooks hooks;
@@ -137,7 +139,7 @@ int main() {
         return true;
       };
     else
-      fault = scenario == 1 ? Publication : Journal;
+      fault = scenario == 1 ? Publication : scenario == 2 ? Journal : Baseline;
     std::string error;
     try {
       session->Save(hooks);
@@ -157,8 +159,25 @@ int main() {
     else {
       check(published && bytes(archivePath) != original &&
                 error.find("Archive was saved") != std::string::npos,
-            "journal failure after publication reports saved archive and "
+            "recovery failure after publication reports saved archive and "
             "retained working copy");
+      if (scenario == 3) {
+        // Returning the working copy to the previous baseline must not be
+        // mistaken for "already saved" against the newly published archive.
+        writeFile(session->WorkingFile(), "original");
+        bool liveRefused = false;
+        try {
+          session->Save();
+        } catch (const std::exception &) {
+          liveRefused = true;
+        }
+        std::string memberBytes;
+        ReadFile(ChildLocation(url, "item"), [&](const char *data, size_t n) {
+          memberBytes.append(data, n);
+        });
+        check(liveRefused && memberBytes == "editor corruption probe",
+              "failed baseline publication never certifies old bytes as current");
+      }
       bool refused = false;
       try {
         ArchiveEditSession::Resume(session->Directory())->Save();

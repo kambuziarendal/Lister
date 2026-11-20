@@ -19,7 +19,7 @@ public:
   Open(const std::string &member, const std::string &root, const Hooks & = {});
   static std::shared_ptr<ArchiveEditSession>
   Resume(const std::string &directory);
-  Observation Observe();
+  Observation Observe(const Hooks & = {});
   std::shared_ptr<ArchiveEditSession>
   StartFresh(const Hooks & = {}); // Explicit user choice; old copy is kept.
   bool Save(const Hooks & = {});  // false means the working copy is unchanged
@@ -42,7 +42,7 @@ private:
   void ValidateArchive() const;
   void RequireActive() const;
   void Persist();
-  bool ChangedBytes();
+  bool ChangedBytes(const Hooks &);
 };
 } // namespace Listi
 // These functions are called only from the application's UI thread.

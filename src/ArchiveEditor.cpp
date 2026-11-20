@@ -106,7 +106,7 @@ void Snapshot(const std::string &from, const std::string &to,
   Require(!futimens(output.n, times) && !fsync(output.n),
           "Cannot flush edited file snapshot.");
 }
-bool Equal(const std::string &a, const std::string &b) {
+bool Equal(const std::string &a, const std::string &b, const Hooks &hooks) {
   auto x = Regular(a), y = Regular(b);
   if (x.st_size != y.st_size)
     return false;
@@ -117,6 +117,7 @@ bool Equal(const std::string &a, const std::string &b) {
   std::vector<char> l(65536), r(65536);
   bool equal = true;
   for (;;) {
+    Check(hooks);
     auto n = read(left.n, l.data(), l.size());
     if (n < 0 && errno == EINTR)
       continue;
@@ -363,12 +364,12 @@ ArchiveEditSession::StartFresh(const Hooks &hooks) {
   (void)rename(journal.c_str(), previous.c_str());
   return fresh;
 }
-bool ArchiveEditSession::ChangedBytes() {
+bool ArchiveEditSession::ChangedBytes(const Hooks &hooks) {
   ValidateDirectory();
   ValidateArchive();
-  return !Equal(working, Join(directory, "saved"));
+  return !Equal(working, Join(directory, "saved"), hooks);
 }
-ArchiveEditSession::Observation ArchiveEditSession::Observe() {
+ArchiveEditSession::Observation ArchiveEditSession::Observe(const Hooks &hooks) {
   ValidateDirectory();
   ValidateArchive();
   struct stat now;
@@ -389,14 +390,14 @@ ArchiveEditSession::Observation ArchiveEditSession::Observe() {
     return Waiting;
   if (checked)
     return Unchanged;
-  if (ChangedBytes())
+  if (ChangedBytes(hooks))
     return Changed;
   checked = true;
   return Unchanged;
 }
 bool ArchiveEditSession::Save(const Hooks &hooks) {
   Check(hooks);
-  if (!ChangedBytes())
+  if (!ChangedBytes(hooks))
     return false;
   RequireActive();
   // Snapshot a stable editor save. Later editor writes never become part of
@@ -436,8 +437,16 @@ bool ArchiveEditSession::Save(const Hooks &hooks) {
           result.errors.empty()
               ? "Could not save the archive. Working copy was retained."
               : result.errors.front());
-  target = published;
+  // The journal certifies both the archive fingerprint and the saved bytes.
+  // Install and flush the baseline first. An interruption must leave a stale
+  // fingerprint that refuses writeback, never a current one with old bytes.
+  Require(!chmod(candidate.c_str(), 0600) &&
+              !rename(candidate.c_str(), Join(directory, "saved").c_str()),
+          "Archive was saved, but the local recovery baseline could not be "
+          "updated. Working copy was retained.");
   try {
+    FlushDirectory(directory);
+    target = published;
     Persist();
   } catch (const std::exception &e) {
     throw std::runtime_error(
@@ -445,11 +454,6 @@ bool ArchiveEditSession::Save(const Hooks &hooks) {
                     "updated. Working copy kept: ") +
         e.what());
   }
-  Require(!chmod(candidate.c_str(), 0600) &&
-              !rename(candidate.c_str(), Join(directory, "saved").c_str()),
-          "Archive was saved, but the local recovery baseline could not be "
-          "updated. Working copy was retained.");
-  FlushDirectory(directory);
   haveObserved = false;
   checked = false;
   stable = 0;

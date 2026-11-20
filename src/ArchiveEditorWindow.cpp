@@ -253,7 +253,7 @@ public:
         Status("Saving working copy to archive...");
       }
       Work(kDone, [this, manual](auto &d, const auto &hooks) {
-        if (manual || session->Observe() == Listi::ArchiveEditSession::Changed)
+        if (manual || session->Observe(hooks) == Listi::ArchiveEditSession::Changed)
           d.status =
               session->Save(hooks)
                   ? "Saved to archive. Working copy retained."

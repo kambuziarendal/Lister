@@ -265,6 +265,35 @@ int main() {
               bytes(firstMember) == "first edit" && bytes(otherMember) == "original sibling" &&
               bytes(other->WorkingFile()) == "sibling draft",
           "same-basename edits keep separate working copies and reject stale writeback");
+    // Stable unchanged documents can still be large. Cancel while comparing
+    // their second block, before any archive write or change to the baseline.
+    const std::string large(3 * 65536, 'a');
+    writeFile(root + "/in/folder/edit.txt", large);
+    a = archive("tar");
+    auto largeSession = ArchiveEditSession::Open(member(a), sessions);
+    auto unchanged = fingerprint(a);
+    auto cancelledComparison = [&](bool manual) {
+      int polls = 0;
+      Hooks stop;
+      stop.proceed = [&] { return ++polls < 3; };
+      try {
+        if (manual)
+          largeSession->Save(stop);
+        else
+          largeSession->Observe(stop);
+      } catch (const Cancelled &) {
+        return polls == 3;
+      }
+      return false;
+    };
+    check(largeSession->Observe() == ArchiveEditSession::Waiting &&
+              largeSession->Observe() == ArchiveEditSession::Waiting &&
+              cancelledComparison(false) &&
+              largeSession->Observe() == ArchiveEditSession::Unchanged &&
+              cancelledComparison(true) && !largeSession->Save() &&
+              fingerprint(a) == unchanged && bytes(largeSession->WorkingFile()) == large,
+          "cancel interrupts automatic and manual baseline comparisons; retry is unchanged");
+    writeFile(root + "/in/folder/edit.txt", "original");
     a = archive("tar");
     m = member(a);
     session = ArchiveEditSession::Open(m, sessions);
