@@ -9,14 +9,13 @@
 #include "FileOperationFlow.h"
 #include "FlatViewWindow.h"
 #include "PaneContextMenu.h"
-#include "JobSnapshot.h"
 #include "ArchiveEditor.h"
 #include "FolderCompare.h"
 #include "PropertiesWindow.h"
 #include "OpenWith.h"
 #include "SavedNavigationController.h"
 #include "SearchWindow.h"
-#include "Shelf.h"
+#include "ShelfController.h"
 #include "ShelfWindow.h"
 #include "ImagePreview.h"
 #include "InspectorEditor.h"
@@ -32,13 +31,13 @@
 #include "WorkspaceSplit.h"
 #include "WorkspaceToolbar.h"
 #include <Application.h>
+#include <array>
 #include <exception>
 #include <GroupView.h>
 #include <LayoutBuilder.h>
 #include <SplitView.h>
 #include <Window.h>
 #include <cstring>
-#include <map>
 #include <memory>
 using Listi::PanelPage;
 
@@ -52,38 +51,13 @@ namespace {
 class MainWindow : public BWindow {
   Preferences prefs;
   BMessenger searchWindow;
-  std::map<std::string, BMessenger> flatViews;
-  std::shared_ptr<Listi::Shelf> shelf = std::make_shared<Listi::Shelf>();
-  BMessenger shelfWindow;
-  void RefreshShelf() {
-    for (auto pane : panes)
-      pane->RefreshShelf();
-    if (shelfWindow.IsValid()) {
-      BMessage refresh(Listi::kRefreshShelf);
-      shelfWindow.SendMessage(&refresh, (BHandler *)nullptr, 0);
-    }
-  }
-  void AddToShelf(const std::map<std::string, Listi::NodeIdentity> &expected = {}) {
-    try {
-      const auto added = shelf->Add(panes[split->Source()]->Selected(), expected);
-      BString status;
-      if (added)
-        status << int32(added)
-               << " added to Shelf. Open it from the Listi menu.";
-      else
-        status = "Already on the Shelf.";
-      panes[split->Source()]->ShowStatus(status);
-      RefreshShelf();
-    } catch (const std::exception &e) {
-      PostMainWindowNotice(e.what());
-    }
-  }
   Listi::SavedNavigationController savedNavigation;
   void PublishPlaces() {
     for (auto pane : panes)
       pane->SetPlaces(savedNavigation.Places(), savedNavigation.CanEditPlaces());
   }
-  Pane *panes[2];
+  std::array<Pane *, 2> panes{};
+  Listi::ShelfController shelf{BMessenger(this), panes};
   bool ToolAllowsCommand(uint32 action) const {
     switch (action) {
     case kCopy: case kMove: case kSame: case kCreateLink: case kDuplicate:
@@ -177,8 +151,8 @@ public:
                 B_AUTO_UPDATE_SIZE_LIMITS),
         prefs(p), savedNavigation(svc, saved, writable, queries, queriesWritable),
         service(svc) {
-    panes[0] = new Pane(0, prefs, shelf);
-    panes[1] = new Pane(1, prefs, shelf);
+    panes[0] = new Pane(0, prefs, shelf.Model());
+    panes[1] = new Pane(1, prefs, shelf.Model());
     split = new Listi::WorkspaceSplit(*panes[0], *panes[1], prefs, *menu);
     auto *terminalSplit = new BSplitView(B_VERTICAL, 6);
     terminalDock = std::make_unique<Listi::TerminalDock>(
@@ -242,13 +216,14 @@ public:
   }
   void MenusBeginning() override {
     BWindow::MenusBeginning();
-    const char *path = panes[split->Source()]->Path();
-    const bool canOpenFlatView = path[0] == '/' && !Listi::IsVirtual(path);
+    const auto &pane = *panes[split->Source()];
+    const char *path = pane.Path();
+    const bool canOpenFlatView = Listi::ShelfController::CanOpenFlatView(path);
     const bool canSaveClipboard =
         !actionArea->Pending() && Listi::CanSaveClipboardIn(path);
     const bool canUndoBulkRename =
         !actionArea->Pending() && queue->CanUndoBulkRename();
-    menu->SetFileActions(panes[split->Source()]->CurrentView(), canOpenFlatView,
+    menu->SetFileActions(pane.CurrentView(), canOpenFlatView,
                          canSaveClipboard, canUndoBulkRename);
   }
 
@@ -285,33 +260,12 @@ public:
                                prefs.SinglePane()))
       return;
     auto &pane = *panes[source];
-    if (pane.HandleSelectionCommand(*m, *actionArea, *queue) ||
+    if (shelf.Handle(*m, pane, *queue) ||
+        pane.HandleSelectionCommand(*m, *actionArea, *queue) ||
         pane.HandleOpenCommand(m->what, prefs.editor, service,
                                [this] { return OpenSelectionPreview(); }))
       return;
     switch (m->what) {
-    case Listi::kShowShelf:
-      Listi::OpenShelfWindow(BMessenger(this), shelf, shelfWindow);
-      break;
-    case Listi::kAddToShelf:
-      AddToShelf();
-      break;
-    case Listi::kRefreshShelf:
-      RefreshShelf();
-      break;
-    case Listi::kShelfChanged:
-      for (auto pane : panes)
-        pane->RefreshShelf();
-      break;
-    case Listi::kSubmitShelfTransfer: {
-      auto job = Listi::DecodeSubmittedJob(
-          *m, {Listi::Action::Copy, Listi::Action::Move});
-      if (job && !job->sources.empty() &&
-          job->expectedSources.size() == job->sources.size() &&
-          job->expectedDestination.device >= 0)
-        queue->Enqueue(*job);
-      break;
-    }
     case kPlaceAction:
       try {
         if (auto prompt = savedNavigation.PreparePlaceEdit(*m))
@@ -451,21 +405,6 @@ public:
         searchWindow = OpenFileSearch(BMessenger(this), source,
                                       panes[source]->Path(), savedNavigation.SearchStore());
       break;
-    case Listi::kFlatView: {
-      const char *path = panes[source]->Path();
-      if (path[0] != '/' || Listi::IsVirtual(path))
-        break;
-      for (auto it = flatViews.begin(); it != flatViews.end();) {
-        if (!it->second.IsValid())
-          it = flatViews.erase(it);
-        else
-          ++it;
-      }
-      auto &window = flatViews[path];
-      if (!window.IsValid() || window.SendMessage(Listi::kFlatView) != B_OK)
-        window = Listi::OpenFlatView(BMessenger(this), shelf, path);
-      break;
-    }
     case kRevealSearch: {
       int32 which = m->GetInt32("pane", -1);
       if (which < 0 || which > 1)
@@ -510,7 +449,7 @@ public:
             savedNavigation.Places(), savedNavigation.CanEditPlaces());
         // Keep dispatch synchronous so a queued activation cannot redirect it.
         if (result.command.what == Listi::kAddToShelf)
-          AddToShelf(result.shelfSources);
+          shelf.Add(*panes[owner], result.shelfSources);
         else if (result.command.what)
           MessageReceived(&result.command);
       } catch (const std::exception &e) {
@@ -567,7 +506,7 @@ public:
         clipboard->JobFinished(done);
         for (auto p : panes)
           p->MessageReceived(&done);
-        RefreshShelf();
+        shelf.Refresh();
       }
       break;
     case kShowJobs:
