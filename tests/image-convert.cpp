@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
+#include <fcntl.h>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -120,6 +121,29 @@ int main() {
               Read(target) == "user replacement",
           "a replaced output survives and is not reported as a converted image");
     unlink(target.c_str());
+
+    // An in-place editor or synchronizer can retain the source size and
+    // restore its modification time. The conversion still describes old bytes.
+    struct stat beforeEdit;
+    Check(stat(source.c_str(), &beforeEdit) == 0, "snapshot original image times");
+    const std::string updated(png.size(), 'x');
+    bool edited = false;
+    Hooks editSource;
+    editSource.proceed = [&] {
+      if (!edited && Exists(target)) {
+        Write(source, updated);
+        const struct timespec times[] = {beforeEdit.st_atim, beforeEdit.st_mtim};
+        Check(utimensat(AT_FDCWD, source.c_str(), times, 0) == 0,
+              "restore modification time after in-place edit");
+        edited = true;
+      }
+      return true;
+    };
+    auto staleBytes = Run(job, editSource);
+    Check(edited && !staleBytes.completed && !staleBytes.errors.empty() &&
+              !Exists(target) && Read(source) == updated,
+          "conversion refuses edited source even with its size and modification time restored");
+    Write(source, png);
 
     auto sameFolder = PrepareFileDrop(drag, root, true);
     sameFolder.action = job.action;

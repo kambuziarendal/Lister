@@ -140,7 +140,9 @@ struct Input {
     if (lstat(path.c_str(), &now) || !Matches(now, identity) ||
         now.st_size != snapshot.st_size ||
         now.st_mtim.tv_sec != snapshot.st_mtim.tv_sec ||
-        now.st_mtim.tv_nsec != snapshot.st_mtim.tv_nsec)
+        now.st_mtim.tv_nsec != snapshot.st_mtim.tv_nsec ||
+        now.st_ctim.tv_sec != snapshot.st_ctim.tv_sec ||
+        now.st_ctim.tv_nsec != snapshot.st_ctim.tv_nsec)
       throw std::runtime_error("The dropped image changed during conversion.");
   }
 };
