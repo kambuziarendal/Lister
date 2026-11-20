@@ -11,7 +11,7 @@ namespace Listi {
 class SavedPlaces;
 
 struct PaneContextMenuResult {
-  BMessage command{0};
+  BMessage command{uint32(0)};
   std::map<std::string, NodeIdentity> shelfSources;
 };
 
