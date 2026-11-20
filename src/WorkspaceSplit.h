@@ -5,6 +5,9 @@
 #include <array>
 
 class ImagePreview;
+class MainWindowMenu;
+class Pane;
+struct Preferences;
 struct WorkspaceLayout;
 
 namespace Listi {
@@ -13,7 +16,24 @@ constexpr uint32 kSplitChanged = 'swgt';
 
 class WorkspaceSplit : public BSplitView {
 public:
-  WorkspaceSplit(PanelTools *first, PanelTools *second);
+  WorkspaceSplit(Pane &first, Pane &second, Preferences &prefs, MainWindowMenu &menu);
+  int Source() const { return source; }
+  void SetSource(int pane);
+  void FollowFocus(const BView *view);
+  bool ActivateFiles(int pane);
+  void SwitchPane();
+  void Focus();
+  void ApplyWorkspace();
+  bool PrepareLayoutChange();
+  void HandlePageCommand(const BMessage &message);
+  void OpenSearch(const BMessage &store);
+  void FocusFilter();
+  void TogglePanelPreview();
+  bool DismissPanelTool();
+  bool ToggleInspector();
+  bool QuickView() const { return quickView; }
+  bool SetQuickView(bool enabled);
+  void RefreshPanels();
 
   void PlaceInspector(bool first, float weight);
   void SetPaneVisible(int pane, bool visible);
@@ -27,18 +47,21 @@ public:
 
   PanelTools &Panel(int pane) const { return *panes[pane]; }
   ImagePreview &Inspector() const { return *inspector; }
-  int PanelContaining(const BView *view) const;
   bool HasPanelPreview() const;
-  bool CloseEditors();
-  bool CloseVisibleInspectorEditor();
-  void UpdatePreviews(int source);
-  void UpdateInspector(const WorkspaceLayout &layout, bool quickView,
-                       int source);
+  void UpdatePreviews();
   ImagePreview *OpenPanelPreview(int pane);
 
 private:
+  void RefreshAndFocus();
+  void ClosePanelTool(int pane);
+  int PanelContaining(const BView *view) const;
+  bool CloseVisibleInspectorEditor();
   int SplitIndex(int logicalIndex) const;
 
+  Preferences &prefs;
+  MainWindowMenu &menu;
+  int source;
+  bool quickView = false;
   PanelTools *panes[2];
   ImagePreview *inspector;
   const float splitterSize;

@@ -18,7 +18,7 @@ namespace Listi {
 
 PaneContextMenuResult RunPaneContextMenu(
     const BMessage &request, Pane &pane, Pane &other, int owner,
-    const int &activePane, bool singlePane, bool dual, bool rememberView,
+    bool singlePane, bool dual, bool rememberView,
     const SavedPlaces &places, bool placesWritable) {
   const auto selected = pane.Selected();
   const std::string folder = pane.Path(), destination = other.Path();
@@ -100,7 +100,7 @@ PaneContextMenuResult RunPaneContextMenu(
   const uint32 action = choice.what;
   if (!action)
     return {};
-  if (activePane != owner || selected != pane.Selected() ||
+  if (!pane.IsSource() || selected != pane.Selected() ||
       folder != pane.Path() || destination != other.Path())
     throw std::runtime_error(
         "The panel changed. Open the file menu again.");

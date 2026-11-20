@@ -3,6 +3,8 @@
 #include "ViewVisibility.h"
 
 #include "ImagePreview.h"
+#include "MainWindowMenu.h"
+#include "Pane.h"
 #include "PanelTools.h"
 #include "WorkspaceLayout.h"
 #include <Layout.h>
@@ -14,11 +16,14 @@ constexpr float kWorkspaceSpacing = 6;
 constexpr int kInspector = 2;
 }
 
-WorkspaceSplit::WorkspaceSplit(PanelTools *first, PanelTools *second)
-    : BSplitView(B_HORIZONTAL, kWorkspaceSpacing), panes{first, second},
+WorkspaceSplit::WorkspaceSplit(Pane &first, Pane &second, Preferences &settings,
+                               MainWindowMenu &bar)
+    : BSplitView(B_HORIZONTAL, kWorkspaceSpacing), prefs(settings), menu(bar),
+      source(prefs.SinglePane() ? prefs.singlePane : 0),
+      panes{new PanelTools(0, first), new PanelTools(1, second)},
       inspector(new ImagePreview()), splitterSize(SplitterSize()) {
-  AddChild(first);
-  AddChild(second);
+  AddChild(panes[0]);
+  AddChild(panes[1]);
   AddChild(inspector);
   const WorkspaceLayout defaults;
   for (int i = 0; i < 3; ++i)
@@ -128,30 +133,171 @@ bool WorkspaceSplit::HasPanelPreview() const {
          Panel(1).Current() == PanelPage::Preview;
 }
 
-bool WorkspaceSplit::CloseEditors() {
-  return Inspector().CloseEditor() && Panel(0).CloseEditor() &&
-         Panel(1).CloseEditor();
-}
-
 bool WorkspaceSplit::CloseVisibleInspectorEditor() {
   return !InspectorVisible() || Inspector().CloseEditor();
 }
 
-void WorkspaceSplit::UpdatePreviews(int source) {
+void WorkspaceSplit::UpdatePreviews() {
   Panel(0).UpdatePreview(Panel(1));
   Panel(1).UpdatePreview(Panel(0));
   Inspector().ShowFile(InspectorVisible() ? Panel(source).SelectedFile() : "");
 }
 
-void WorkspaceSplit::UpdateInspector(const WorkspaceLayout &layout,
-                                     bool quickView, int source) {
-  Inspector().SetQuickViewCloseVisible(quickView);
-  SetInspectorVisible(quickView || (layout.Preview() && !layout.SinglePane() &&
-                                    !HasPanelPreview()));
-  UpdatePreviews(source);
+ImagePreview *WorkspaceSplit::OpenPanelPreview(int pane) {
+  if (!CloseVisibleInspectorEditor())
+    return nullptr;
+  auto &preview = Panel(pane).OpenPreview();
+  RefreshAndFocus();
+  return &preview;
 }
 
-ImagePreview *WorkspaceSplit::OpenPanelPreview(int pane) {
-  return CloseVisibleInspectorEditor() ? &Panel(pane).OpenPreview() : nullptr;
+void WorkspaceSplit::SetSource(int pane) {
+  source = pane;
+  for (int i = 0; i < 2; ++i)
+    Panel(i).Files().SetSource(i == source);
 }
+
+void WorkspaceSplit::FollowFocus(const BView *view) {
+  const int pane = PanelContaining(view);
+  if (pane >= 0 && source != pane) {
+    SetSource(pane);
+    UpdatePreviews();
+  }
 }
+
+bool WorkspaceSplit::ActivateFiles(int pane) {
+  if (pane < 0 || pane > 1 || !paneVisible[pane] ||
+      Panel(pane).Current() != PanelPage::Files)
+    return false;
+  SetSource(pane);
+  return true;
+}
+
+void WorkspaceSplit::Focus() { Panel(source).FocusCurrent(); }
+
+void WorkspaceSplit::SwitchPane() {
+  if (quickView)
+    return;
+  if (prefs.workspace == Workspace::askr) {
+    Panel(source).Files().ToggleTreeFocus();
+  } else if (!prefs.SinglePane()) {
+    SetSource(1 - source);
+    Focus();
+    UpdatePreviews();
+  }
+}
+
+void WorkspaceSplit::RefreshPanels() {
+  Inspector().SetQuickViewCloseVisible(quickView);
+  SetInspectorVisible(quickView || (prefs.Preview() && !prefs.SinglePane() &&
+                                   !HasPanelPreview()));
+  UpdatePreviews();
+  menu.SetPreview(prefs, quickView || HasPanelPreview());
+}
+
+void WorkspaceSplit::RefreshAndFocus() {
+  RefreshPanels();
+  Focus();
+}
+
+void WorkspaceSplit::ClosePanelTool(int pane) {
+  auto &panel = Panel(pane);
+  const int focus = panel.Current() == PanelPage::Preview ? 1 - pane : pane;
+  if (panel.CloseCurrent()) {
+    SetSource(focus);
+    RefreshAndFocus();
+  }
+}
+
+void WorkspaceSplit::ApplyWorkspace() {
+  PlaceInspector(quickView ? source == 1 : prefs.inspectorLeft, prefs.splitWeights[2]);
+  for (int i = 0; i < 2; ++i) {
+    Panel(i).EnableTools(prefs.IsSmidja());
+    SetPaneVisible(i, i == source || (!quickView && !prefs.SinglePane()));
+    Panel(i).Files().SetWorkspace(prefs);
+    Panel(i).Files().SetSource(i == source);
+  }
+  RefreshPanels();
+  ApplyGeometry(prefs, quickView, source);
+  menu.SetWorkspace(prefs, quickView);
+}
+
+bool WorkspaceSplit::PrepareLayoutChange() {
+  if (!Inspector().CloseEditor() || !Panel(0).CloseEditor() ||
+      !Panel(1).CloseEditor())
+    return false;
+  quickView = false;
+  return true;
+}
+
+bool WorkspaceSplit::SetQuickView(bool enabled) {
+  if (!enabled && !Inspector().CloseEditor())
+    return false;
+  quickView = enabled;
+  return true;
+}
+
+void WorkspaceSplit::HandlePageCommand(const BMessage &message) {
+  const int pane = message.GetInt32("pane", -1);
+  if (!prefs.IsSmidja() || pane < 0 || pane > 1)
+    return;
+  if (message.what == kClosePanelPage) {
+    ClosePanelTool(pane);
+    return;
+  }
+  const int32 page = message.GetInt32("page", -1);
+  if (page >= int32(PanelPage::Files) && page <= int32(PanelPage::Preview) &&
+      Panel(pane).Select(PanelPage(page))) {
+    SetSource(pane);
+    RefreshAndFocus();
+  }
+}
+
+void WorkspaceSplit::OpenSearch(const BMessage &store) {
+  if (Panel(source).OpenSearch(store))
+    RefreshAndFocus();
+}
+
+void WorkspaceSplit::FocusFilter() {
+  if (Panel(source).Select(PanelPage::Files)) {
+    RefreshPanels();
+    Panel(source).Files().FocusFilter();
+  }
+}
+
+void WorkspaceSplit::TogglePanelPreview() {
+  if (Panel(source).Current() == PanelPage::Preview)
+    ClosePanelTool(source);
+  else if (Panel(1 - source).Current() == PanelPage::Preview)
+    ClosePanelTool(1 - source);
+  else
+    OpenPanelPreview(1 - source);
+}
+
+bool WorkspaceSplit::DismissPanelTool() {
+  switch (Panel(source).Current()) {
+  case PanelPage::Preview:
+    ClosePanelTool(source);
+    return true;
+  case PanelPage::Search:
+    Panel(source).Select(PanelPage::Files);
+    RefreshAndFocus();
+    return true;
+  case PanelPage::Files:
+    if (!HasPanelPreview())
+      return false;
+    ClosePanelTool(1 - source);
+    return true;
+  }
+  return false;
+}
+
+bool WorkspaceSplit::ToggleInspector() {
+  if (prefs.SinglePane() || quickView || HasPanelPreview() ||
+      !CloseVisibleInspectorEditor())
+    return false;
+  prefs.SetPreview(!prefs.Preview());
+  RefreshPanels();
+  return true;
+}
+} // namespace Listi

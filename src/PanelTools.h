@@ -20,6 +20,7 @@ class PanelTools : public BGroupView {
 public:
   PanelTools(int32 pane, Pane &files);
 
+  Pane &Files() const { return files; }
   PanelPage Current() const { return current; }
   BView *Page(PanelPage page) const { return pages[size_t(page)]; }
   bool Select(PanelPage page);

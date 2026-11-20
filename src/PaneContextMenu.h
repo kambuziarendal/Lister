@@ -19,7 +19,7 @@ struct PaneContextMenuResult {
 // returning a window command. The caller must dispatch the result synchronously.
 PaneContextMenuResult RunPaneContextMenu(
     const BMessage &request, Pane &pane, Pane &other, int owner,
-    const int &activePane, bool singlePane, bool dual, bool rememberView,
+    bool singlePane, bool dual, bool rememberView,
     const SavedPlaces &places, bool placesWritable);
 
 } // namespace Listi

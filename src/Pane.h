@@ -43,6 +43,7 @@ public:
   void Reload();
   void SetPlaces(const Listi::SavedPlaces &, bool writable);
   void SetSource(bool);
+  bool IsSource() const { return active; }
   void Apply(const Preferences &);
   void SetWorkspace(const Preferences &);
   bool HandleSelectionCommand(const BMessage &, InlineAction &,
