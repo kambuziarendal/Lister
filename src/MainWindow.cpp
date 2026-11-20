@@ -32,26 +32,17 @@
 #include "WindowScripting.h"
 #include "WorkspaceEditor.h"
 #include "WorkspaceSplit.h"
-#include <Alert.h>
 #include <Application.h>
-#include <algorithm>
 #include <exception>
-#include <File.h>
 #include <GroupView.h>
-#include <Invoker.h>
 #include <LayoutBuilder.h>
 #include <SplitView.h>
 #include <TextControl.h>
 #include <TextView.h>
 #include <Window.h>
-#include <chrono>
-#include <cstdio>
 #include <cstring>
-#include <fcntl.h>
-#include <fstream>
-#include <iterator>
+#include <map>
 #include <memory>
-#include <unistd.h>
 using Listi::PanelPage;
 
 void PostMainWindowNotice(const char *text) {
@@ -177,7 +168,7 @@ class MainWindow : public BWindow {
       return selection.size() == 1 ? selection.front() : "";
     };
     for (int pane = 0; pane < 2; ++pane) {
-      if (auto *inspector = static_cast<ImagePreview *>(hosts[pane]->Page(PanelPage::Preview)))
+      if (auto *inspector = PanelPreview(pane))
         inspector->ShowFile(hosts[pane]->Current() == PanelPage::Preview
                                 ? visibleFile(1 - pane) : "");
     }
@@ -236,36 +227,28 @@ class MainWindow : public BWindow {
   Listi::FunctionButtonBank *bank = nullptr;
   BTextControl *command;
   BMessenger service;
-  bool bankVisible = true, commandVisible = true;
-  bool bankOverflow = false;
+  static void SetToolVisible(BView *tool, bool visible) {
+    if (tool->IsHidden(tool) != visible)
+      return;
+    if (visible)
+      tool->Show();
+    else
+      tool->Hide();
+  }
   void UpdateToolZones() {
-    const bool topVisible = (bankVisible && bankOnTop) ||
-                            (commandVisible && commandOnTop);
-    const bool bottomVisible = (bankVisible && !bankOnTop) ||
-                               (commandVisible && !commandOnTop);
-    for (const auto &[zone, visible] :
-         {std::make_pair(topTools, topVisible),
-          std::make_pair(bottomTools, bottomVisible)}) {
-      if (visible && zone->IsHidden(zone))
-        zone->Show();
-      else if (!visible && !zone->IsHidden(zone))
-        zone->Hide();
-    }
+    const bool showBank = !bank->IsHidden(bank);
+    const bool showCommand = !command->IsHidden(command);
+    SetToolVisible(topTools, (showBank && bankOnTop) || (showCommand && commandOnTop));
+    SetToolVisible(bottomTools, (showBank && !bankOnTop) || (showCommand && !commandOnTop));
   }
   void SetBankVisible(bool visible) {
-    if (bankVisible == visible)
-      return;
-    bankVisible = visible;
-    if (visible)
-      bank->Show();
-    else
-      bank->Hide();
+    SetToolVisible(bank, visible);
     UpdateToolZones();
   }
   void ShowBank(bool visible) {
     const bool dual = !prefs.SinglePane() && !prefs.actionButtons.empty();
     visible = visible && dual;
-    bankOverflow = false;
+    bool bankOverflow = false;
     SetBankVisible(visible);
     if (visible) {
       // Showing a layout item invalidates layout but does not run it inline.
@@ -366,14 +349,7 @@ class MainWindow : public BWindow {
     split->ApplyGeometry(prefs, quickView, source);
     menu->SetWorkspace(prefs, quickView);
     queue->SetCompact(prefs.SinglePane());
-    const bool showCommand = prefs.command && !prefs.SinglePane();
-    if (commandVisible != showCommand) {
-      commandVisible = showCommand;
-      if (showCommand)
-        command->Show();
-      else
-        command->Hide();
-    }
+    SetToolVisible(command, prefs.command && !prefs.SinglePane());
     UpdateToolZones();
     RefreshBank();
   }
@@ -430,14 +406,16 @@ class MainWindow : public BWindow {
       window->Show();
       return;
     }
-    if (Listi::ParseLocation(selected[0]).Archive()) {
+    const bool externalEdit = action != kOpenSystem;
+    if (externalEdit && Listi::ParseLocation(selected[0]).Archive()) {
       OpenArchiveEditor(selected[0], prefs.editor.String());
       return;
     }
     BMessage m(kOpenPaths);
     m.AddString("path", selected[0].c_str());
-    m.AddString("mode", "edit");
-    m.AddString("application", prefs.editor);
+    m.AddString("mode", externalEdit ? "edit" : "system");
+    if (externalEdit)
+      m.AddString("application", prefs.editor);
     service.SendMessage(&m);
   }
 
@@ -781,17 +759,15 @@ public:
       if (value >= 0 && value <= 3)
         SetWorkspace(static_cast<Workspace>(value));
     } break;
-    case kActivate:
-      if (m->GetInt32("pane", source) < 0 || m->GetInt32("pane", source) > 1)
+    case kActivate: {
+      const int32 pane = m->GetInt32("pane", source);
+      if (pane < 0 || pane > 1 || hosts[pane]->Current() != PanelPage::Files ||
+          ((quickView || prefs.SinglePane()) && pane != source))
         break;
-      if (hosts[m->GetInt32("pane", source)]->Current() != PanelPage::Files ||
-          ((quickView || prefs.SinglePane()) && m->GetInt32("pane", source) != source))
-        break;
-      source = m->GetInt32("pane", source);
-      for (int i = 0; i < 2; i++)
-        panes[i]->SetSource(i == source);
+      ActivatePanel(pane);
       UpdatePreview();
       break;
+    }
     case kSwitch:
       if (quickView)
         break;
@@ -801,9 +777,7 @@ public:
       }
       if (prefs.SinglePane())
         break;
-      source = 1 - source;
-      for (int i = 0; i < 2; i++)
-        panes[i]->SetSource(i == source);
+      ActivatePanel(1 - source);
       FocusPage(source);
       UpdatePreview();
       break;
@@ -1008,6 +982,7 @@ public:
     case kView:
     case kEdit:
     case kEditExternally:
+    case kOpenSystem:
       Open(m->what);
       break;
     case kOpenPaths:
@@ -1062,18 +1037,6 @@ public:
       if (!actionArea->Connect(BMessenger(panes[source])))
         queue->ErrorInfo("Finish or cancel the open question first.");
       break;
-    case kOpenSystem: {
-      auto selected = panes[source]->Selected();
-      if (selected.size() != 1) {
-        PostMainWindowNotice("Select exactly one file.");
-        break;
-      }
-      BMessage open(kOpenPaths);
-      open.AddString("path", selected[0].c_str());
-      open.AddString("mode", "system");
-      service.SendMessage(&open);
-      break;
-    }
     case Listi::kSplitChanged:
       split->RememberWeights(prefs, quickView);
       Save();
@@ -1123,14 +1086,11 @@ public:
     case kPreferences:
       OpenPreferences(BMessenger(this), prefs);
       break;
-    case kApplyPreferences: {
+    case kApplyPreferences:
       prefs.ApplyDialog(*m);
       Apply();
-      BMessage save(prefs.Save());
-      save.what = kSavePreferences;
-      service.SendMessage(&save);
+      Save();
       break;
-    }
     default:
       BWindow::MessageReceived(m);
       break;

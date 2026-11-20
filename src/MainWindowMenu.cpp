@@ -8,6 +8,15 @@
 #include "WorkspaceEditor.h"
 #include <MenuItem.h>
 
+namespace {
+BMenuItem *AddCommand(BMenu *menu, const char *label, uint32 action,
+                      char shortcut = 0, uint32 modifiers = 0) {
+  auto *item = new BMenuItem(label, new BMessage(action), shortcut, modifiers);
+  menu->AddItem(item);
+  return item;
+}
+}
+
 MainWindowMenu::MainWindowMenu() : BMenuBar("menu") {
   AddFilesMenu();
   AddSelectMenu();
@@ -17,89 +26,56 @@ MainWindowMenu::MainWindowMenu() : BMenuBar("menu") {
 
 void MainWindowMenu::AddFilesMenu() {
   auto files = new BMenu("Files");
-  struct Item {
-    const char *label;
-    uint32 action;
-    char key;
-  };
-  files->AddItem(new BMenuItem("Copy", new BMessage(kClipboardCopy), 'C'));
-  files->AddItem(new BMenuItem("Cut", new BMessage(kClipboardCut), 'X'));
-  files->AddItem(new BMenuItem("Paste into active folder",
-                               new BMessage(kClipboardPaste), 'V'));
+  AddCommand(files, "Copy", kClipboardCopy, 'C');
+  AddCommand(files, "Cut", kClipboardCut, 'X');
+  AddCommand(files, "Paste into active folder", kClipboardPaste, 'V');
   auto clipboard = new BMenu("Save clipboard as");
-  saveClipboardTextItem = new BMenuItem("Save clipboard text as file...",
-                                        new BMessage(kClipboardSaveText));
-  clipboard->AddItem(saveClipboardTextItem);
-  saveClipboardImageItem = new BMenuItem("Save clipboard image as PNG...",
-                                         new BMessage(kClipboardSaveImage));
-  clipboard->AddItem(saveClipboardImageItem);
+  saveClipboardTextItem = AddCommand(clipboard, "Save clipboard text as file...", kClipboardSaveText);
+  saveClipboardImageItem = AddCommand(clipboard, "Save clipboard image as PNG...", kClipboardSaveImage);
   files->AddItem(clipboard);
   files->AddSeparatorItem();
-  Item commands[] = {{"View", kView, 0},
-                     {"Edit", kEdit, 'E'},
-                     {"Edit in external editor", kEditExternally, 0},
-                     {"Copy to other panel", kCopy, 0},
-                     {"Move to other panel", kMove, 'M'},
-                     {"Rename", kRename, 'R'},
-                     {"Bulk rename...", kBulkRename, 0},
-                     {"New folder", kMkdir, 'N'},
-                     {"Move to Trash", kDelete, 'D'},
-                     {"Restore from Trash", kRestore, 0},
-                     {"Delete permanently...", kPermanentDelete, 0}};
-  for (auto c : commands) {
-    if (c.action == kCopy || c.action == kView)
-      files->AddItem(new BMenuItem(c.label, new BMessage(c.action),
-                                   c.action == kCopy ? 'C' : 'V',
-                                   B_SHIFT_KEY));
-    else
-      files->AddItem(new BMenuItem(c.label, new BMessage(c.action), c.key));
-  }
-  undoBulkRenameItem = new BMenuItem("Undo last bulk rename", new BMessage(kUndoBulkRename));
+  AddCommand(files, "View", kView, 'V', B_SHIFT_KEY);
+  AddCommand(files, "Edit", kEdit, 'E');
+  AddCommand(files, "Edit in external editor", kEditExternally);
+  AddCommand(files, "Copy to other panel", kCopy, 'C', B_SHIFT_KEY);
+  AddCommand(files, "Move to other panel", kMove, 'M');
+  AddCommand(files, "Rename", kRename, 'R');
+  AddCommand(files, "Bulk rename...", kBulkRename);
+  AddCommand(files, "New folder", kMkdir, 'N');
+  AddCommand(files, "Move to Trash", kDelete, 'D');
+  AddCommand(files, "Restore from Trash", kRestore);
+  AddCommand(files, "Delete permanently...", kPermanentDelete);
+  undoBulkRenameItem = AddCommand(files, "Undo last bulk rename", kUndoBulkRename);
   undoBulkRenameItem->SetEnabled(false);
-  files->AddItem(undoBulkRenameItem);
-  files->AddItem(new BMenuItem("Open with...", new BMessage(kOpenWith), 'O',
-                               B_SHIFT_KEY));
-  files->AddItem(new BMenuItem("Open with system application",
-                               new BMessage(kOpenSystem)));
-  files->AddItem(new BMenuItem(
-      "Add to Shelf", new BMessage(Listi::kAddToShelf), 'Y', B_SHIFT_KEY));
+  AddCommand(files, "Open with...", kOpenWith, 'O', B_SHIFT_KEY);
+  AddCommand(files, "Open with system application", kOpenSystem);
+  AddCommand(files, "Add to Shelf", Listi::kAddToShelf, 'Y', B_SHIFT_KEY);
   auto more = new BMenu("More file actions");
-  more->AddItem(new BMenuItem("Duplicate...", new BMessage(kDuplicate), 'D',
-                              B_SHIFT_KEY));
-  more->AddItem(new BMenuItem("Create symbolic link...",
-                              new BMessage(kCreateLink), 'L', B_SHIFT_KEY));
+  AddCommand(more, "Duplicate...", kDuplicate, 'D', B_SHIFT_KEY);
+  AddCommand(more, "Create symbolic link...", kCreateLink, 'L', B_SHIFT_KEY);
   files->AddItem(more);
   auto archives = new BMenu("Archives");
-  archives->AddItem(new BMenuItem(
-      "Create archive...", new BMessage(kCreateArchive), 'B', B_SHIFT_KEY));
-  archives->AddItem(new BMenuItem("Extract to folder...",
-                                  new BMessage(kExtractArchive), 'E',
-                                  B_SHIFT_KEY));
-  archives->AddItem(new BMenuItem("Resume archive edits...",
-                                  new BMessage(kResumeArchiveEdits)));
-  archives->AddItem(
-      new BMenuItem("Add or replace files...", new BMessage(kAddArchive)));
-  archives->AddItem(new BMenuItem("Remove selected entries...",
-                                  new BMessage(kRemoveArchive)));
+  AddCommand(archives, "Create archive...", kCreateArchive, 'B', B_SHIFT_KEY);
+  AddCommand(archives, "Extract to folder...", kExtractArchive, 'E', B_SHIFT_KEY);
+  AddCommand(archives, "Resume archive edits...", kResumeArchiveEdits);
+  AddCommand(archives, "Add or replace files...", kAddArchive);
+  AddCommand(archives, "Remove selected entries...", kRemoveArchive);
   archives->AddSeparatorItem();
-  archives->AddItem(
-      new BMenuItem("Forget archive passwords", new BMessage('apfg')));
+  AddCommand(archives, "Forget archive passwords", 'apfg');
   files->AddItem(archives);
-  files->AddItem(new BMenuItem("Properties...", new BMessage(kProperties),
-                               'I', B_SHIFT_KEY));
+  AddCommand(files, "Properties...", kProperties, 'I', B_SHIFT_KEY);
   files->AddSeparatorItem();
-  files->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
+  AddCommand(files, "Quit", B_QUIT_REQUESTED, 'Q');
   AddItem(files);
 }
 
 void MainWindowMenu::AddSelectMenu() {
   auto select = new BMenu("Select");
-  select->AddItem(new BMenuItem("All", new BMessage(kAll), 'A'));
-  select->AddItem(
-      new BMenuItem("None", new BMessage(kNone), 'A', B_SHIFT_KEY));
-  select->AddItem(new BMenuItem("Invert", new BMessage(kInvert), 'I'));
-  select->AddItem(new BMenuItem("Same file type", new BMessage(kSelectType)));
-  select->AddItem(new BMenuItem("By pattern…", new BMessage(kSelectPattern)));
+  AddCommand(select, "All", kAll, 'A');
+  AddCommand(select, "None", kNone, 'A', B_SHIFT_KEY);
+  AddCommand(select, "Invert", kInvert, 'I');
+  AddCommand(select, "Same file type", kSelectType);
+  AddCommand(select, "By pattern…", kSelectPattern);
   AddItem(select);
 }
 
@@ -123,8 +99,7 @@ void MainWindowMenu::AddViewMenu() {
   workspace->AddItem(tviskiptMenu);
   workspace->AddItem(smidjaMenu);
   workspace->AddSeparatorItem();
-  workspace->AddItem(new BMenuItem("Customize workspace…",
-                                    new BMessage(kOpenWorkspaceEditor)));
+  AddCommand(workspace, "Customize workspace…", kOpenWorkspaceEditor);
   viewMenu->AddItem(workspace);
   fileView = new BMenu("File view");
   for (int32 i = 0; i < ViewModeCount; ++i) {
@@ -137,12 +112,9 @@ void MainWindowMenu::AddViewMenu() {
   fileView->AddSeparatorItem();
   fileView->AddItem(new BMenuItem("Use workspace default", resetView));
   fileView->AddSeparatorItem();
-  flatViewItem =
-      new BMenuItem("Flat View…", new BMessage(Listi::kFlatView));
-  fileView->AddItem(flatViewItem);
+  flatViewItem = AddCommand(fileView, "Flat View…", Listi::kFlatView);
   viewMenu->AddItem(fileView);
-  bankToggle = new BMenuItem("Show function buttons", new BMessage(kToggleBank));
-  viewMenu->AddItem(bankToggle);
+  bankToggle = AddCommand(viewMenu, "Show function buttons", kToggleBank);
   compactActions = new BMenu("Function actions");
   viewMenu->AddItem(compactActions);
   AddItem(viewMenu);
@@ -150,50 +122,33 @@ void MainWindowMenu::AddViewMenu() {
 
 void MainWindowMenu::AddListiMenu() {
   auto view = new BMenu("Listi");
-  view->AddItem(new BMenuItem("Switch panel", new BMessage(kSwitch), 'S'));
-  view->AddItem(new BMenuItem("Same folder in other panel",
-                              new BMessage(kSame), 'S', B_SHIFT_KEY));
-  previewMenu =
-      new BMenuItem("Inspector panel", new BMessage(kPreviewToggle), 'P');
-  view->AddItem(previewMenu);
-  quickViewMenu = new BMenuItem("Quick view", new BMessage(kQuickView), 'P', B_SHIFT_KEY);
-  view->AddItem(quickViewMenu);
-  view->AddItem(
-      new BMenuItem("Connect to server...", new BMessage(kNetwork), 'K'));
-  view->AddItem(new BMenuItem("Refresh", new BMessage(kRefresh), 'L'));
-  view->AddItem(new BMenuItem("Filter names", new BMessage(kFilter), 'F'));
-  view->AddItem(new BMenuItem("Find files...", new BMessage(kSearch), 'F',
-                              B_SHIFT_KEY));
-  view->AddItem(
-      new BMenuItem("Compare folders...", new BMessage(kCompareFolders)));
+  AddCommand(view, "Switch panel", kSwitch, 'S');
+  AddCommand(view, "Same folder in other panel", kSame, 'S', B_SHIFT_KEY);
+  previewMenu = AddCommand(view, "Inspector panel", kPreviewToggle, 'P');
+  quickViewMenu = AddCommand(view, "Quick view", kQuickView, 'P', B_SHIFT_KEY);
+  AddCommand(view, "Connect to server...", kNetwork, 'K');
+  AddCommand(view, "Refresh", kRefresh, 'L');
+  AddCommand(view, "Filter names", kFilter, 'F');
+  AddCommand(view, "Find files...", kSearch, 'F', B_SHIFT_KEY);
+  AddCommand(view, "Compare folders...", kCompareFolders);
   auto terminalMenu = new BMenu("Terminal here");
-  terminalMenu->AddItem(
-      new BMenuItem("Active lister", new BMessage(kTerminal), 'T'));
-  terminalMenu->AddItem(
-      new BMenuItem("Left CLI", new BMessage(Listi::kLeftCLI)));
-  terminalMenu->AddItem(
-      new BMenuItem("Right CLI", new BMessage(Listi::kRightCLI)));
+  AddCommand(terminalMenu, "Active lister", kTerminal, 'T');
+  AddCommand(terminalMenu, "Left CLI", Listi::kLeftCLI);
+  AddCommand(terminalMenu, "Right CLI", Listi::kRightCLI);
   terminalMenu->AddSeparatorItem();
   auto dockMenu = new BMenu("Dock position");
-  dockMenu->AddItem(new BMenuItem(
-      "Below file panels", new BMessage(Listi::kTerminalBelow)));
-  dockMenu->AddItem(new BMenuItem(
-      "Right of file panels", new BMessage(Listi::kTerminalBeside)));
-  dockMenu->AddItem(new BMenuItem(
-      "Above file panels", new BMessage(Listi::kTerminalAbove)));
-  dockMenu->AddItem(new BMenuItem(
-      "Left of file panels", new BMessage(Listi::kTerminalLeft)));
+  AddCommand(dockMenu, "Below file panels", Listi::kTerminalBelow);
+  AddCommand(dockMenu, "Right of file panels", Listi::kTerminalBeside);
+  AddCommand(dockMenu, "Above file panels", Listi::kTerminalAbove);
+  AddCommand(dockMenu, "Left of file panels", Listi::kTerminalLeft);
   terminalMenu->AddItem(dockMenu);
-  terminalMenu->AddItem(new BMenuItem(
-      "Detached Listi CLI", new BMessage(Listi::kShowFloatingTerminal),
-      'T', B_SHIFT_KEY));
-  terminalMenu->AddItem(new BMenuItem(
-      "External terminal window", new BMessage(Listi::kTerminalWindow)));
+  AddCommand(terminalMenu, "Detached Listi CLI", Listi::kShowFloatingTerminal, 'T', B_SHIFT_KEY);
+  AddCommand(terminalMenu, "External terminal window", Listi::kTerminalWindow);
   view->AddItem(terminalMenu);
-  view->AddItem(new BMenuItem("Operations", new BMessage(kShowJobs), 'O'));
-  view->AddItem(new BMenuItem("Show Shelf", new BMessage(Listi::kShowShelf)));
+  AddCommand(view, "Operations", kShowJobs, 'O');
+  AddCommand(view, "Show Shelf", Listi::kShowShelf);
   view->AddSeparatorItem();
-  view->AddItem(new BMenuItem("Settings…", new BMessage(kPreferences), ','));
+  AddCommand(view, "Settings…", kPreferences, ',');
   AddItem(view);
 }
 
@@ -242,5 +197,5 @@ void MainWindowMenu::ClearFunctionActions() {
 }
 
 void MainWindowMenu::AddFunctionAction(const WorkspaceAction &action) {
-  compactActions->AddItem(new BMenuItem(action.description, new BMessage(action.message)));
+  AddCommand(compactActions, action.description, action.message);
 }

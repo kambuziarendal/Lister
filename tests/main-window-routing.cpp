@@ -26,6 +26,7 @@
 #include <cctype>
 #include <cmath>
 #include <fstream>
+#include <sys/stat.h>
 #include <unistd.h>
 
 static void CheckFunctionButtons() {
@@ -356,6 +357,29 @@ int main() {
   assert(window->Lock());
   waitFor([&] { return !rightPane->IsScanning(); });
   assert(sourcePath == rightPane->Path());
+  // A delayed confirmation must use the folder where the question was opened.
+  const auto elsewhere = sourcePath + "/elsewhere";
+  assert(mkdir(elsewhere.c_str(), 0700) == 0);
+  send(kMkdir);
+  auto *question = window->FindView("question");
+  assert(question);
+  auto *prompt = question->Parent();
+  auto *buttons = prompt->ChildAt(prompt->CountChildren() - 1);
+  BButton *confirm = nullptr;
+  for (int32 i = 0; i < buttons->CountChildren(); ++i) {
+    auto *button = dynamic_cast<BButton *>(buttons->ChildAt(i));
+    if (button && std::string(button->Label()) == "Create folder")
+      confirm = button;
+  }
+  assert(confirm);
+  pane->Navigate(elsewhere.c_str());
+  waitFor([&] { return !pane->IsScanning(); });
+  assert(elsewhere == pane->Path());
+  assert(confirm->Invoke() == B_OK);
+  const auto created = sourcePath + "/New folder";
+  waitFor([&] { return access(created.c_str(), F_OK) == 0; });
+  assert(access((elsewhere + "/New folder").c_str(), F_OK) != 0);
+  assert(rmdir(created.c_str()) == 0 && rmdir(elsewhere.c_str()) == 0);
   assert(unlink(file.c_str()) == 0 && rmdir(temp) == 0);
   window->Quit();
   puts("Main window: menu shortcuts and workspace routing OK");
