@@ -7,7 +7,6 @@
 #include "ClipboardFlow.h"
 #include "FileDropFlow.h"
 #include "FileOperationFlow.h"
-#include "FlatViewWindow.h"
 #include "PaneContextMenu.h"
 #include "ArchiveEditor.h"
 #include "FolderCompare.h"
@@ -75,6 +74,12 @@ class MainWindow : public BWindow {
     saved.what = kSavePreferences;
     service.SendMessage(&saved);
   }
+  bool PromptBlocksCommand() {
+    if (!actionArea->Pending())
+      return false;
+    queue.ErrorInfo("Finish or cancel the open question first.");
+    return true;
+  }
   void CloseAction() {
     actionArea->Close();
     clipboard.CancelPrompt();
@@ -123,6 +128,146 @@ class MainWindow : public BWindow {
       return split->OpenPanelPreview(1 - split->Source());
     SetQuickView(true);
     return &split->Inspector();
+  }
+
+  bool HandleNavigation(BMessage *m) {
+    const int source = split->Source();
+    switch (m->what) {
+    case kPlaceAction:
+    case kPlaceAccepted:
+      try {
+        if (m->what == kPlaceAccepted) {
+          savedNavigation.EditPlace(*m);
+          PublishPlaces();
+        } else if (auto prompt = savedNavigation.PreparePlaceEdit(*m)) {
+          AskInline(prompt->question.c_str(), prompt->button, prompt->accepted,
+                    prompt->initial ? prompt->initial->c_str() : nullptr);
+        }
+      } catch (const std::exception &e) {
+        PostMainWindowNotice(e.what());
+      }
+      break;
+    case kSearchEdit:
+    case kSearchesSaved:
+      savedNavigation.HandleSearchMessage(
+          *m, searchWindow, {split->Panel(0).SearchMessenger(),
+                            split->Panel(1).SearchMessenger()});
+      break;
+    case kPlacesSaved:
+      if (savedNavigation.FinishPlaceSave(*m)) {
+        if (m->HasString("error"))
+          PostMainWindowNotice(m->GetString("error", "Save failed."));
+        PublishPlaces();
+      }
+      break;
+    case kSearch:
+      if (prefs.IsSmidja()) {
+        split->OpenSearch(savedNavigation.SearchStore());
+        break;
+      }
+      if (searchWindow.IsValid())
+        searchWindow.SendMessage(kSearch);
+      else
+        searchWindow = OpenFileSearch(BMessenger(this), source,
+                                      panes[source]->Path(), savedNavigation.SearchStore());
+      break;
+    case kRevealSearch: {
+      int32 which = m->GetInt32("pane", -1);
+      if (which < 0 || which > 1)
+        break;
+      if (split->QuickView() && source != which) {
+        if (!split->SetQuickView(false))
+          break;
+        ApplyWorkspace();
+      }
+      if (!split->Panel(which).Select(PanelPage::Files))
+        break;
+      split->SetSource(which);
+      split->RefreshPanels();
+      if (prefs.SinglePane()) {
+        prefs.singlePane = which;
+        ApplyWorkspace();
+        Save();
+      }
+      panes[which]->MessageReceived(m);
+      Activate();
+      split->Focus();
+      break;
+    }
+    default:
+      return false;
+    }
+    return true;
+  }
+
+  bool HandleWorkspace(BMessage *m) {
+    switch (m->what) {
+    case kQuickView:
+      if (!actionArea->Pending()) {
+        if (prefs.IsSmidja())
+          split->TogglePanelPreview();
+        else
+          SetQuickView(!split->QuickView());
+      }
+      break;
+    case kCloseQuickView:
+      if (split->QuickView() && !actionArea->Pending())
+        SetQuickView(false);
+      break;
+    case kPreviewToggle:
+      if (split->ToggleInspector())
+        Save();
+      break;
+    case kPreviewSelection:
+      if (m->GetInt32("pane", -1) == split->Source() || split->HasPanelPreview())
+        split->UpdatePreviews();
+      if (m->GetInt32("pane", -1) == split->Source() && m->HasString("operationError"))
+        queue.ErrorInfo(m->GetString("operationError", ""));
+      break;
+    case kPaneDisplay:
+      split->RememberPaneDisplay(*m);
+      Save();
+      break;
+    case kWorkspace: {
+      int32 value =
+          m->GetInt32("workspace", m->GetBool("simple", false) ? 1 : 0);
+      if (value >= 0 && value <= 3)
+        SetWorkspace(static_cast<Workspace>(value));
+    } break;
+    case Listi::kSplitChanged:
+      split->RememberWeights(prefs, split->QuickView());
+      Save();
+      break;
+    case kToggleBank:
+      if (toolbar.Toggle(actionArea->Pending()))
+        Save();
+      break;
+    case kOpenWorkspaceEditor:
+      if (!PromptBlocksCommand())
+        OpenWorkspaceEditor(BMessenger(this), prefs, m->GetBool("modules", false));
+      break;
+    case kApplyWorkspaceEditor: {
+      if (PromptBlocksCommand())
+        break;
+      if (!split->ApplyWorkspaceEdit(*m))
+        break;
+      ApplyWorkspace();
+      split->Focus();
+      Save();
+      break;
+    }
+    case kPreferences:
+      OpenPreferences(BMessenger(this), prefs);
+      break;
+    case kApplyPreferences:
+      prefs.ApplyDialog(*m);
+      Apply();
+      Save();
+      break;
+    default:
+      return false;
+    }
+    return true;
   }
 
 public:
@@ -229,42 +374,13 @@ public:
     auto &pane = *panes[source];
     if (fileOperations.Handle(*m, pane, *panes[1 - source], prefs.SinglePane()) ||
         fileDrop.Handle(*m) || terminalDock->ApplyPlacement(*m) ||
-        shelf.Handle(*m, pane, queue) ||
+        shelf.Handle(*m, pane, queue) || split->HandlePanelCommand(m) ||
+        HandleNavigation(m) || HandleWorkspace(m) ||
         pane.HandleSelectionCommand(*m, *actionArea, queue) ||
         pane.HandleOpenCommand(m->what, prefs.editor, service,
                                [this] { return OpenSelectionPreview(); }))
       return;
     switch (m->what) {
-    case kPlaceAction:
-      try {
-        if (auto prompt = savedNavigation.PreparePlaceEdit(*m))
-          AskInline(prompt->question.c_str(), prompt->button, prompt->accepted,
-                    prompt->initial ? prompt->initial->c_str() : nullptr);
-      } catch (const std::exception &e) {
-        PostMainWindowNotice(e.what());
-      }
-      break;
-    case kPlaceAccepted:
-      try {
-        savedNavigation.EditPlace(*m);
-        PublishPlaces();
-      } catch (const std::exception &e) {
-        PostMainWindowNotice(e.what());
-      }
-      break;
-    case kSearchEdit:
-    case kSearchesSaved:
-      savedNavigation.HandleSearchMessage(
-          *m, searchWindow, {split->Panel(0).SearchMessenger(),
-                            split->Panel(1).SearchMessenger()});
-      break;
-    case kPlacesSaved:
-      if (savedNavigation.FinishPlaceSave(*m)) {
-        if (m->HasString("error"))
-          PostMainWindowNotice(m->GetString("error", "Save failed."));
-        PublishPlaces();
-      }
-      break;
     case kInlineNotice:
       if (actionArea->Pending()) {
         queue.ErrorInfo(m->GetString("error", "Operation failed"));
@@ -296,103 +412,9 @@ public:
           queue.Collapse();
       }
       break;
-    case Listi::kPanelPage:
-    case Listi::kClosePanelPage:
-      split->HandlePageCommand(*m);
-      break;
-    case kQuickView:
-      if (!actionArea->Pending()) {
-        if (prefs.IsSmidja())
-          split->TogglePanelPreview();
-        else
-          SetQuickView(!split->QuickView());
-      }
-      break;
-    case kCloseQuickView:
-      if (split->QuickView() && !actionArea->Pending())
-        SetQuickView(false);
-      break;
-    case kPreviewToggle:
-      if (split->ToggleInspector())
-        Save();
-      break;
-    case kPreviewSelection:
-      if (m->GetInt32("pane", -1) == source || split->HasPanelPreview())
-        split->UpdatePreviews();
-      if (m->GetInt32("pane", -1) == source && m->HasString("operationError"))
-        queue.ErrorInfo(m->GetString("operationError", ""));
-      break;
-    case kPaneDisplay:
-      split->RememberPaneDisplay(*m);
-      Save();
-      break;
-    case kGridMode:
-      pane.MessageReceived(m);
-      break;
-    case kWorkspace: {
-      int32 value =
-          m->GetInt32("workspace", m->GetBool("simple", false) ? 1 : 0);
-      if (value >= 0 && value <= 3)
-        SetWorkspace(static_cast<Workspace>(value));
-    } break;
-    case kActivate:
-      if (split->ActivateFiles(m->GetInt32("pane", source)))
-        split->UpdatePreviews();
-      break;
-    case kSwitch:
-      split->SwitchPane();
-      break;
-    case kSame:
-      if (prefs.SinglePane())
-        break;
-      panes[1 - source]->Navigate(pane.Path());
-      break;
-    case kRefresh:
-      for (auto p : panes)
-        p->Reload();
-      break;
-    case kSearch:
-      if (prefs.IsSmidja()) {
-        split->OpenSearch(savedNavigation.SearchStore());
-        break;
-      }
-      if (searchWindow.IsValid())
-        searchWindow.SendMessage(kSearch);
-      else
-        searchWindow = OpenFileSearch(BMessenger(this), source,
-                                      pane.Path(), savedNavigation.SearchStore());
-      break;
-    case kRevealSearch: {
-      int32 which = m->GetInt32("pane", -1);
-      if (which < 0 || which > 1)
-        break;
-      if (split->QuickView() && source != which) {
-        if (!split->SetQuickView(false))
-          break;
-        ApplyWorkspace();
-      }
-      if (!split->Panel(which).Select(PanelPage::Files))
-        break;
-      split->SetSource(which);
-      split->RefreshPanels();
-      if (prefs.SinglePane()) {
-        prefs.singlePane = which;
-        ApplyWorkspace();
-        Save();
-      }
-      panes[which]->MessageReceived(m);
-      Activate();
-      split->Focus();
-      break;
-    }
-    case kFilter:
-      split->FocusFilter();
-      break;
     case kContextMenu: {
-      if (actionArea->Pending()) {
-        queue.ErrorInfo("Finish or cancel the open question first.");
+      if (PromptBlocksCommand())
         break;
-      }
       const int32 owner = m->GetInt32("pane", -1);
       if (!split->ActivateFiles(owner))
         break;
@@ -508,40 +530,6 @@ public:
     case kNetwork:
       if (!actionArea->Connect(BMessenger(&pane)))
         queue.ErrorInfo("Finish or cancel the open question first.");
-      break;
-    case Listi::kSplitChanged:
-      split->RememberWeights(prefs, split->QuickView());
-      Save();
-      break;
-    case kToggleBank:
-      if (toolbar.Toggle(actionArea->Pending()))
-        Save();
-      break;
-    case kOpenWorkspaceEditor:
-      if (actionArea->Pending())
-        queue.ErrorInfo("Finish or cancel the open question first.");
-      else
-        OpenWorkspaceEditor(BMessenger(this), prefs, m->GetBool("modules", false));
-      break;
-    case kApplyWorkspaceEditor: {
-      if (actionArea->Pending()) {
-        queue.ErrorInfo("Finish or cancel the open question first.");
-        break;
-      }
-      if (!split->ApplyWorkspaceEdit(*m))
-        break;
-      ApplyWorkspace();
-      split->Focus();
-      Save();
-      break;
-    }
-    case kPreferences:
-      OpenPreferences(BMessenger(this), prefs);
-      break;
-    case kApplyPreferences:
-      prefs.ApplyDialog(*m);
-      Apply();
-      Save();
       break;
     default:
       BWindow::MessageReceived(m);

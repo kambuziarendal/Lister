@@ -355,9 +355,43 @@ bool WorkspaceSplit::ApplyWorkspaceEdit(const BMessage &message) {
     prefs.smidjaButtons = prefs.tviskiptButtons = -1;
   prefs.ApplyLayout(layout);
   if (prefs.SinglePane())
-    SetSource(prefs.singlePane);
+    source = prefs.singlePane;
   else
     prefs.singlePane = source;
+  return true;
+}
+
+bool WorkspaceSplit::HandlePanelCommand(BMessage *m) {
+  switch (m->what) {
+  case Listi::kPanelPage:
+  case Listi::kClosePanelPage:
+    HandlePageCommand(*m);
+    break;
+  case kActivate:
+    if (ActivateFiles(m->GetInt32("pane", source)))
+      UpdatePreviews();
+    break;
+  case kSwitch:
+    SwitchPane();
+    break;
+  case kSame:
+    if (prefs.SinglePane())
+      break;
+    Panel(1 - source).Files().Navigate(Panel(source).Files().Path());
+    break;
+  case kRefresh:
+    for (auto *panel : panes)
+      panel->Files().Reload();
+    break;
+  case kFilter:
+    FocusFilter();
+    break;
+  case kGridMode:
+    Panel(source).Files().MessageReceived(m);
+    break;
+  default:
+    return false;
+  }
   return true;
 }
 } // namespace Listi

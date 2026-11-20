@@ -21,16 +21,14 @@ public:
   void SetSource(int pane);
   void FollowFocus(const BView *view);
   bool ActivateFiles(int pane);
-  void SwitchPane();
   void Focus();
   void ApplyWorkspace();
   bool AllowsCommand(uint32 action) const;
   void RememberPaneDisplay(const BMessage &message);
   bool ApplyWorkspaceEdit(const BMessage &message);
   bool PrepareLayoutChange();
-  void HandlePageCommand(const BMessage &message);
+  bool HandlePanelCommand(BMessage *message);
   void OpenSearch(const BMessage &store);
-  void FocusFilter();
   void TogglePanelPreview();
   bool DismissPanelTool();
   bool ToggleInspector();
@@ -55,6 +53,9 @@ public:
   ImagePreview *OpenPanelPreview(int pane);
 
 private:
+  void SwitchPane();
+  void FocusFilter();
+  void HandlePageCommand(const BMessage &message);
   void RefreshAndFocus();
   void ClosePanelTool(int pane);
   int PanelContaining(const BView *view) const;

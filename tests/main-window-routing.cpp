@@ -321,6 +321,12 @@ int main() {
   assert(mkdtemp(temp));
   const std::string file = std::string(temp) + "/visible.txt";
   assert(std::ofstream(file) << "visible selection");
+  // Create both folders before navigation installs its monitor. Only the
+  // explicit navigation below should invalidate the pattern preview.
+  const auto otherFolder = std::string(temp) + "/elsewhere";
+  assert(mkdir(otherFolder.c_str(), 0700) == 0);
+  const auto marker = otherFolder + "/another.txt";
+  assert(std::ofstream(marker) << "also matches *");
   auto *pane = static_cast<Pane *>(original);
   pane->Navigate(temp);
   window->Show();
@@ -456,7 +462,6 @@ int main() {
   assert(sourcePath == rightPane->Path());
   // A delayed confirmation must use the folder where the question was opened.
   const auto elsewhere = sourcePath + "/elsewhere";
-  assert(mkdir(elsewhere.c_str(), 0700) == 0);
   Listi::SavedPlaces bookmarks;
   bookmarks.Add("Original", sourcePath);
   bookmarks.Add("Elsewhere", elsewhere);
@@ -484,8 +489,6 @@ int main() {
 
   // A pattern preview must not authorize replacing a new folder's selection,
   // even when the pattern still matches entries there.
-  const auto marker = elsewhere + "/another.txt";
-  assert(std::ofstream(marker) << "also matches *");
   send(kSelectPattern);
   auto *preview = promptButton("Preview");
   assert(preview && preview->Invoke() == B_OK);
