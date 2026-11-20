@@ -12,6 +12,7 @@
 #include <MenuItem.h>
 #include <Node.h>
 #include <StringView.h>
+#include <TextControl.h>
 #include <TextView.h>
 #include <Window.h>
 #include <fstream>
@@ -158,6 +159,7 @@ int main() {
     std::ofstream(f.first) << "first";
     std::ofstream(f.second) << "second";
     std::ofstream(f.third) << "third";
+    Check(chmod(f.first.c_str(), 0644) == 0, "set known starting permissions");
     Listi::PropertySession first(f.first), second(f.second);
     first.Save(nullptr, kLabel, B_STRING_TYPE, "alpha");
     first.Save(nullptr, kNumber, B_INT32_TYPE, "-14");
@@ -211,6 +213,46 @@ int main() {
           properties->FindView("property attributes"));
       Check(attributes != nullptr, "Properties exposes its attribute list");
       SelectAttribute(*attributes, kLabel);
+      auto permissions = dynamic_cast<BTextControl *>(
+          properties->FindView("property permissions"));
+      BMessage edit('pred'), create('prnw'), save('prsv');
+      properties->MessageReceived(&edit);
+      Check(permissions && permissions->IsEnabled(),
+            "inspecting an unchanged attribute leaves permission editing available");
+      properties->MessageReceived(&create);
+      auto key = dynamic_cast<BTextControl *>(properties->FindView("attribute name"));
+      auto value = dynamic_cast<BTextView *>(properties->FindView("attribute value"));
+      Check(key && value, "new attribute editor is available");
+      key->SetText("Listi:ui-draft");
+      value->SetText("saved independently");
+      permissions->SetText("0600");
+      // Changing mode elsewhere must not rebase the pending permission edit.
+      Check(chmod(f.first.c_str(), 0640) == 0, "simulate external permission edit");
+      properties->MessageReceived(&save);
+    }
+    Check(Await([&] {
+            WindowLock lock(properties);
+            return ContainsStatus(*properties, "Attribute saved.");
+          }), "two drafts allow the attribute to be saved first");
+    {
+      WindowLock lock(properties);
+      auto permissions = dynamic_cast<BTextControl *>(
+          properties->FindView("property permissions"));
+      Check(permissions->IsEnabled() && std::string(permissions->Text()) == "0600",
+            "attribute refresh preserves the pending permission text");
+      BMessage apply('prpm');
+      properties->MessageReceived(&apply);
+    }
+    Check(Await([&] {
+            WindowLock lock(properties);
+            return ContainsStatus(*properties, "Permissions changed");
+          }), "permission draft retains its original expected mode");
+    {
+      WindowLock lock(properties);
+      BMessage discard('prdc');
+      properties->MessageReceived(&discard);
+      SelectAttribute(*dynamic_cast<BColumnListView *>(
+                          properties->FindView("property attributes")), kLabel);
       Check(Click(*properties, "Make searchable…"), "index action asks before making the volume searchable");
     }
     Check(Await([&] {

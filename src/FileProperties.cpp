@@ -36,6 +36,13 @@ struct NodeLock {
   }
   ~NodeLock() { node.Unlock(); }
 };
+bool SyncDirectory(const char *path) {
+  int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+  if (fd < 0)
+    return false;
+  const bool flushed = fsync(fd) == 0;
+  return close(fd) == 0 && flushed;
+}
 bool Reserved(const std::string &name) {
   return name.compare(0, 5, "BEOS:") == 0 || name.compare(0, 4, "_trk") == 0 ||
          name.compare(0, 6, "_Haiku") == 0 || name.compare(0, 6, "_listi") == 0;
@@ -466,7 +473,8 @@ void PropertySession::Change(const FileAttribute *expected,
   BPath directory;
   Require(find_directory(B_USER_SETTINGS_DIRECTORY, &directory),
           "Find recovery folder");
-  directory.Append("Lister_attribute_recovery");
+  const std::string settingsFolder = directory.Path();
+  Require(directory.Append("Lister_attribute_recovery"), "Locate recovery folder");
   if (mkdir(directory.Path(), 0700) && errno != EEXIST)
     throw std::runtime_error("Cannot create metadata recovery folder.");
   struct stat directoryStat;
@@ -507,9 +515,12 @@ void PropertySession::Change(const FileAttribute *expected,
       break;
     writtenBytes += n;
   }
-  bool backupOK = writtenBytes == flattened.size() && fsync(fd) == 0;
-  close(fd);
-  if (!backupOK)
+  const bool backupOK = writtenBytes == flattened.size() && fsync(fd) == 0;
+  const bool closed = close(fd) == 0;
+  // File sync alone does not persist the new directory entry. The recovery
+  // file and its private folder must be discoverable before changing metadata.
+  if (!backupOK || !closed || !SyncDirectory(directory.Path()) ||
+      !SyncDirectory(settingsFolder.c_str()))
     throw std::runtime_error(
         "Cannot flush metadata recovery record. Nothing changed. Record: " +
         recovery);

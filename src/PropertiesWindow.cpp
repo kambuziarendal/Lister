@@ -68,6 +68,7 @@ class PropertiesWindow : public BWindow {
   bool busy = false, creating = false, confirmRemove = false;
   std::string originalName, originalValue;
   type_code originalType = B_STRING_TYPE;
+  mode_t permissionBase = 0;
   type_code Type() const {
     if (editing)
       return editing->type;
@@ -84,7 +85,7 @@ class PropertiesWindow : public BWindow {
     if (!session)
       return false;
     std::ostringstream current;
-    current << std::oct << (snapshot.stat.st_mode & 07777);
+    current << std::oct << permissionBase;
     return current.str() != permissions->Text();
   }
   void Status(const std::string &s) {
@@ -116,7 +117,7 @@ class PropertiesWindow : public BWindow {
     apply->SetEnabled(permissions->IsEnabled());
     remove->SetLabel(confirmRemove ? "Confirm remove" : "Remove attribute");
   }
-  void Reset() {
+  void Reset(bool keepPermissionDraft = false) {
     editing.reset();
     creating = false;
     confirmRemove = false;
@@ -127,9 +128,12 @@ class PropertiesWindow : public BWindow {
     value->SetText("");
     types->ItemAt(0)->SetMarked(true);
     heading->SetText("Choose an attribute and Edit, or create a new one.");
-    std::ostringstream mode;
-    mode << std::oct << (snapshot.stat.st_mode & 07777);
-    permissions->SetText(mode.str().c_str());
+    if (!keepPermissionDraft) {
+      permissionBase = snapshot.stat.st_mode & 07777;
+      std::ostringstream mode;
+      mode << std::oct << permissionBase;
+      permissions->SetText(mode.str().c_str());
+    }
     Controls();
   }
   bool MayReplaceDraft() {
@@ -140,7 +144,8 @@ class PropertiesWindow : public BWindow {
     }
     return true;
   }
-  void Work(std::function<void(PropertySession &)> change = {}) {
+  void Work(std::function<void(PropertySession &)> change = {},
+            bool keepPermissionDraft = false) {
     if (busy)
       return;
     delivery->completion.clear();
@@ -151,8 +156,9 @@ class PropertiesWindow : public BWindow {
     auto current = session;
     auto target = BMessenger(this);
     auto originalPath = path;
-    std::thread([holder, current, target, originalPath, change]() mutable {
+    std::thread([holder, current, target, originalPath, change, keepPermissionDraft]() mutable {
       BMessage done(kFinished);
+      done.AddBool("keepPermissionDraft", keepPermissionDraft);
       bool changed = false;
       try {
         if (!current)
@@ -336,9 +342,11 @@ public:
       attributes->Clear();
       for (const auto &a : snapshot.attributes)
         attributes->AddRow(new AttributeRow(a));
-      Reset();
+      const bool keepPermissions = message->GetBool("keepPermissionDraft", false);
+      Reset(keepPermissions);
       Status(
-          !delivery->completion.empty() ? delivery->completion
+          keepPermissions ? "Attribute saved. Apply or Discard the permission draft."
+          : !delivery->completion.empty() ? delivery->completion
           : snapshot.limited
               ? "Attribute limit reached. Some entries are not shown."
               : "Properties loaded. Changes require explicit Save or Apply.");
@@ -447,17 +455,13 @@ public:
     case kSave: {
       if (busy || (!creating && (!editing || !editing->editable)))
         break;
-      if (PermissionDirty()) {
-        Status("Apply or Discard the permission draft first.");
-        break;
-      }
       auto expected =
           editing ? std::make_shared<FileAttribute>(*editing) : nullptr;
       std::string key = name->Text(), text = value->Text();
       type_code type = Type();
       Work([expected, key, text, type](auto &s) {
         s.Save(expected.get(), key, type, text);
-      });
+      }, PermissionDirty());
       break;
     }
     case kRemove: {
@@ -485,7 +489,7 @@ public:
         Status("Save or Discard the attribute draft first.");
         break;
       }
-      mode_t expected = snapshot.stat.st_mode & 07777;
+      mode_t expected = permissionBase;
       std::string text = permissions->Text();
       Work([expected, text](auto &s) { s.Permissions(expected, text); });
       break;

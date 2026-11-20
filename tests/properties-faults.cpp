@@ -16,13 +16,17 @@ extern "C" status_t RealSync(BNode*) asm("__real__ZN5BNode4SyncEv");
 extern "C" status_t WrappedSync(BNode*) asm("__wrap__ZN5BNode4SyncEv");
 extern "C" status_t WrappedSync(BNode *n){if(fault==2){fault=0;return B_IO_ERROR;}return RealSync(n);}
 extern "C" int __real_fsync(int);
-extern "C" int __wrap_fsync(int fd){if(fault==3){fault=0;errno=EIO;return -1;}return __real_fsync(fd);}
+extern "C" int __wrap_fsync(int fd){struct stat st;
+ if (fault == 3 || (fault == 4 && !fstat(fd, &st) && S_ISDIR(st.st_mode))) {
+   fault=0;errno=EIO;return -1;
+ }
+ return __real_fsync(fd);}
 void Check(bool ok,const char *s){if(!ok)throw std::runtime_error(s);std::cout<<"PASS "<<s<<std::endl;++passed;}
 FileAttribute Get(PropertySession &s){for(auto a:s.Read().attributes)if(a.name=="test:original")return a;throw std::runtime_error("missing");}
 int main(){BApplication app("application/x-vnd.Kambuzi-PropertiesFaults");try{
  char p[]="/boot/home/listi-properties-faults-XXXXXX";int fd=mkstemp(p);if(fd<0)return 1;write(fd,"payload",7);close(fd);
  PropertySession session(p);
- for(int injected=1;injected<=3;++injected){
+ for(int injected=1;injected<=4;++injected){
    BNode raw(p);raw.WriteAttr("test:original",B_STRING_TYPE,0,"original metadata",18);auto before=Get(session);fault=injected;
    std::string error;try{session.Save(&before,before.name,before.type,"new metadata");}catch(const std::exception &e){error=e.what();}
    Check(!error.empty() && fault==0,"injected metadata failure reported");
