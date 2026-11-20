@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include "ArchiveActions.h"
 #include "ArchiveJobs.h"
 #include "ArchivePasswords.h"
 #include "ArchiveSettings.h"
@@ -30,6 +31,19 @@ void clean(const std::string &p){BDirectory d(p.c_str());BEntry e;while(d.GetNex
 void *run(void *) {
  try{
   char pattern[]="/tmp/Listi-archive-jobs-XXXXXX";std::string root=mkdtemp(pattern);
+  Job moveRequest;
+  moveRequest.action = Action::MoveArchive;
+  moveRequest.sources = {root + "/local.txt"};
+  moveRequest.destination = root + "/target.zip";
+  const auto movePrompt = ArchiveActions::ConfirmAddition(moveRequest, "test-lease");
+  const auto acceptedMove = DecodeJob(movePrompt.accepted);
+  check(movePrompt.accepted.what == kArchiveEditAccepted &&
+            std::string(movePrompt.accepted.GetString("clipboardLease", "")) == "test-lease" &&
+            acceptedMove.action == moveRequest.action &&
+            acceptedMove.sources == moveRequest.sources &&
+            acceptedMove.destination == moveRequest.destination &&
+            std::string(movePrompt.button) == "Move entries",
+        "archive move confirmation preserves the frozen request and clipboard lease");
   auto settings=LoadArchiveSettings(root+"/settings");
   check(settings.what!='none',"new archive settings are not the missing-file sentinel");
   settings.SetString("default","7z");settings.SetBool("ask",false);settings.SetBool("favorite:7z",true);settings.SetInt32("level:7z",3);
