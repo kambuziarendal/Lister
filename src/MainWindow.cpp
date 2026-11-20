@@ -12,6 +12,7 @@
 #include "FileDrop.h"
 #include "FlatViewWindow.h"
 #include "FileContextMenu.h"
+#include "FunctionButtonBank.h"
 #include "NamedEntry.h"
 #include "JobSnapshot.h"
 #include "ArchiveWindow.h"
@@ -35,17 +36,14 @@
 #include "VirtualFile.h"
 #include "WindowKeyFilter.h"
 #include "WorkspaceEditor.h"
-#include "WorkspaceActions.h"
 #include <array>
 #include <Alert.h>
 #include <Application.h>
 #include <algorithm>
 #include <exception>
-#include <Button.h>
 #include <Entry.h>
 #include <File.h>
 #include <FilePanel.h>
-#include <GridView.h>
 #include <GroupView.h>
 #include <Invoker.h>
 #include <LayoutBuilder.h>
@@ -549,10 +547,7 @@ class MainWindow : public BWindow {
     }
   }
   OperationQueue *queue;
-  BGroupView *bank = nullptr;
-  BGridView *bankGrid = nullptr;
-  std::vector<int32> renderedButtons;
-  int bankColumns = 0;
+  Listi::FunctionButtonBank *bank = nullptr;
   BTextControl *command;
   BMessenger service;
   bool bankVisible = true, commandVisible = true;
@@ -590,8 +585,8 @@ class MainWindow : public BWindow {
       // Showing a layout item invalidates layout but does not run it inline.
       // Measure before the window's auto-size pass can impose a larger frame.
       auto minimum = GetLayout()->MinSize();
-      if (minimum.width > Bounds().Width() && bankColumns == 6) {
-        UpdateBank(Bounds().Width(), true);
+      if (minimum.width > Bounds().Width() && !bank->IsCompact()) {
+        bank->SetActions(prefs.actionButtons, true);
         minimum = GetLayout()->MinSize();
       }
       bankOverflow = minimum.width > Bounds().Width() ||
@@ -604,37 +599,8 @@ class MainWindow : public BWindow {
   void RefreshBank() {
     ShowBank(prefs.ActionButtonsVisible() && !actionArea->Pending());
   }
-  void UpdateBank(float width, bool forceCompact = false) {
-    const int columns = forceCompact || (prefs.adaptive && width < 850) ? 3 : 6;
-    if (columns == bankColumns && renderedButtons == prefs.actionButtons)
-      return;
-    bankColumns = columns;
-    renderedButtons = prefs.actionButtons;
-    menu->ClearFunctionActions();
-    if (bankGrid) {
-      bank->GroupLayout()->RemoveView(bankGrid);
-      delete bankGrid;
-    }
-    bankGrid = new BGridView(columns == 3 ? 3 : 5, 5);
-    int index = 0;
-    for (auto id : renderedButtons) {
-      if (id < 0 || id >= WorkspaceLayout::ActionButtonCount)
-        continue;
-      const auto &action = kWorkspaceActions[id];
-      menu->AddFunctionAction(action);
-      BString label(action.label);
-      if (columns == 6 && action.message != kNone)
-        label << " [" << action.shortcut << "]";
-      auto button = new BButton(label, new BMessage(action.message));
-      BString hint("Command+");
-      hint << action.shortcut
-           << " (normally Alt). File shortcuts apply outside text fields.";
-      button->SetToolTip(hint);
-      button->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
-      bankGrid->GridLayout()->AddView(button, index % columns, index / columns);
-      ++index;
-    }
-    bank->GroupLayout()->AddView(int32(0), bankGrid);
+  void UpdateBank(float width) {
+    bank->SetActions(prefs.actionButtons, prefs.adaptive && width < 850);
   }
   void PlaceTools() {
     if (bankOnTop != prefs.bankTop) {
@@ -982,17 +948,7 @@ public:
     terminalSplit = new BSplitView(B_VERTICAL, 6);
     terminalDock = std::make_unique<Listi::TerminalDock>(
         terminalSplit, split, BMessenger(this));
-    bank = new BGroupView(B_VERTICAL, 5);
-    bank->SetName("workspace action buttons");
-    auto shortcuts = new BStringView(
-        "shortcuts",
-        "Command + letter (normally Alt). Tab: other panel. Command+F: filter. "
-        "C/X/V: clipboard. Shift+C: panel copy. Escape: close dialog.");
-    shortcuts->SetTruncation(B_TRUNCATE_END);
-    shortcuts->SetExplicitMinSize(BSize(0, B_SIZE_UNSET));
-    shortcuts->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
-    bank->AddChild(shortcuts);
-    bank->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+    bank = new Listi::FunctionButtonBank(*menu);
     command = new BTextControl("Command:", "", nullptr);
     command->TextView()->AddFilter(
         new Listi::ExplicitSubmit(BMessenger(this), BMessage(kCommand)));

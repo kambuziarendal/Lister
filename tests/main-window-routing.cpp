@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Exercise the actual window and menu without writing real user preferences.
 #include "../src/Common.h"
+#include "../src/FunctionButtonBank.h"
 #include "../src/MainWindow.h"
+#include "../src/MainWindowMenu.h"
 #include "../src/Pane.h"
 #include "../src/PanelTools.h"
 #include "../src/PaneSidebar.h"
@@ -9,6 +11,8 @@
 #include "../src/SavedSearches.h"
 #include "../src/WindowKeyFilter.h"
 #include <Application.h>
+#include <Button.h>
+#include <GridView.h>
 #include <MenuBar.h>
 #include <MenuItem.h>
 #include <TextControl.h>
@@ -22,8 +26,49 @@
 #include <fstream>
 #include <unistd.h>
 
+static void CheckFunctionButtons() {
+  MainWindowMenu menu;
+  Listi::FunctionButtonBank bank(menu);
+  auto *fallbackItem = menu.FindItem("Function actions");
+  assert(fallbackItem && fallbackItem->Submenu());
+  auto *fallback = fallbackItem->Submenu();
+  assert(bank.FindView("shortcuts"));
+
+  auto grid = [&]() -> BGridView * {
+    for (int32 i = 0; i < bank.CountChildren(); ++i)
+      if (auto *view = dynamic_cast<BGridView *>(bank.ChildAt(i)))
+        return view;
+    return nullptr;
+  };
+  auto button = [&](int32 index, uint32 action, const char *label) {
+    assert(grid());
+    auto *control = dynamic_cast<BButton *>(grid()->ChildAt(index));
+    assert(control && std::string(control->Label()) == label);
+    assert(control->Message()->what == action);
+    assert(fallback->ItemAt(index)->Message()->what == action);
+  };
+
+  const std::vector<int32> actions = {2, -1, 7, 99, 1};
+  bank.SetActions(actions, false);
+  assert(!bank.IsCompact());
+  assert(grid() && grid()->CountChildren() == 3 && fallback->CountItems() == 3);
+  button(0, kCopy, "Copy [Shift+C]");
+  button(1, kNone, "None");
+  button(2, kEdit, "Edit [E]");
+  assert(std::string(fallback->ItemAt(0)->Label()) == "Copy to other panel");
+
+  bank.SetActions(actions, true);
+  assert(bank.IsCompact());
+  button(0, kCopy, "Copy");
+  button(1, kNone, "None");
+  button(2, kEdit, "Edit");
+  bank.SetActions({}, true);
+  assert(grid() && grid()->CountChildren() == 0 && fallback->CountItems() == 0);
+}
+
 int main() {
   BApplication app("application/x-vnd.Listi-MainWindowRoutingTest");
+  CheckFunctionButtons();
   auto *window = CreateMainWindow(Preferences{}, BMessenger{}, {}, false, {}, false);
   auto *menu = dynamic_cast<BMenuBar *>(window->FindView("menu"));
   assert(menu);
