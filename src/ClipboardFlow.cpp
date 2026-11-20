@@ -63,7 +63,7 @@ void ClipboardFlow::Begin(uint32 action, Pane &pane) {
         return;
       }
       PutFileClipboard(selected, action == kClipboardCut, be_clipboard,
-                       pane.SelectedLocalIdentities());
+                       pane.SelectedLocalIdentities(kFileSelectionLimit));
       BString status;
       status
           << int32(selected.size())

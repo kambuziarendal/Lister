@@ -232,7 +232,8 @@ public:
     if (!(buttons & B_PRIMARY_MOUSE_BUTTON))
       return;
     try {
-      auto drag = Listi::MakeFileDrag(model->Selected(), model->SelectedLocalIdentities());
+      auto drag = Listi::MakeFileDrag(
+          model->Selected(), model->SelectedLocalIdentities(Listi::kFileSelectionLimit));
       dragging = true;
       DragMessage(&drag, BRect(point.x, point.y, point.x + 90, point.y + 22));
     } catch (const std::exception &error) {

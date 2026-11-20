@@ -55,7 +55,7 @@ BMessage MakeFileDrag(const std::vector<std::string> &paths,
                       const std::map<std::string, NodeIdentity> &expected) {
   if (std::any_of(paths.begin(), paths.end(),
                   [](const auto &path) { return IsVirtual(path); })) {
-    if (paths.empty() || paths.size() > 1024)
+    if (paths.empty() || paths.size() > kFileSelectionLimit)
       throw std::runtime_error("Select between 1 and 1024 entries.");
     BMessage drag(B_SIMPLE_DATA);
     for (const auto &path : paths) {

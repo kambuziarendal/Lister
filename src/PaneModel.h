@@ -47,7 +47,7 @@ public:
     return selection.count(path);
   }
   std::vector<std::string> Selected() const;
-  std::map<std::string, Listi::NodeIdentity> SelectedLocalIdentities() const;
+  std::map<std::string, Listi::NodeIdentity> SelectedLocalIdentities(size_t limit = SIZE_MAX) const;
   const PaneEntry *OnlySelected() const;
   SelectionSummary Summary() const;
   void Select(int mode);

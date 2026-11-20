@@ -28,6 +28,13 @@ int main() {
   auto us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
   printf("20 full selections of 10000 entries: %lld us\n", (long long)us);
   check(model.Selected() == paths, "large selection preserves visible order");
+  bool tooMany = false;
+  try {
+    model.SelectedLocalIdentities(1024);
+  } catch (const std::runtime_error &) {
+    tooMany = true;
+  }
+  check(tooMany, "a bounded action refuses an oversized selection before building its node map");
   check(!model.OnlySelected(), "multiple rows are not a single inspection target");
   check(model.Focused()->path == paths.back(), "focus preserved");
   model.SetSelection({paths[0], paths[0], "/fixture", "/missing"}, paths[0]);

@@ -118,7 +118,9 @@ std::vector<std::string> PaneModel::Selected() const {
   return result;
 }
 std::map<std::string, Listi::NodeIdentity>
-PaneModel::SelectedLocalIdentities() const {
+PaneModel::SelectedLocalIdentities(size_t limit) const {
+  if (selection.size() > limit)
+    throw std::runtime_error("Select at most " + std::to_string(limit) + " entries.");
   std::map<std::string, Listi::NodeIdentity> nodes;
   for (const auto *row : visible) {
     if (row->parent || !IsSelected(row->path) || row->path.empty() ||

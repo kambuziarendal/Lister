@@ -25,7 +25,6 @@ namespace Listi {
 namespace {
 constexpr int32 kCopyMode = 'Tcsl', kCutMode = 'Tmsl';
 constexpr const char *kLease = "listi:paste-lease";
-constexpr size_t kMaximumEntries = 1024;
 constexpr size_t kMaximumTextBytes = 4 * 1024 * 1024;
 void Require(status_t status, const char *operation) {
   if (status != B_OK)
@@ -160,7 +159,7 @@ std::vector<ClipboardItem> ReadFileClipboard(const BMessage &message) {
   int32 count;
   for (int32 i = 0;
        message.GetInfo(B_REF_TYPE, i, &name, &type, &count) == B_OK; ++i) {
-    if (items.size() >= kMaximumEntries || count != 1 || name[0] != 'r')
+    if (items.size() >= kFileSelectionLimit || count != 1 || name[0] != 'r')
       throw std::runtime_error(
           "Unsupported file clipboard. Copy the files again.");
     ClipboardItem item;
@@ -200,7 +199,7 @@ std::vector<ClipboardItem> ReadFileClipboard(const BMessage &message) {
 
 BMessage MakeFileSelection(const std::vector<std::string> &paths, bool cut,
                            const std::map<std::string, NodeIdentity> &expected) {
-  if (paths.empty() || paths.size() > kMaximumEntries)
+  if (paths.empty() || paths.size() > kFileSelectionLimit)
     throw std::runtime_error("Select between 1 and 1024 local entries first.");
   BMessage message;
   for (const auto &path : paths) {
@@ -229,7 +228,7 @@ void PutFileClipboard(const std::vector<std::string> &paths, bool cut,
   if (std::any_of(paths.begin(), paths.end(), [](const auto &path) {
         return ParseLocation(path).Archive();
       })) {
-    if (paths.empty() || paths.size() > 1024)
+    if (paths.empty() || paths.size() > kFileSelectionLimit)
       throw std::runtime_error("Select between 1 and 1024 archive entries.");
     for (const auto &path : paths) {
       const auto location = ParseLocation(path);

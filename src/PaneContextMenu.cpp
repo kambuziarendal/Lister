@@ -35,7 +35,7 @@ PaneContextMenuResult RunPaneContextMenu(
   bool canAddToShelf = false;
   if (!selected.empty() && local) {
     try {
-      snapshot = Listi::MakeFileSelection(selected, false, pane.SelectedLocalIdentities());
+      snapshot = Listi::MakeFileSelection(selected, false, pane.SelectedLocalIdentities(kFileSelectionLimit));
     } catch (...) {
       fileSnapshotError = std::current_exception();
     }

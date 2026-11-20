@@ -8,6 +8,7 @@
 #include <vector>
 
 namespace Listi {
+inline constexpr size_t kFileSelectionLimit = 1024;
 struct ClipboardItem {
   entry_ref ref;
   NodeIdentity node;
