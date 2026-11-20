@@ -395,8 +395,28 @@ ArchiveEditSession::Observation ArchiveEditSession::Observe(const Hooks &hooks) 
   checked = true;
   return Unchanged;
 }
+void ArchiveEditSession::FinishSaveJournal() {
+  try {
+    ValidateDirectory();
+    RequireActive();
+    ValidateArchive();
+    FlushDirectory(directory);
+    Persist();
+  } catch (const std::exception &e) {
+    throw std::runtime_error(
+        std::string("Archive was saved, but recovery metadata could not be "
+                    "updated. Working copy kept: ") +
+        e.what());
+  }
+  journalPending = false;
+  haveObserved = false;
+  checked = false;
+  stable = 0;
+}
 bool ArchiveEditSession::Save(const Hooks &hooks) {
   Check(hooks);
+  if (journalPending)
+    FinishSaveJournal();
   if (!ChangedBytes(hooks))
     return false;
   RequireActive();
@@ -444,19 +464,9 @@ bool ArchiveEditSession::Save(const Hooks &hooks) {
               !rename(candidate.c_str(), Join(directory, "saved").c_str()),
           "Archive was saved, but the local recovery baseline could not be "
           "updated. Working copy was retained.");
-  try {
-    FlushDirectory(directory);
-    target = published;
-    Persist();
-  } catch (const std::exception &e) {
-    throw std::runtime_error(
-        std::string("Archive was saved, but recovery metadata could not be "
-                    "updated. Working copy kept: ") +
-        e.what());
-  }
-  haveObserved = false;
-  checked = false;
-  stable = 0;
+  target = std::move(published);
+  journalPending = true;
+  FinishSaveJournal();
   return true;
 }
 } // namespace Listi

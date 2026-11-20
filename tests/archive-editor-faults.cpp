@@ -186,6 +186,15 @@ int main() {
       }
       check(refused,
             "ambiguous recovery does not silently rebase source snapshot");
+      if (scenario == 2) {
+        published = false;
+        const auto committed = bytes(archivePath);
+        check(!session->Save() && !published && bytes(archivePath) == committed,
+              "live retry repairs the missing journal without republishing the archive");
+        check(!ArchiveEditSession::Resume(session->Directory())->Save() &&
+                  !published,
+              "repaired journal resumes against the committed baseline");
+      }
     }
   }
   clean(root);

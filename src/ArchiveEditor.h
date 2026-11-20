@@ -36,12 +36,13 @@ private:
   unsigned permissions = 0644;
   struct stat directoryIdentity {
   }, workIdentity{}, observed{};
-  bool haveObserved = false, checked = false;
+  bool haveObserved = false, checked = false, journalPending = false;
   int stable = 0;
   void ValidateDirectory() const;
   void ValidateArchive() const;
   void RequireActive() const;
   void Persist();
+  void FinishSaveJournal();
   bool ChangedBytes(const Hooks &);
 };
 } // namespace Listi
