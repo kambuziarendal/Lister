@@ -7,6 +7,7 @@
 #include "FileDrop.h"
 #include "ImageConvert.h"
 #include "InlineAction.h"
+#include "JobSnapshot.h"
 #include "MainWindow.h"
 #include "OperationQueue.h"
 #include "TransferCommand.h"
