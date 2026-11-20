@@ -101,4 +101,14 @@ Job PrepareFileDrop(const BMessage &message, const std::string &destination,
   }
   return PrepareTransfer(std::move(job), allowSameFolder);
 }
+bool CanMoveFileDrop(const Job &job) {
+  const auto volume = job.expectedDestination.device;
+  return !job.sources.empty() && volume >= 0 && !IsVirtual(job.destination) &&
+         std::all_of(job.sources.begin(), job.sources.end(),
+                     [&](const auto &path) {
+                       const auto source = job.expectedSources.find(path);
+                       return source != job.expectedSources.end() &&
+                              source->second.device == volume;
+                     });
+}
 }

@@ -847,7 +847,7 @@ void Pane::MessageReceived(BMessage *m) {
     if (!Listi::SameSearchEntry(hit)) {
       savedSelection.clear();
       reveal = {};
-      entries.Select(0);
+      entries.SetSelection({}, "");
       SendSelection();
       SetStatus(
           "Search result moved, disappeared or was replaced. Search again; nothing selected.");
@@ -1045,12 +1045,17 @@ void Pane::MessageReceived(BMessage *m) {
       if (!picked.empty())
         entries.SetSelection({picked}, picked);
       if (!reveal.path.empty()) {
-        stale = !Listi::SameSearchEntry(reveal);
-        entries.SetSelection(stale ? std::vector<std::string>{}
-                                   : std::vector<std::string>{reveal.path},
-                             stale ? "" : reveal.path);
-        if (!stale && entries.Selected().empty())
-          stale = true;
+        const auto &visible = entries.Visible();
+        const auto row =
+            std::find_if(visible.begin(), visible.end(), [&](PaneEntry *entry) {
+              return !entry->parent && entry->path == reveal.path &&
+                     entry->device == reveal.device && entry->node == reveal.node;
+            });
+        stale = row == visible.end() || !Listi::SameSearchEntry(reveal);
+        if (stale)
+          entries.SetSelection({}, "");
+        else
+          entries.SetSelection({reveal.path}, reveal.path);
         reveal = {};
       }
       SendSelection();

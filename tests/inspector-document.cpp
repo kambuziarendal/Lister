@@ -143,6 +143,22 @@ int main() {
       Check(Read(path) == "LF\n", "empty document uses LF without a BOM");
     }
 
+    Write(path, "prefix" + bom + "text");
+    {
+      Document doc(path);
+      Error([&] { doc.Save(bom + "text"); });
+      Check(doc.Text() == "prefix" + bom + "text" && Read(path) == doc.Text(),
+            "moving U+FEFF to the start cannot silently change a BOM-less file");
+    }
+    Write(path, bom + "text");
+    {
+      Document doc(path);
+      doc.Save(bom + "text");
+      Document reopened(path);
+      Check(Read(path) == bom + bom + "text" && reopened.Text() == doc.Text(),
+            "BOM-marked source can round trip leading U+FEFF content");
+    }
+
     Check(!chmod(path.c_str(), 0444), "read-only fixture");
     Error([&] { Document doc(path); });
     Check(!chmod(path.c_str(), 0644), "restore writable fixture");

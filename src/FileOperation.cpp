@@ -368,6 +368,7 @@ struct Runner {
     // the snapshot.
     for (auto it = before.rbegin(); it != before.rend(); ++it) {
       Check();
+      Guard();
       struct stat now;
       if (lstat(it->first.c_str(), &now))
         Fail(it->first);
@@ -705,6 +706,9 @@ struct Runner {
         if (job.action == Action::Delete) {
           Snapshot deletion;
           SnapshotTree(source, deletion, sourceStat.st_dev);
+          if (!SameEntry(sourceStat, deletion.at(source)))
+            throw std::runtime_error(source +
+                                     ": selected source changed; left untouched");
           for (const auto &entry : deletion)
             Outcome(entry.first);
           RemoveCopied(source, deletion);

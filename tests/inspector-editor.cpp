@@ -208,7 +208,16 @@ int main() {
   Check(original == body->Text(), "one undo restores every replaced match");
   window->Unlock();
   Check(InspectorEditorsAllowQuit(), "undo to original clears dirty state");
+  Check(window->Lock(), "prepare identical replacement");
+  replacement->SetText("return");
+  window->Unlock();
+  Send(editor, 'ieRp');
+  Check(InspectorEditorsAllowQuit(),
+        "replacing a match with itself leaves the draft unchanged");
   Send(editor, 'ieRe');
+  Check(window->Lock(), "inspect redo after identical replacement");
+  Check(modified == body->Text(), "identical replacement preserves redo");
+  window->Unlock();
   Send(editor, 'ieLn');
   Check(window->Lock(), "line navigation");
   line->SetText("2");

@@ -565,7 +565,12 @@ public:
       }
       break;
     case kStop:
-      Cancel();
+      if (busy) {
+        Cancel();
+        const int32 count = results->CountRows();
+        Status("Stopped: " + std::to_string(count) +
+               (count == 1 ? " result kept." : " results kept."));
+      }
       break;
     case kSearchBegin:
       if (!busy || m->GetInt64("serial", -1) != serial)

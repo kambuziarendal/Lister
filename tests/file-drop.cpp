@@ -21,6 +21,11 @@ try{
  auto f=a+"/æ $' file.txt";Write(f,"original");Write(a+"/two","second");
  auto drag=MakeFileDrag({f,a+"/two"});Check(drag.what==B_SIMPLE_DATA && drag.HasRef("refs"),"native drag uses file refs");
  auto job=PrepareFileDrop(drag,b);Check(job.sources.size()==2 && job.expectedSources.size()==2,"multi-selection identities frozen");
+ Check(CanMoveFileDrop(job), "same-volume local drop offers move");
+ auto mixedVolumes = job;
+ mixedVolumes.expectedSources.at(f).device = job.expectedDestination.device == 1 ? 2 : 1;
+ Check(!CanMoveFileDrop(mixedVolumes),
+       "a drop with any source on another volume offers copy only");
  Check(!Exists(b+"/two") && Exists(f),"preparing drop does not mutate files");
  auto result=Run(job,{});Check(result.completed==2 && Read(b+"/two")=="second" && Read(f)=="original","explicit copy handles Unicode and shell punctuation");
  Check(Reject([&]{PrepareFileDrop(drag,a);}),"same-folder drop rejected");
@@ -61,6 +66,7 @@ try{
  symlink("missing-target",(a+"/link").c_str());job=PrepareFileDrop(MakeFileDrag({a+"/link"}),b);result=Run(job,{});struct stat st;Check(result.completed==1 && lstat((b+"/link").c_str(),&st)==0 && S_ISLNK(st.st_mode),"broken symlink copied without following it");
  auto remote=MakeFileDrag({"sftp://example.invalid/file"});job=PrepareFileDrop(remote,b);Check(job.sources.size()==1 && job.expectedSources.empty() && job.action==Action::Copy,"virtual provider drop remains copy-only without network access");
  job=PrepareFileDrop(MakeFileDrag({f}),"sftp://example.invalid/folder");Check(job.action==Action::Copy && job.expectedSources.count(f)==1,"local to virtual copy captures source identity");
+ Check(!CanMoveFileDrop(job), "virtual destination offers copy only");
  job.action=Action::Move;result=Run(job,{});Check(!result.errors.empty()&&!result.completed&&Exists(f),"local to virtual move refuses removal of original");
  Check(Reject([&]{MakeFileDrag({f,"sftp://example.invalid/file"});}),"mixed provider drag rejected");
  printf("%d drop checks passed\n",checks);return 0;

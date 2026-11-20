@@ -11,7 +11,6 @@
 #include "MainWindow.h"
 #include "OperationQueue.h"
 #include "TransferCommand.h"
-#include "VirtualFile.h"
 #include <stdexcept>
 
 namespace Listi {
@@ -51,13 +50,13 @@ bool FileDropFlow::Handle(const BMessage &message) {
             "Convert here", accepted);
         break;
       }
-      const bool canMove = !IsVirtual(job.destination) &&
-                           job.expectedSources.size() == job.sources.size();
+      const bool canMove = CanMoveFileDrop(job);
       std::string text =
           "Drop " + std::to_string(job.sources.size()) + " item(s) into:\n" +
           job.destination +
           (!canMove
-               ? "\nCopy only for network/archive transfers. Originals are kept."
+               ? "\nMove is only available on the same local volume. "
+                 "Copy keeps originals."
                : "\nCopy keeps originals. Move removes originals after transfer.");
       actionArea.Ask(text.c_str(), "Copy here", accepted, nullptr,
                       canMove ? "Move here" : nullptr,
@@ -82,8 +81,7 @@ bool FileDropFlow::Handle(const BMessage &message) {
       if (!job)
         break;
       if (which == 2) {
-        if (IsVirtual(job->destination) ||
-            job->expectedSources.size() != job->sources.size())
+        if (!CanMoveFileDrop(*job))
           break;
         job->action = Action::Move;
       }

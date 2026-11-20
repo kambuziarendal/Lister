@@ -8,7 +8,7 @@
 #include <MessageFilter.h>
 #include <PopUpMenu.h>
 #include <algorithm>
-#include <map>
+#include <set>
 #include <tuple>
 
 namespace Listi {
@@ -154,9 +154,9 @@ const SearchHit *SearchResultsView::SelectedHit() {
 
 void SearchResultsView::Reconcile(const std::vector<SearchHit> &hits) {
   using Key = std::tuple<std::string, int64, int64>;
-  std::map<Key, SearchHit> next;
+  std::set<Key> next;
   for (const auto &hit : hits)
-    next.emplace(Key(hit.path, hit.device, hit.node), hit);
+    next.emplace(hit.path, hit.device, hit.node);
   for (int32 i = CountRows() - 1; i >= 0; --i) {
     auto row = static_cast<HitRow *>(RowAt(i));
     auto found = next.find(Key(row->hit.path, row->hit.device, row->hit.node));
@@ -168,8 +168,9 @@ void SearchResultsView::Reconcile(const std::vector<SearchHit> &hits) {
       next.erase(found);
     }
   }
-  for (const auto &item : next)
-    Add(item.second);
+  for (const auto &hit : hits)
+    if (next.erase(Key(hit.path, hit.device, hit.node)))
+      Add(hit);
 }
 
 void SearchResultsView::UpdateColors() {

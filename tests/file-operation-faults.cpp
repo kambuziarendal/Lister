@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Deterministic native syscall faults, including when the test user is root.
 #include "FileOperation.h"
+#include "JobSnapshot.h"
 #include "Trash.h"
 #include <Node.h>
 #include <fs_attr.h>
@@ -167,6 +168,26 @@ int main() {
             Read(source) == payload && Read(target) == "changed after commit",
         "changed destination stops move cleanup and preserves the source");
 
+  const auto alias = root / "destination-link", alternate = root / "alternate";
+  fs::create_directory(alternate);
+  fs::create_directory_symlink(out, alias);
+  std::ofstream(target) << "old";
+  Hooks redirectAfterCopy = replace;
+  bool switched = false;
+  redirectAfterCopy.proceed = [&] {
+    if (!switched && Read(target) == payload) {
+      fs::remove(alias);
+      fs::create_directory_symlink(alternate, alias);
+      switched = true;
+    }
+    return true;
+  };
+  result = Run({Action::Move, {source.string()}, alias.string()}, redirectAfterCopy);
+  Check(switched && !result.errors.empty() && !result.completed &&
+            Read(source) == payload && Read(target) == payload &&
+            fs::is_empty(alternate),
+        "destination alias changed after copy leaves the original in place");
+
   // Even an empty merged folder must stay bound to its original target.
   const auto dir = root / "empty", mapped = out / "empty", saved = out / "saved";
   fs::create_directory(dir);
@@ -182,6 +203,24 @@ int main() {
   Check(!result.errors.empty() && !result.completed && fs::exists(dir) &&
             fs::exists(saved) && fs::exists(mapped),
         "replacement of empty destination at final progress keeps the source directory");
+
+  const auto deleted = root / "delete", original = root / "delete-original";
+  std::ofstream(deleted) << "selected";
+  Job deletion{Action::Delete, {deleted.string()}, {}};
+  FreezeLocalJob(deletion);
+  int polls = 0;
+  Hooks swapBeforeSnapshot;
+  swapBeforeSnapshot.proceed = [&] {
+    if (++polls == 2) {
+      fs::rename(deleted, original);
+      std::ofstream(deleted) << "replacement";
+    }
+    return true;
+  };
+  result = Run(deletion, swapBeforeSnapshot);
+  Check(!result.completed && !result.errors.empty() &&
+            Read(deleted) == "replacement" && Read(original) == "selected",
+        "entry replaced before the deletion snapshot is left untouched");
 
   const auto growing = root / "download", copied = out / "download";
   fs::create_directory(growing);

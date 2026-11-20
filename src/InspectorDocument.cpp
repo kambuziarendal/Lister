@@ -10,6 +10,9 @@
 
 namespace Inspector {
 namespace {
+constexpr char kUtf8Bom[] = "\xef\xbb\xbf";
+constexpr size_t kUtf8BomSize = sizeof(kUtf8Bom) - 1;
+
 struct FD {
   int fd;
   explicit FD(int value) : fd(value) {}
@@ -181,10 +184,10 @@ Document::Document(const std::string &selected) : path(selected) {
   FD pinned(source.Dup());
   original = Bytes(pinned.fd);
   ValidateText(original);
-  bom = original.compare(0, 3, "\xef\xbb\xbf") == 0;
+  bom = original.compare(0, kUtf8BomSize, kUtf8Bom) == 0;
   bool lf = false;
   text.reserve(original.size());
-  for (size_t i = bom ? 3 : 0; i < original.size(); ++i) {
+  for (size_t i = bom ? kUtf8BomSize : 0; i < original.size(); ++i) {
     if (original[i] == '\r') {
       if (++i == original.size() || original[i] != '\n')
         throw std::runtime_error("Classic CR line endings are preview-only.");
@@ -202,7 +205,12 @@ void Document::Save(const std::string &edited) {
   if (edited.size() > kDocumentLimit || edited.find('\r') != std::string::npos)
     throw std::runtime_error("Use LF editor text within the 256 KiB limit.");
   ValidateText(edited);
-  std::string encoded = bom ? "\xef\xbb\xbf" : "";
+  // In a document without a BOM, a leading U+FEFF would be decoded as a
+  // marker on reopen, silently removing the first editor character.
+  if (!bom && edited.compare(0, kUtf8BomSize, kUtf8Bom) == 0)
+    throw std::runtime_error(
+        "A file without a BOM cannot start with the U+FEFF character.");
+  std::string encoded = bom ? kUtf8Bom : "";
   for (char byte : edited) {
     if (crlf && byte == '\n')
       encoded += '\r';

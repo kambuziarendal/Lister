@@ -279,8 +279,10 @@ class InspectorEditor : public BGroupView {
       Status("Replacement exceeds the document size limit. Nothing changed.");
       return;
     }
-    body->Delete(from, to);
-    body->Insert(from, value.data(), value.size());
+    if (needle != value) {
+      body->Delete(from, to);
+      body->Insert(from, value.data(), value.size());
+    }
     Select(from + value.size(), from + value.size());
     if (!FindNext())
       Status("Replaced. No more matches.");
