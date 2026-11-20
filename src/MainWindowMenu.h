@@ -6,7 +6,7 @@ struct WorkspaceAction;
 struct WorkspaceLayout;
 
 constexpr uint32 kResumeArchiveEdits = 'ared', kEditExternally = 'edex',
-                 kClipboardSaveImage = 'cpsg', kNetwork = 'netw',
+                 kNetwork = 'netw',
                  kOpenSystem = 'osys', kToggleBank = 'atbk';
 
 class MainWindowMenu : public BMenuBar {
