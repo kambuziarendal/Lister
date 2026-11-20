@@ -11,6 +11,7 @@
 #include "../src/SavedSearches.h"
 #include "../src/WindowKeyFilter.h"
 #include "../src/WorkspaceSplit.h"
+#include <Alert.h>
 #include <Application.h>
 #include <Button.h>
 #include <GridView.h>
@@ -310,6 +311,42 @@ int main() {
     send(kPreviewOtherPanel);
     assert(right->Current() == Page::Preview);
   }
+  // A tab change away from an embedded draft must honour the editor's answer.
+  send(kEdit);
+  auto *editor = dynamic_cast<BTextView *>(right->FindView("editor text"));
+  assert(editor && std::string(editor->Text()) == "visible selection");
+  editor->SetText("unsaved draft");
+  BMessage switchTab(Listi::kPanelPage);
+  switchTab.AddInt32("pane", 1);
+  switchTab.AddInt32("page", static_cast<int32>(Page::Search));
+  for (const char *answer : {"Cancel", "Discard"}) {
+    assert(window->PostMessage(&switchTab) == B_OK);
+    window->Unlock();
+    BAlert *prompt = nullptr;
+    for (int i = 0; i < 250 && !prompt; ++i) {
+      for (int32 j = 0; j < app.CountWindows() && !prompt; ++j)
+        prompt = dynamic_cast<BAlert *>(app.WindowAt(j));
+      if (!prompt)
+        snooze(20000);
+    }
+    assert(prompt && prompt->Lock());
+    auto *button = prompt->ButtonAt(std::string(answer) == "Cancel" ? 1 : 0);
+    assert(button && std::string(button->Label()) == answer);
+    assert(button->Invoke() == B_OK);
+    prompt->Unlock();
+    BMessage queryTitle(B_GET_PROPERTY), reply;
+    queryTitle.AddSpecifier("Title");
+    assert(BMessenger(window).SendMessage(&queryTitle, &reply, 2000000, 2000000) == B_OK);
+    assert(window->Lock());
+    if (std::string(answer) == "Cancel") {
+      assert(right->Current() == Page::Preview && right->FindView("editor text") == editor);
+      assert(std::string(editor->Text()) == "unsaved draft");
+    }
+  }
+  assert(right->Current() == Page::Search && !right->FindView("editor text"));
+  assert(pane->Selected() == selected && std::string(rightQuery->Text()) == "right-only");
+  std::string onDisk;
+  assert(std::getline(std::ifstream(file), onDisk) && onDisk == "visible selection");
   BMessage closePreview(Listi::kClosePanelPage);
   closePreview.AddInt32("pane", 1);
   window->MessageReceived(&focusPreview);
