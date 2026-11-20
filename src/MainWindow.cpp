@@ -10,7 +10,7 @@
 #include "BulkRenameWindow.h"
 #include "ClipboardTextFile.h"
 #include "FileClipboard.h"
-#include "FileDrop.h"
+#include "FileDropFlow.h"
 #include "FlatViewWindow.h"
 #include "PaneContextMenu.h"
 #include "FunctionButtonBank.h"
@@ -28,7 +28,6 @@
 #include "ShelfWindow.h"
 #include "ImagePreview.h"
 #include "InspectorEditor.h"
-#include "ImageConvert.h"
 #include "InlineAction.h"
 #include "OperationQueue.h"
 #include "Pane.h"
@@ -71,10 +70,8 @@ void PostMainWindowNotice(const char *text) {
 
 namespace {
 constexpr uint32 kPreviewPattern = 'sppv', kApplyPattern = 'spap';
-constexpr uint32 kImageDropConvert = 'dcvi';
 constexpr uint32 kClipboardFileAccepted = 'ctac';
-constexpr uint32 kNamedEntryAccepted = 'nacc', kDropAccepted = 'dacc',
-                 kConfirm = 'cfir';
+constexpr uint32 kNamedEntryAccepted = 'nacc', kConfirm = 'cfir';
 class MainWindow : public BWindow {
   Preferences prefs;
   BMessenger searchWindow;
@@ -255,7 +252,7 @@ class MainWindow : public BWindow {
   }
   int source = 0;
   int64 clipboardSerial = 0;
-  int64 dropSerial = 0;
+  std::unique_ptr<Listi::FileDropFlow> fileDrop;
   Listi::ArchiveActions archiveActions;
   void ArchiveAction(uint32 action) {
     if (actionArea->Pending()) {
@@ -757,6 +754,8 @@ public:
         "Runs a shell command in the active directory using Terminal.");
     queue = new OperationQueue(BMessenger(this));
     actionArea = new InlineAction(BMessenger(this));
+    fileDrop = std::make_unique<Listi::FileDropFlow>(
+        *actionArea, *queue, BMessenger(this), service, [this] { ShowBank(false); });
     actionArea->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
     actionArea->GroupLayout()->SetInsets(8, 6, 8, 6);
     actionArea->Hide();
@@ -1338,125 +1337,12 @@ public:
       }
       break;
     }
-    case kDrop: {
-      if (actionArea->Pending()) {
-        queue->ErrorInfo(
-            "Finish or cancel the open question before dropping files.");
-        break;
-      }
-      try {
-        ++dropSerial;
-        auto job =
-            Listi::PrepareFileDrop(*m, m->GetString("destination", ""), true);
-        if (job.action == Listi::Action::EditArchive) {
-          ConfirmArchiveAddition(job);
-          break;
-        }
-        const bool canConvert = Listi::CanProbeImageDrop(job);
-        const bool sameFolder = Listi::InTransferSourceFolder(job);
-        auto accepted = Listi::EncodeJob(job, kDropAccepted);
-        accepted.AddInt64("request", dropSerial);
-        if (sameFolder) {
-          if (!canConvert)
-            throw std::runtime_error(
-                "Drop into a different folder, not the source folder.");
-          accepted.AddBool("convertOnly", true);
-          AskInline(
-              "Convert an image in its current folder. The original is kept.",
-              "Convert here", accepted);
-          break;
-        }
-        const bool canMove = !Listi::IsVirtual(job.destination) &&
-                             job.expectedSources.size() == job.sources.size();
-        std::string text =
-            "Drop " + std::to_string(job.sources.size()) + " item(s) into:\n" +
-            job.destination +
-            (!canMove
-                 ? "\nCopy only for network/archive transfers. Originals are kept."
-                 : "\nCopy keeps originals. Move removes originals after transfer.");
-        ShowBank(false);
-        actionArea->Ask(text.c_str(), "Copy here", accepted, nullptr,
-                        canMove ? "Move here" : nullptr,
-                        canConvert ? "Convert here" : nullptr);
-      } catch (const std::exception &e) {
-        PostMainWindowNotice(e.what());
-      }
+    case kDrop:
+    case Listi::kDropAccepted:
+    case kImageDropOutputs:
+    case Listi::kImageDropConvert:
+      fileDrop->Handle(*m);
       break;
-    }
-    case kDropAccepted: {
-      if (m->GetInt64("request", -1) != dropSerial)
-        break;
-      const auto which = m->GetInt32("which", 0);
-      if (which == 3 || m->GetBool("convertOnly", false)) {
-        BMessage probe(*m);
-        probe.what = kImageDropProbe;
-        probe.AddMessenger("replyTo", BMessenger(this));
-        if (service.SendMessage(&probe, (BHandler *)nullptr, 500000) != B_OK)
-          PostMainWindowNotice("Could not check installed image translators.");
-      } else if (which == 1 || which == 2) {
-        auto job = Listi::DecodeSubmittedJob(*m, {Listi::Action::Copy});
-        if (!job)
-          break;
-        if (which == 2) {
-          if (Listi::IsVirtual(job->destination) ||
-              job->expectedSources.size() != job->sources.size())
-            break;
-          job->action = Listi::Action::Move;
-        }
-        queue->Enqueue(*job);
-      }
-      break;
-    }
-    case kImageDropOutputs: {
-      if (m->GetInt64("request", -1) != dropSerial)
-        break;
-      if (actionArea->Pending()) {
-        queue->ErrorInfo("Finish the open question and drop the image again.");
-        break;
-      }
-      if (m->HasString("error")) {
-        PostMainWindowNotice(m->GetString("error", ""));
-        break;
-      }
-      auto job = Listi::DecodeJob(*m);
-      if (job.sources.size() != 1)
-        break;
-      std::vector<std::string> labels;
-      BMessage output;
-      for (int32 i = 0; m->FindMessage("output", i, &output) == B_OK; ++i) {
-        labels.push_back(std::string(output.GetString("name", "")) + " (." +
-                         output.GetString("extension", "") + ")");
-      }
-      if (labels.empty())
-        break;
-      BMessage accepted(*m);
-      accepted.what = kImageDropConvert;
-      accepted.RemoveName("replyTo");
-      accepted.RemoveName("which");
-      std::string text = "Convert " + Listi::Leaf(job.sources.front()) +
-                         " into:\n" + job.destination +
-                         "\nThe original and existing files are kept.";
-      ShowBank(false);
-      actionArea->Ask(text.c_str(), "Convert", accepted, nullptr, nullptr,
-                      nullptr, labels);
-      break;
-    }
-    case kImageDropConvert: {
-      if (m->GetInt64("request", -1) != dropSerial)
-        break;
-      BMessage output;
-      const auto option = m->GetInt32("option", -1);
-      if (option < 0 || m->FindMessage("output", option, &output) != B_OK)
-        break;
-      auto job = Listi::DecodeSubmittedJob(*m, {Listi::Action::Copy});
-      if (!job)
-        break;
-      job->action = Listi::Action::ConvertImage;
-      job->imageFormat = output.GetInt32("type", 0);
-      job->imageMime = output.GetString("mime", "");
-      queue->Enqueue(*job);
-      break;
-    }
     case kFileProgress:
       for (auto p : panes) {
         p->MessageReceived(m);

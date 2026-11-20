@@ -1,0 +1,155 @@
+// SPDX-License-Identifier: MIT
+#include "FileDropFlow.h"
+#include "ApplicationServices.h"
+#include "ArchiveActions.h"
+#include "Common.h"
+#include "ExplicitSubmit.h"
+#include "FileDrop.h"
+#include "ImageConvert.h"
+#include "InlineAction.h"
+#include "MainWindow.h"
+#include "OperationQueue.h"
+#include "TransferCommand.h"
+#include "VirtualFile.h"
+#include <stdexcept>
+#include <utility>
+
+namespace Listi {
+
+FileDropFlow::FileDropFlow(InlineAction &actionArea, OperationQueue &queue,
+                           BMessenger owner, BMessenger service,
+                           std::function<void()> hideBank)
+    : actionArea(actionArea), queue(queue), owner(owner), service(service),
+      hideBank(std::move(hideBank)) {}
+
+void FileDropFlow::Handle(const BMessage &message) {
+  auto ask = [&](const char *text, const char *button, const BMessage &accepted) {
+    if (!actionArea.Pending())
+      hideBank();
+    if (!actionArea.Ask(text, button, accepted))
+      queue.ErrorInfo("Finish or cancel the open question first.");
+  };
+  switch (message.what) {
+  case kDrop: {
+    if (actionArea.Pending()) {
+      queue.ErrorInfo(
+          "Finish or cancel the open question before dropping files.");
+      break;
+    }
+    try {
+      ++serial;
+      auto job =
+          PrepareFileDrop(message, message.GetString("destination", ""), true);
+      if (job.action == Action::EditArchive) {
+        auto prompt = ArchiveActions::ConfirmAddition(job, {});
+        ask(prompt.text.String(), prompt.button, prompt.accepted);
+        break;
+      }
+      const bool canConvert = CanProbeImageDrop(job);
+      const bool sameFolder = InTransferSourceFolder(job);
+      auto accepted = EncodeJob(job, kDropAccepted);
+      accepted.AddInt64("request", serial);
+      if (sameFolder) {
+        if (!canConvert)
+          throw std::runtime_error(
+              "Drop into a different folder, not the source folder.");
+        accepted.AddBool("convertOnly", true);
+        ask("Convert an image in its current folder. The original is kept.",
+            "Convert here", accepted);
+        break;
+      }
+      const bool canMove = !IsVirtual(job.destination) &&
+                           job.expectedSources.size() == job.sources.size();
+      std::string text =
+          "Drop " + std::to_string(job.sources.size()) + " item(s) into:\n" +
+          job.destination +
+          (!canMove
+               ? "\nCopy only for network/archive transfers. Originals are kept."
+               : "\nCopy keeps originals. Move removes originals after transfer.");
+      hideBank();
+      actionArea.Ask(text.c_str(), "Copy here", accepted, nullptr,
+                      canMove ? "Move here" : nullptr,
+                      canConvert ? "Convert here" : nullptr);
+    } catch (const std::exception &e) {
+      PostMainWindowNotice(e.what());
+    }
+    break;
+  }
+  case kDropAccepted: {
+    if (message.GetInt64("request", -1) != serial)
+      break;
+    const auto which = message.GetInt32("which", 0);
+    if (which == 3 || message.GetBool("convertOnly", false)) {
+      BMessage probe(message);
+      probe.what = kImageDropProbe;
+      probe.AddMessenger("replyTo", owner);
+      if (service.SendMessage(&probe, (BHandler *)nullptr, 500000) != B_OK)
+        PostMainWindowNotice("Could not check installed image translators.");
+    } else if (which == 1 || which == 2) {
+      auto job = DecodeSubmittedJob(message, {Action::Copy});
+      if (!job)
+        break;
+      if (which == 2) {
+        if (IsVirtual(job->destination) ||
+            job->expectedSources.size() != job->sources.size())
+          break;
+        job->action = Action::Move;
+      }
+      queue.Enqueue(*job);
+    }
+    break;
+  }
+  case kImageDropOutputs: {
+    if (message.GetInt64("request", -1) != serial)
+      break;
+    if (actionArea.Pending()) {
+      queue.ErrorInfo("Finish the open question and drop the image again.");
+      break;
+    }
+    if (message.HasString("error")) {
+      PostMainWindowNotice(message.GetString("error", ""));
+      break;
+    }
+    auto job = DecodeJob(message);
+    if (job.sources.size() != 1)
+      break;
+    std::vector<std::string> labels;
+    BMessage output;
+    for (int32 i = 0; message.FindMessage("output", i, &output) == B_OK; ++i) {
+      labels.push_back(std::string(output.GetString("name", "")) + " (." +
+                       output.GetString("extension", "") + ")");
+    }
+    if (labels.empty())
+      break;
+    BMessage accepted(message);
+    accepted.what = kImageDropConvert;
+    accepted.RemoveName("replyTo");
+    accepted.RemoveName("which");
+    std::string text = "Convert " + Leaf(job.sources.front()) +
+                       " into:\n" + job.destination +
+                       "\nThe original and existing files are kept.";
+    hideBank();
+    actionArea.Ask(text.c_str(), "Convert", accepted, nullptr, nullptr,
+                    nullptr, labels);
+    break;
+  }
+  case kImageDropConvert: {
+    if (message.GetInt64("request", -1) != serial)
+      break;
+    BMessage output;
+    const auto option = message.GetInt32("option", -1);
+    if (option < 0 || message.FindMessage("output", option, &output) != B_OK)
+      break;
+    auto job = DecodeSubmittedJob(message, {Action::Copy});
+    if (!job)
+      break;
+    job->action = Action::ConvertImage;
+    job->imageFormat = output.GetInt32("type", 0);
+    job->imageMime = output.GetString("mime", "");
+    queue.Enqueue(*job);
+    break;
+  }
+  }
+}
+
+} // namespace Listi
