@@ -35,6 +35,7 @@
 #include "TerminalDock.h"
 #include "VirtualFile.h"
 #include "WindowKeyFilter.h"
+#include "WindowScripting.h"
 #include "WorkspaceEditor.h"
 #include <array>
 #include <Alert.h>
@@ -48,7 +49,6 @@
 #include <Invoker.h>
 #include <LayoutBuilder.h>
 #include <Path.h>
-#include <PropertyInfo.h>
 #include <SplitView.h>
 #include <TextControl.h>
 #include <TextView.h>
@@ -994,42 +994,12 @@ public:
   }
 
   status_t GetSupportedSuites(BMessage *m) override {
-    static property_info properties[] = {{"Workspace",
-                                          {B_GET_PROPERTY, 0},
-                                          {B_DIRECT_SPECIFIER, 0},
-                                          "Current workspace",
-                                          0},
-                                         {"SourcePath",
-                                          {B_GET_PROPERTY, B_SET_PROPERTY, 0},
-                                          {B_DIRECT_SPECIFIER, 0},
-                                          "Source directory",
-                                          0},
-                                         {"DestinationPath",
-                                          {B_GET_PROPERTY, B_SET_PROPERTY, 0},
-                                          {B_DIRECT_SPECIFIER, 0},
-                                          "Destination directory",
-                                          0},
-                                         {"PathReady",
-                                          {B_GET_PROPERTY, 0},
-                                          {B_DIRECT_SPECIFIER, 0},
-                                          "Both directory scans complete",
-                                          0},
-                                         {"Busy",
-                                          {B_GET_PROPERTY, 0},
-                                          {B_DIRECT_SPECIFIER, 0},
-                                          "Operations are queued or running",
-                                          0},
-                                         {nullptr}};
-    BPropertyInfo info(properties);
-    m->AddString("suites", "suite/vnd.Kambuzi-Lister");
-    m->AddFlat("messages", &info);
+    Listi::AddWindowScriptingSuite(*m);
     return BWindow::GetSupportedSuites(m);
   }
   BHandler *ResolveSpecifier(BMessage *msg, int32 index, BMessage *spec,
                              int32 what, const char *property) override {
-    if (!strcmp(property, "Workspace") || !strcmp(property, "SourcePath") ||
-        !strcmp(property, "DestinationPath") || !strcmp(property, "Busy") ||
-        !strcmp(property, "PathReady"))
+    if (Listi::IsWindowScriptProperty(property))
       return this;
     return BWindow::ResolveSpecifier(msg, index, spec, what, property);
   }
@@ -1085,49 +1055,9 @@ public:
     return true;
   }
   void MessageReceived(BMessage *m) override {
-    if (m->what == B_GET_PROPERTY || m->what == B_SET_PROPERTY) {
-      int32 index, what;
-      BMessage spec;
-      const char *property;
-      if (m->GetCurrentSpecifier(&index, &spec, &what, &property) == B_OK) {
-        BMessage reply(B_REPLY);
-        if (!strcmp(property, "SourcePath") ||
-            !strcmp(property, "DestinationPath")) {
-          Pane *pane =
-              panes[!strcmp(property, "SourcePath") ? source : 1 - source];
-          if (m->what == B_SET_PROPERTY) {
-            const char *value;
-            if (m->FindString("data", &value) == B_OK)
-              pane->Navigate(value);
-            else {
-              reply.AddInt32("error", B_BAD_VALUE);
-              m->SendReply(&reply);
-              return;
-            }
-          }
-          reply.AddString("result", pane->Path());
-        } else if (m->what == B_SET_PROPERTY &&
-                   (!strcmp(property, "Workspace") || !strcmp(property, "Busy") ||
-                    !strcmp(property, "PathReady"))) {
-          reply.AddInt32("error", B_NOT_ALLOWED);
-          m->SendReply(&reply);
-          return;
-        } else if (!strcmp(property, "Workspace"))
-          reply.AddString("result", WorkspaceName(prefs.workspace));
-        else if (!strcmp(property, "PathReady"))
-          reply.AddBool("result",
-                        !panes[0]->IsScanning() && !panes[1]->IsScanning());
-        else if (!strcmp(property, "Busy"))
-          reply.AddBool("result", queue->Busy());
-        else {
-          BWindow::MessageReceived(m);
-          return;
-        }
-        reply.AddInt32("error", B_OK);
-        m->SendReply(&reply);
-        return;
-      }
-    }
+    if (Listi::HandleWindowScript(*m, prefs.workspace, *panes[source],
+                                  *panes[1 - source], *queue))
+      return;
     if (prefs.IsSmidja() && !ToolAllowsCommand(m->what)) {
       queue->ErrorInfo("Switch to Files in the affected panel before using this command.");
       return;

@@ -281,6 +281,35 @@ int main() {
   send(kCloseQuickView);
   assert(!item(kQuickView)->IsMarked());
   assert(pane->Selected() == selected);
+  waitFor([&] { return !rightPane->IsScanning(); });
+  const std::string sourcePath = pane->Path();
+  const std::string destinationPath = rightPane->Path();
+  BMessenger windowScript(window);
+  window->Unlock();
+  auto property = [&](uint32 command, const char *name, status_t expected,
+                      const char *data = nullptr) {
+    BMessage request(command), reply;
+    assert(request.AddSpecifier(name) == B_OK);
+    if (data)
+      assert(request.AddString("data", data) == B_OK);
+    assert(windowScript.SendMessage(&request, &reply, 1000000, 1000000) == B_OK);
+    assert(reply.what == B_REPLY && reply.GetInt32("error", B_ERROR) == expected);
+    return reply;
+  };
+  assert(std::string(property(B_GET_PROPERTY, "Workspace", B_OK)
+                         .GetString("result", "")) == WorkspaceName(Workspace::einn));
+  assert(std::string(property(B_GET_PROPERTY, "SourcePath", B_OK)
+                         .GetString("result", "")) == sourcePath);
+  assert(std::string(property(B_GET_PROPERTY, "DestinationPath", B_OK)
+                         .GetString("result", "")) == destinationPath);
+  assert(property(B_GET_PROPERTY, "PathReady", B_OK).GetBool("result", false));
+  assert(!property(B_GET_PROPERTY, "Busy", B_OK).GetBool("result", true));
+  property(B_SET_PROPERTY, "Busy", B_NOT_ALLOWED);
+  property(B_SET_PROPERTY, "SourcePath", B_BAD_VALUE);
+  property(B_SET_PROPERTY, "DestinationPath", B_OK, temp);
+  assert(window->Lock());
+  waitFor([&] { return !rightPane->IsScanning(); });
+  assert(sourcePath == rightPane->Path());
   assert(unlink(file.c_str()) == 0 && rmdir(temp) == 0);
   window->Quit();
   puts("Main window: menu shortcuts and workspace routing OK");
