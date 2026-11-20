@@ -64,6 +64,7 @@ public:
     if (m->what == kSaveSearches) {
       BMessage reply(kSearchesSaved);
       reply.AddInt64("revision", m->GetInt64("revision", -1));
+      reply.AddInt64("serial", m->GetInt64("serial", -1));
       try {
         Listi::SavedSearches::FromMessage(*m).Save(
             SettingsPath("Lister_searches").String());

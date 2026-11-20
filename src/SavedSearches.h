@@ -8,6 +8,9 @@ struct SavedSearch {
   std::string name;
   SearchRequest request;
   bool live = false;
+
+  void WriteTo(BMessage &message) const;
+  static SavedSearch FromMessage(const BMessage &message);
 };
 class SavedSearches {
 public:

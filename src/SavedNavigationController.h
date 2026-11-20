@@ -3,6 +3,7 @@
 #include "SavedPlaces.h"
 #include "SavedSearches.h"
 #include <Messenger.h>
+#include <array>
 #include <optional>
 
 namespace Listi {
@@ -19,6 +20,13 @@ public:
   bool CanEditPlaces() const { return placesWritable && !pendingPlaces; }
   const SavedPlaces &Places() const { return places; }
 
+  struct PlacePrompt {
+    std::string question;
+    const char *button;
+    BMessage accepted;
+    std::optional<std::string> initial;
+  };
+  std::optional<PlacePrompt> PreparePlaceEdit(const BMessage &action) const;
   void EditPlace(const BMessage &edit);
   bool FinishPlaceSave(const BMessage &reply);
 
@@ -29,6 +37,8 @@ public:
   BMessage SearchStore() const;
   std::optional<SearchUpdate> EditSearch(const BMessage &edit, BMessenger author);
   std::optional<SearchUpdate> FinishSearchSave(const BMessage &reply);
+  void HandleSearchMessage(const BMessage &message, BMessenger standalone,
+                           const std::array<BMessenger, 2> &embedded);
 
 private:
   BMessenger service;
@@ -40,6 +50,8 @@ private:
   SavedSearches searches;
   bool searchesWritable;
   int64 searchesRevision = 0;
+  // Failed saves keep the revision, but every attempt needs a distinct reply.
+  int64 searchesSerial = 0;
   struct PendingSearch {
     SavedSearches next;
     std::string chosen;

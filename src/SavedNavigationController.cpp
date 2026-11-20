@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: MIT
 #include "SavedNavigationController.h"
 #include "Common.h"
+#include "VirtualFile.h"
 #include <stdexcept>
 #include <utility>
 
 namespace Listi {
+namespace {
+constexpr char kPlacesUnavailable[] =
+    "Saved places are unavailable or still being saved.";
+}
 
 SavedNavigationController::SavedNavigationController(
     BMessenger service, const SavedPlaces &places, bool placesWritable,
@@ -12,9 +17,40 @@ SavedNavigationController::SavedNavigationController(
     : service(service), places(places), placesWritable(placesWritable),
       searches(searches), searchesWritable(searchesWritable) {}
 
+std::optional<SavedNavigationController::PlacePrompt>
+SavedNavigationController::PreparePlaceEdit(const BMessage &message) const {
+  if (!CanEditPlaces())
+    throw std::runtime_error(kPlacesUnavailable);
+
+  const char *path = message.GetString("path", "");
+  const int32 action = message.GetInt32("action", -1);
+  const auto *place = places.Find(path);
+  if (action < 0 || action > 2 || (action != 0 && !place))
+    return std::nullopt;
+
+  static constexpr struct {
+    const char *question;
+    const char *button;
+  } prompts[] = {{"Save this work location: ", "Save place"},
+                 {"Rename saved place: ", "Rename place"},
+                 {"Forget saved place: ", "Forget place"}};
+  const auto &label = prompts[action];
+  PlacePrompt prompt{std::string(label.question) + path, label.button, message,
+                     std::nullopt};
+  prompt.accepted.what = kPlaceAccepted;
+  prompt.accepted.AddBool("placeLabel", true);
+  if (action != 2) {
+    auto initial = place ? place->name : LocationLeaf(path);
+    if (initial.empty())
+      initial = path;
+    prompt.initial = std::move(initial);
+  }
+  return prompt;
+}
+
 void SavedNavigationController::EditPlace(const BMessage &edit) {
   if (!CanEditPlaces())
-    throw std::runtime_error("Saved places are unavailable or still being saved.");
+    throw std::runtime_error(kPlacesUnavailable);
 
   auto next = places;
   const char *path = edit.GetString("path", "");
@@ -69,14 +105,7 @@ SavedNavigationController::EditSearch(const BMessage &edit, BMessenger author) {
           "The saved-search list changed or is being written. Please try again.");
 
     auto next = searches;
-    SavedSearch item;
-    item.name = edit.GetString("name", "");
-    item.request.root = edit.GetString("root", "");
-    item.request.expression = edit.GetString("expression", "");
-    item.request.filters = ReadSearchFilters(edit);
-    item.request.predicate = edit.GetBool("predicate", false);
-    item.request.includeTrash = edit.GetBool("trash", false);
-    item.live = edit.GetBool("live", false);
+    auto item = SavedSearch::FromMessage(edit);
     const bool remove = edit.GetBool("remove", false);
     if (remove)
       next.Remove(item.name);
@@ -86,6 +115,7 @@ SavedNavigationController::EditSearch(const BMessage &edit, BMessenger author) {
     auto request = next.Message();
     request.what = kSaveSearches;
     request.AddInt64("revision", searchesRevision);
+    request.AddInt64("serial", ++searchesSerial);
     pendingSearch = PendingSearch{std::move(next), remove ? "" : item.name, author};
     if (service.SendMessage(&request) != B_OK) {
       pendingSearch.reset();
@@ -101,7 +131,8 @@ SavedNavigationController::EditSearch(const BMessage &edit, BMessenger author) {
 
 std::optional<SavedNavigationController::SearchUpdate>
 SavedNavigationController::FinishSearchSave(const BMessage &result) {
-  if (!pendingSearch || result.GetInt64("revision", -1) != searchesRevision)
+  if (!pendingSearch || result.GetInt64("revision", -1) != searchesRevision ||
+      result.GetInt64("serial", -1) != searchesSerial)
     return std::nullopt;
 
   auto saved = std::move(*pendingSearch);
@@ -118,6 +149,35 @@ SavedNavigationController::FinishSearchSave(const BMessage &result) {
     reply.AddString("chosen", saved.chosen.c_str());
   }
   return SearchUpdate{reply, saved.author};
+}
+
+void SavedNavigationController::HandleSearchMessage(
+    const BMessage &message, BMessenger standalone,
+    const std::array<BMessenger, 2> &embedded) {
+  std::optional<SearchUpdate> reply;
+  switch (message.what) {
+  case kSearchEdit: {
+    auto author = standalone;
+    message.FindMessenger("searchEditor", &author);
+    reply = EditSearch(message, author);
+    break;
+  }
+  case kSearchesSaved:
+    reply = FinishSearchSave(message);
+    break;
+  }
+  if (!reply)
+    return;
+
+  auto shared = SearchStore();
+  auto notify = [&](const BMessenger &editor) {
+    if (editor.IsValid())
+      editor.SendMessage(editor == reply->author ? &reply->message : &shared,
+                         static_cast<BHandler *>(nullptr), 0);
+  };
+  notify(standalone);
+  for (const auto &editor : embedded)
+    notify(editor);
 }
 
 } // namespace Listi

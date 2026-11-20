@@ -100,20 +100,27 @@ class SearchView : public BGroupView {
     throughDate->SetText(f.throughDate.c_str());
     createdDate->SetValue(f.created);
   }
-  bool AddFilters(BMessage &message) {
+  bool ValidateFilters(const SearchRequest &request) {
     try {
-      auto f = Filters();
-      CompileSearchFilters(f);
-      if (!expression->Text()[0] &&
-          (predicate->Value() == B_CONTROL_ON || !f.Active()))
+      CompileSearchFilters(request.filters);
+      if (request.expression.empty() &&
+          (request.predicate || !request.filters.Active()))
         throw std::runtime_error(
             "Enter a name, at least one file filter, or a BFS formula.");
-      WriteSearchFilters(message, f);
       return true;
     } catch (const std::exception &e) {
       Status(e.what());
       return false;
     }
+  }
+  SearchRequest Criteria() const {
+    SearchRequest request;
+    request.root = root->Text();
+    request.expression = expression->Text();
+    request.predicate = predicate->Value() == B_CONTROL_ON;
+    request.includeTrash = trash->Value() == B_CONTROL_ON;
+    request.filters = Filters();
+    return request;
   }
   void StoreControls() {
     save->SetEnabled(writable && !saving);
@@ -455,16 +462,17 @@ public:
       edit.AddMessenger("searchEditor", sectionMenu ? BMessenger(this)
                                                   : BMessenger(Window()));
       edit.AddInt64("revision", storeRevision);
-      edit.AddString("name", name->Text());
       edit.AddBool("remove", m->what == kForget);
       edit.AddBool("replace", !chosen.empty() && chosen == name->Text());
-      edit.AddString("root", root->Text());
-      edit.AddString("expression", expression->Text());
-      edit.AddBool("predicate", predicate->Value() == B_CONTROL_ON);
-      edit.AddBool("trash", trash->Value() == B_CONTROL_ON);
-      edit.AddBool("live", live->Value() == B_CONTROL_ON);
-      if (m->what == kSave && !AddFilters(edit))
-        break;
+      if (m->what == kForget)
+        edit.AddString("name", name->Text());
+      else {
+        SavedSearch item{name->Text(), Criteria(),
+                         live->Value() == B_CONTROL_ON};
+        if (!ValidateFilters(item.request))
+          break;
+        item.WriteTo(edit);
+      }
       if (owner.SendMessage(&edit) == B_OK) {
         saving = true;
         StoreControls();
@@ -510,8 +518,10 @@ public:
       if (busy)
         break;
       BMessage request(kStart);
-      if (!AddFilters(request))
+      const auto criteria = Criteria();
+      if (!ValidateFilters(criteria))
         break;
+      WriteSearchFilters(request, criteria.filters);
       SelectSection(0);
       ++serial;
       generation->store(serial);
@@ -522,14 +532,14 @@ public:
       selected->SetText("");
       selected->SetToolTip("");
       request.AddInt64("serial", serial);
-      request.AddString("root", root->Text());
-      request.AddString("expression", expression->Text());
-      request.AddBool("predicate", predicate->Value() == B_CONTROL_ON);
-      request.AddBool("trash", trash->Value() == B_CONTROL_ON);
+      request.AddString("root", criteria.root.c_str());
+      request.AddString("expression", criteria.expression.c_str());
+      request.AddBool("predicate", criteria.predicate);
+      request.AddBool("trash", criteria.includeTrash);
       request.AddBool("live", live->Value() == B_CONTROL_ON);
       BString description(pane == 0 ? "Left panel | " : "Right panel | ");
-      description << root->Text() << " | " << expression->Text();
-      auto filters = Filters();
+      description << criteria.root.c_str() << " | " << criteria.expression.c_str();
+      const auto &filters = criteria.filters;
       if (filters.Active()) {
         description << " | Files";
         if (!filters.extension.empty())

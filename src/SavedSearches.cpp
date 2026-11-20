@@ -4,6 +4,28 @@
 #include <algorithm>
 #include <stdexcept>
 namespace Listi {
+void SavedSearch::WriteTo(BMessage &message) const {
+  message.AddString("name", name.c_str());
+  message.AddString("root", request.root.c_str());
+  message.AddString("expression", request.expression.c_str());
+  message.AddBool("predicate", request.predicate);
+  message.AddBool("trash", request.includeTrash);
+  message.AddBool("live", live);
+  WriteSearchFilters(message, request.filters);
+}
+
+SavedSearch SavedSearch::FromMessage(const BMessage &message) {
+  SavedSearch item;
+  item.name = message.GetString("name", "");
+  item.request.root = message.GetString("root", "");
+  item.request.expression = message.GetString("expression", "");
+  item.request.predicate = message.GetBool("predicate", false);
+  item.request.includeTrash = message.GetBool("trash", false);
+  item.live = message.GetBool("live", false);
+  item.request.filters = ReadSearchFilters(message);
+  return item;
+}
+
 const SavedSearch *SavedSearches::Find(const std::string &name) const {
   for (const auto &item : items)
     if (item.name == name)
@@ -58,13 +80,7 @@ BMessage SavedSearches::Message() const {
   result.AddInt32("version", 2);
   for (const auto &item : items) {
     BMessage entry;
-    entry.AddString("name", item.name.c_str());
-    entry.AddString("root", item.request.root.c_str());
-    entry.AddString("expression", item.request.expression.c_str());
-    entry.AddBool("predicate", item.request.predicate);
-    entry.AddBool("trash", item.request.includeTrash);
-    entry.AddBool("live", item.live);
-    WriteSearchFilters(entry, item.request.filters);
+    item.WriteTo(entry);
     result.AddMessage("search", &entry);
   }
   return result;
@@ -86,17 +102,9 @@ SavedSearches SavedSearches::FromMessage(const BMessage &m) {
         entry.FindBool("trash", &trash) != B_OK ||
         entry.FindBool("live", &live) != B_OK)
       throw std::runtime_error("Invalid saved search.");
-    SavedSearch item;
-    item.name = entry.GetString("name", "");
-    item.request.root = entry.GetString("root", "");
-    item.request.expression = entry.GetString("expression", "");
-    item.request.predicate = predicate;
-    item.request.includeTrash = trash;
-    item.live = live;
     if (m.GetInt32("version", 0) == 2 && !entry.HasMessage("filters"))
       throw std::runtime_error("Missing saved file filters.");
-    item.request.filters = ReadSearchFilters(entry);
-    result.Put(item, false);
+    result.Put(SavedSearch::FromMessage(entry), false);
   }
   return result;
 }

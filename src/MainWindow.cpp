@@ -114,19 +114,6 @@ class MainWindow : public BWindow {
     for (int i = 0; i < 2; ++i)
       panes[i]->SetSource(i == source);
   }
-  void PublishSearchStore(
-      const Listi::SavedNavigationController::SearchUpdate &reply) {
-    auto send = [&](const BMessenger &recipient) {
-      if (!recipient.IsValid())
-        return;
-      auto update = recipient == reply.author ? reply.message
-                                              : savedNavigation.SearchStore();
-      recipient.SendMessage(&update, static_cast<BHandler *>(nullptr), 0);
-    };
-    send(searchWindow);
-    for (int pane = 0; pane < 2; ++pane)
-      send(split->Panel(pane).SearchMessenger());
-  }
   bool quickView = false;
   MainWindowMenu *menu;
   Listi::WorkspaceSplit *split;
@@ -506,33 +493,15 @@ public:
         queue->Enqueue(*job);
       break;
     }
-    case kPlaceAction: {
-      if (!savedNavigation.CanEditPlaces()) {
-        PostMainWindowNotice("Saved places are unavailable or still being saved.");
-        break;
+    case kPlaceAction:
+      try {
+        if (auto prompt = savedNavigation.PreparePlaceEdit(*m))
+          AskInline(prompt->question.c_str(), prompt->button, prompt->accepted,
+                    prompt->initial ? prompt->initial->c_str() : nullptr);
+      } catch (const std::exception &e) {
+        PostMainWindowNotice(e.what());
       }
-      const char *path = m->GetString("path", "");
-      int32 action = m->GetInt32("action", -1);
-      auto place = savedNavigation.Places().Find(path);
-      if (action < 0 || action > 2 || (action != 0 && !place))
-        break;
-      BMessage accepted(*m);
-      accepted.what = kPlaceAccepted;
-      accepted.AddBool("placeLabel", true);
-      std::string initial = place ? place->name : Listi::LocationLeaf(path);
-      if (initial.empty())
-        initial = path;
-      std::string question = action == 0   ? "Save this work location: "
-                             : action == 1 ? "Rename saved place: "
-                                           : "Forget saved place: ";
-      question += path;
-      AskInline(question.c_str(),
-                action == 0   ? "Save place"
-                : action == 1 ? "Rename place"
-                              : "Forget place",
-                accepted, action == 2 ? nullptr : initial.c_str());
       break;
-    }
     case kPlaceAccepted:
       try {
         savedNavigation.EditPlace(*m);
@@ -541,16 +510,11 @@ public:
         PostMainWindowNotice(e.what());
       }
       break;
-    case kSearchEdit: {
-      BMessenger author(searchWindow);
-      m->FindMessenger("searchEditor", &author);
-      if (auto reply = savedNavigation.EditSearch(*m, author))
-        PublishSearchStore(*reply);
-      break;
-    }
+    case kSearchEdit:
     case kSearchesSaved:
-      if (auto reply = savedNavigation.FinishSearchSave(*m))
-        PublishSearchStore(*reply);
+      savedNavigation.HandleSearchMessage(
+          *m, searchWindow, {split->Panel(0).SearchMessenger(),
+                            split->Panel(1).SearchMessenger()});
       break;
     case kPlacesSaved:
       if (savedNavigation.FinishPlaceSave(*m)) {
