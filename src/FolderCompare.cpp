@@ -53,8 +53,13 @@ Item Inspect(FileEntry e) {
   }
   return i;
 }
-Tree Scan(const std::string &root, size_t limit,
+Tree Scan(std::string root, size_t limit,
           const TransferControl &control) {
+  // lstat("link/") follows the directory link even though lstat("link")
+  // identifies the selected entry. Keep trailing slash spelling equivalent.
+  if (ParseLocation(root).Local())
+    while (root.size() > 1 && root.back() == '/')
+      root.pop_back();
   FileEntry first;
   Need(StatFile(root, first, control) && first.directory && !first.link,
        "Choose an existing folder, not a symbolic link: " + root);
@@ -79,7 +84,7 @@ Tree Scan(const std::string &root, size_t limit,
            "Ambiguous name in folder listing.");
       auto relative = p.relative.empty() ? e.name : p.relative + "/" + e.name;
       e.path = ChildLocation(p.path, e.name);
-      Need(out.size() < limit,
+      Need(out.size() - 1 < limit, // The root is only a validation sentinel.
            "Entry limit reached. Comparison is incomplete.");
       Need(out.emplace(relative, Inspect(e)).second,
            "Duplicate name in folder listing: " + relative);
@@ -174,7 +179,7 @@ CompareResult CompareFolders(const CompareRequest &r,
   CompareResult result;
   result.checksum = r.checksum;
   try {
-    Need(r.entryLimit > 1 && !r.left.empty() && !r.right.empty(),
+    Need(r.entryLimit > 0 && !r.left.empty() && !r.right.empty(),
          "Choose two folders to compare.");
     auto leftGuard = ArchiveGuard(r.left), rightGuard = ArchiveGuard(r.right);
     auto left = Scan(r.left, r.entryLimit, control),
@@ -209,7 +214,9 @@ CompareResult CompareFolders(const CompareRequest &r,
         auto &x = a->second;
         auto &y = b->second;
         if (x.entry.directory != y.entry.directory ||
-            x.entry.link != y.entry.link)
+            x.entry.link != y.entry.link ||
+            (x.local && y.local &&
+             (x.native.st_mode & S_IFMT) != (y.native.st_mode & S_IFMT)))
           e.state = CompareState::TypeDifferent;
         else if (x.entry.link) {
           if (x.local && y.local)

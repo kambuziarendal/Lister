@@ -34,17 +34,33 @@ BTextView *Text(const char *name, float height) {
   v->SetExplicitMinSize(BSize(0, height));
   return v;
 }
+class ByteField : public BStringField {
+public:
+  const int64_t bytes;
+  explicit ByteField(int64_t value)
+      : BStringField(value < 0 ? "" : std::to_string(value).c_str()),
+        bytes(value) {}
+};
+
+class ByteColumn : public BStringColumn {
+public:
+  explicit ByteColumn(const char *label)
+      : BStringColumn(label, 100, 60, 300, B_TRUNCATE_END) {}
+
+  int CompareFields(BField *a, BField *b) override {
+    const auto left = static_cast<ByteField *>(a)->bytes;
+    const auto right = static_cast<ByteField *>(b)->bytes;
+    return (left > right) - (left < right);
+  }
+};
+
 struct Row : BRow {
   size_t index;
   Row(const Listi::CompareEntry &e, size_t i) : index(i) {
     SetField(new BStringField(e.relative.c_str()), 0);
     SetField(new BStringField(Listi::CompareLabel(e.state)), 1);
-    SetField(new BStringField(
-                 e.leftBytes < 0 ? "" : std::to_string(e.leftBytes).c_str()),
-             2);
-    SetField(new BStringField(
-                 e.rightBytes < 0 ? "" : std::to_string(e.rightBytes).c_str()),
-             3);
+    SetField(new ByteField(e.leftBytes), 2);
+    SetField(new ByteField(e.rightBytes), 3);
   }
 };
 struct WorkState {
@@ -165,10 +181,8 @@ public:
         0);
     rows->AddColumn(new BStringColumn("Result", 240, 120, 1000, B_TRUNCATE_END),
                     1);
-    rows->AddColumn(
-        new BStringColumn("Left bytes", 100, 60, 300, B_TRUNCATE_END), 2);
-    rows->AddColumn(
-        new BStringColumn("Right bytes", 100, 60, 300, B_TRUNCATE_END), 3);
+    rows->AddColumn(new ByteColumn("Left bytes"), 2);
+    rows->AddColumn(new ByteColumn("Right bytes"), 3);
     rows->SetSelectionMode(B_SINGLE_SELECTION_LIST);
     rows->SetSelectionMessage(new BMessage(kSelected));
     rows->SetTarget(this);

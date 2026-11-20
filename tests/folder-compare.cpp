@@ -3,9 +3,12 @@
 #include "FolderCompare.h"
 #include "Sha256.h"
 #include <Application.h>
+#include <ColumnListView.h>
+#include <ColumnTypes.h>
 #include <Directory.h>
 #include <Entry.h>
 #include <Path.h>
+#include <Window.h>
 #include <cerrno>
 #include <dirent.h>
 #include <fstream>
@@ -46,6 +49,35 @@ bool state(const CompareResult &r, const std::string &name, CompareState s) {
       return e.state == s;
   return false;
 }
+bool NumericSizeOrder(BApplication &app, const std::string &left,
+                      const std::string &right) {
+  OpenFolderCompare(left, right);
+  BWindow *window = app.WindowAt(0);
+  if (!window)
+    return false;
+  BMessenger target(window);
+  target.SendMessage('cmqu');
+  bool sorted = false, requested = false;
+  for (int i = 0; i < 250 && !sorted; ++i) {
+    if (window->LockWithTimeout(20000) == B_OK) {
+      auto list = dynamic_cast<BColumnListView *>(window->FindView("folder comparison results"));
+      if (list && list->CountRows() == 2) {
+        if (!requested) {
+          list->SetSortColumn(list->ColumnAt(2), false, true);
+          requested = true;
+        }
+        const auto first = static_cast<BStringField *>(list->RowAt(0)->GetField(2));
+        const auto last = static_cast<BStringField *>(list->RowAt(1)->GetField(2));
+        sorted = std::string(first->String()) == "2" &&
+                 std::string(last->String()) == "10";
+      }
+      window->Unlock();
+    }
+    snooze(10000);
+  }
+  target.SendMessage(B_QUIT_REQUESTED);
+  return sorted;
+}
 void clean(const std::string &p) {
   BDirectory d(p.c_str());
   BEntry e;
@@ -84,6 +116,27 @@ int main() {
   mkdir(l.c_str(), 0700);
   mkdir(r.c_str(), 0700);
   try {
+    put(l + "/a", std::string(10, 'a'));
+    put(l + "/b", "bb");
+    check(NumericSizeOrder(app, l, r),
+          "comparison byte column sorts 2 before 10 and preserves exact displayed bytes");
+    unlink((l + "/a").c_str());
+    unlink((l + "/b").c_str());
+    put(l + "/single", "checked");
+    put(r + "/single", "checked");
+    auto boundary = CompareFolders({l + "/", r, true, 1});
+    check(boundary.complete && boundary.verified == 1,
+          "a one-entry limit admits one child, not just the root");
+    put(l + "/overflow", "second child");
+    check(!CompareFolders({l, r, false, 1}).complete,
+          "an extra child still exceeds the configured limit");
+    unlink((l + "/overflow").c_str());
+    unlink((l + "/single").c_str());
+    unlink((r + "/single").c_str());
+    symlink(r.c_str(), (root + "/folder-link").c_str());
+    check(!CompareFolders({l, root + "/folder-link/", true}).complete,
+          "a trailing slash cannot make a symbolic root a compared folder");
+
     for (auto &p : {l, r}) {
       mkdir((p + "/nested").c_str(), 0700);
       mkdir((p + "/empty").c_str(), 0700);
@@ -138,6 +191,11 @@ int main() {
     auto special = CompareFolders({l, r, true});
     check(!special.complete && state(special, "pipe", CompareState::Unverified),
           "FIFO never blocks or claims successful comparison");
+    unlink((r + "/pipe").c_str());
+    put(r + "/pipe", "");
+    auto mixed = CompareFolders({l, r, true});
+    check(mixed.complete && state(mixed, "pipe", CompareState::TypeDifferent),
+          "a local FIFO and a regular file are a known type difference");
     unlink((l + "/pipe").c_str());
     unlink((r + "/pipe").c_str());
     check(!CompareFolders({l, root + "/absent", true}).complete,
