@@ -12,6 +12,7 @@
 #include "../src/SavedSearches.h"
 #include "../src/WindowKeyFilter.h"
 #include "../src/WorkspaceSplit.h"
+#include "../src/WorkspaceEditor.h"
 #include <Alert.h>
 #include <Application.h>
 #include <Button.h>
@@ -71,6 +72,31 @@ static void CheckFunctionButtons() {
   assert(grid() && grid()->CountChildren() == 0 && fallback->CountItems() == 0);
 }
 
+static void CheckToolPlacement(BWindow *window) {
+  auto *top = window->FindView("top workspace tools");
+  auto *bottom = window->FindView("bottom workspace tools");
+  auto *bank = window->FindView("workspace action buttons");
+  assert(top && bottom && bank && bottom->CountChildren() == 2);
+  auto *command = dynamic_cast<BTextControl *>(bottom->ChildAt(1));
+  assert(command);
+  for (bool above : {true, false}) {
+    WorkspaceLayout layout;
+    layout.bankTop = layout.commandTop = above;
+    layout.command = true;
+    BMessage apply(kApplyWorkspaceEditor), saved, profiles;
+    layout.Archive(saved);
+    apply.AddMessage("layout", &saved);
+    apply.AddMessage("profiles", &profiles);
+    window->MessageReceived(&apply);
+    auto *target = above ? top : bottom;
+    auto *empty = above ? bottom : top;
+    assert(target->CountChildren() == 2 && empty->CountChildren() == 0);
+    assert(target->ChildAt(0) == bank && target->ChildAt(1) == command);
+    assert(!command->IsHidden(target) && !target->IsHidden(target));
+    assert(empty->IsHidden(empty));
+  }
+}
+
 static void CheckWorkspaceSplit(Listi::WorkspaceSplit &split, BView *first) {
   auto *inspector = &split.Inspector();
   auto near = [](float a, float b) { return std::fabs(a - b) < 0.0001f; };
@@ -115,6 +141,7 @@ int main() {
   BApplication app("application/x-vnd.Listi-MainWindowRoutingTest");
   CheckFunctionButtons();
   auto *window = CreateMainWindow(Preferences{}, BMessenger{}, {}, false, {}, false);
+  CheckToolPlacement(window);
   auto *menu = dynamic_cast<BMenuBar *>(window->FindView("menu"));
   assert(menu);
   auto item = [&](uint32 action) {
