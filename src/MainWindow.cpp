@@ -230,12 +230,12 @@ class MainWindow : public BWindow {
   void PlaceTools() {
     auto *bankZone = prefs.bankTop ? topTools : bottomTools;
     if (bank->Parent() != bankZone) {
-      bank->RemoveSelf();
+      (prefs.bankTop ? bottomTools : topTools)->GroupLayout()->RemoveView(bank);
       bankZone->GroupLayout()->AddView(int32(0), bank);
     }
     auto *commandZone = prefs.commandTop ? topTools : bottomTools;
     if (command->Parent() != commandZone) {
-      command->RemoveSelf();
+      (prefs.commandTop ? bottomTools : topTools)->GroupLayout()->RemoveView(command);
       commandZone->AddChild(command);
     }
   }
