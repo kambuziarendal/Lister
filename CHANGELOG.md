@@ -1,11 +1,12 @@
 # Changelog
 
-## 0.37.1-2 testing
+## [0.37.1-2 alpha test candidate](https://github.com/kambuziarendal/listi/releases/tag/v0.37.1-2)
 
+- Connect suggests the first readable standard SSH identity in your home directory. You can still enter a custom path.
 - Panel errors wrap at the available width. A failed folder or SFTP address keeps its error visible; press Enter in the address field to retry it.
 - Settings categories remain accessible in a narrow window, and short windows can scroll the current page without hiding Save or Cancel.
 
-## [0.37.1-1 alpha test candidate](https://github.com/kambuziarendal/listi/releases/tag/v0.37.1-1)
+## 0.37.1-1 alpha test candidate
 
 - Edit text inside Inspector and Quick view. A draft stays bound to its original file when the selection changes or the editor is detached.
 - Open Flat View for the active panel in any workspace, resize the standalone Shelf, and jump to recent folders.

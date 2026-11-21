@@ -8,10 +8,10 @@ Listi is a native Haiku file manager. Browse a single folder, compare two panels
 
 ## Install
 
-Download the **[0.37.1-1 alpha test candidate for Haiku x86_64](https://github.com/kambuziarendal/listi/releases/tag/v0.37.1-1)**. Open the HPKG in HaikuDepot, or install it from the download folder:
+Download the **[0.37.1-2 alpha test candidate for Haiku x86_64](https://github.com/kambuziarendal/listi/releases/tag/v0.37.1-2)**. Open the HPKG in HaikuDepot, or install it from the download folder:
 
 ```sh
-pkgman install ./Listi-0.37.1-1-x86_64.hpkg
+pkgman install ./Listi-0.37.1-2-x86_64.hpkg
 ```
 
 This is alpha software. See the release notes for what was tested, and try it on copies of your files. To transfer files between disks, use **Copy**, remount the destination and check the copy before removing the original. In the virtual USB disconnect test, the copy job kept waiting after **Cancel**. The [physical USB test](docs/VERIFICATION.md#physical-usb-disconnect-during-copy) has not been run.
