@@ -2,6 +2,7 @@
 #include "Pane.h"
 #include <Application.h>
 #include <LayoutBuilder.h>
+#include <OutlineListView.h>
 #include <ScrollBar.h>
 #include <TextControl.h>
 #include <Window.h>
@@ -64,11 +65,33 @@ int main() {
     passed = passed && preview && selected && revision >= 0 && pane->SelectionRevision() != revision &&
              pane->MatchPattern("*", false) == 1 && pane->Selected().size() == 1;
   }
+  // Disks has no folder row of its own. Keeping the old row selected also
+  // prevents a click on it from navigating back through the sidebar.
+  prefs.workspace = Workspace::askr;
+  pane->SetWorkspace(prefs);
+  auto *tree = dynamic_cast<BOutlineListView *>(pane->FindView("folder tree"));
+  auto visit = [&](const char *path) {
+    pane->Navigate(path);
+    for (int i = 0; i < 200 && pane->IsScanning(); ++i) {
+      window->Unlock();
+      snooze(25000);
+      window->Lock();
+    }
+    return !pane->IsScanning() && pane->LocationValid() &&
+           std::string(pane->Path()) == path;
+  };
+  const bool beforeDisks = visit("/") && tree && tree->CurrentSelection() == 0;
+  const bool atDisks = visit("@disks") && tree && tree->CountItems() > 0 &&
+                       tree->CurrentSelection() < 0;
+  const bool returned = visit("/") && tree && tree->CurrentSelection() == 0;
+  const bool treePassed = beforeDisks && atDisks && returned;
+  std::cout << (treePassed ? "PASS " : "FAIL ")
+            << "Disks keeps the local folder tree usable without selecting a folder\n";
   window->Quit();
   for (int i = 0; i < count; ++i)
     unlink((root + "/" + std::to_string(i)).c_str());
   rmdir(root.c_str());
   std::cout << (passed ? "PASS " : "FAIL ")
             << "icon grid filter, wildcard selection and preview invalidation\n";
-  return passed ? 0 : 1;
+  return passed && treePassed ? 0 : 1;
 }

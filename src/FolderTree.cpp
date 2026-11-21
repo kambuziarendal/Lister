@@ -139,17 +139,18 @@ void FolderTree::NavigateSelection(const std::string &path) {
   BMessenger(navigationTarget).SendMessage(&m);
 }
 void FolderTree::ShowPath(const std::string &path) {
-  if (!reader || IsHidden() || path == "@disks")
+  if (!reader || IsHidden())
     return;
   try {
-    auto location = Listi::ParseLocation(path);
+    const bool overview = path == "@disks";
+    auto location = Listi::ParseLocation(overview ? "/" : path);
     location.path = "/";
     std::string newRoot = location.URL();
-    desired = path;
+    desired = overview ? "" : path;
     // A directory created since this tree was loaded may be absent even when
     // its ancestor is cached. Rebuild that route instead of keeping an unrelated
     // selection; clicks on already loaded nodes keep the expanded tree intact.
-    if (root != newRoot || !items.count(path)) {
+    if (root != newRoot || (!overview && !items.count(path))) {
       ++*generation;
       Clear();
       root = newRoot;
@@ -187,6 +188,12 @@ void FolderTree::ExpandPath(const std::string &path) {
   reader->PostMessage(&m);
 }
 void FolderTree::Follow() {
+  // Disks is not a directory. Late branch reads must not reselect the last
+  // folder and consume a click that is meant to return there.
+  if (desired.empty()) {
+    list->DeselectAll();
+    return;
+  }
   for (auto &pair : items) {
     auto p = pair.first;
     if (p == desired) {
