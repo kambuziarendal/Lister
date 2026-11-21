@@ -28,9 +28,9 @@ struct AppRow : BRow {
   }
   void UpdateLabel(const Listi::OpenTypeInfo &info) {
     std::string label = app.name;
-    if (app.signature == info.typePreferred)
+    if (Listi::SameMimeName(app.signature, info.typePreferred))
       label += " (type default)";
-    if (app.signature == info.filePreferred)
+    if (Listi::SameMimeName(app.signature, info.filePreferred))
       label += " (file preference)";
     static_cast<BStringField *>(GetField(0))->SetString(label.c_str());
   }
@@ -291,7 +291,7 @@ public:
           row->UpdateLabel(info);
           apps->UpdateRow(row);
         }
-        Status(!info.filePreferred.empty() && info.filePreferred != info.typePreferred
+        Status(!info.filePreferred.empty() && !Listi::SameMimeName(info.filePreferred, info.typePreferred)
             ? "Type default saved. This file still uses its own preferred application."
             : "Type default saved. Open once to open the selected file now.");
       }

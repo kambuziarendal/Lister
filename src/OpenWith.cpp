@@ -31,6 +31,11 @@ void LocalFile(const std::string &path, struct stat &info) {
         "Choose one local regular file. Copy remote entries locally; open link targets directly.");
 }
 }
+// Native MIME types and application signatures are case-insensitive even when
+// the preferred application attribute preserves the spelling supplied by its writer.
+bool SameMimeName(const std::string &a, const std::string &b) {
+  return strcasecmp(a.c_str(), b.c_str()) == 0;
+}
 OpenApplication InspectApplication(const std::string &path) {
   OpenApplication app;
   // Resolve an application symlink, but record the actual executable identity.
@@ -48,7 +53,7 @@ OpenApplication InspectApplication(const std::string &path) {
   BAppFileInfo info(&executable);
   Require(info.GetSignature(signature), "Read native application signature");
   if (!BMimeType::IsValid(signature) ||
-      !strcmp(signature, "application/x-vnd.Kambuzi-Lister"))
+      SameMimeName(signature, "application/x-vnd.Kambuzi-Lister"))
     throw std::runtime_error(
         "Choose another native application, not Listi itself.");
   uint32 flags = 0;
@@ -119,7 +124,7 @@ OpenTypeInfo ReadType(BFile &file, const entry_ref &ref) {
 }
 void ValidateApplication(const OpenApplication &app) {
   const auto current = InspectApplication(app.path);
-  if (!Same(app.identity, current.identity) || app.signature != current.signature)
+  if (!Same(app.identity, current.identity) || !SameMimeName(app.signature, current.signature))
     throw std::runtime_error(
         "The application changed. Close this dialog and choose it again.");
 }
@@ -141,7 +146,7 @@ OpenTypeInfo OpenWithSession::Inspect() {
       return;
     try {
       auto candidate = InspectApplication(location.Path());
-      if (candidate.signature == signature &&
+      if (SameMimeName(candidate.signature, signature) &&
           paths.insert(candidate.path).second)
         result.applications.push_back(std::move(candidate));
     } catch (const std::exception
@@ -157,8 +162,8 @@ OpenTypeInfo OpenWithSession::Inspect() {
     add(signature);
   std::stable_sort(result.applications.begin(), result.applications.end(),
                    [&](const auto &a, const auto &b) {
-                     bool ap = a.signature == result.preferred,
-                          bp = b.signature == result.preferred;
+                     bool ap = SameMimeName(a.signature, result.preferred),
+                          bp = SameMimeName(b.signature, result.preferred);
                      return ap != bp ? ap : a.name < b.name;
                    });
   Validate();
@@ -180,7 +185,7 @@ void OpenWithSession::SetTypeDefault(const OpenApplication &application,
   ValidateApplication(application);
   Validate();
   const auto type = ReadType(file, ref);
-  if (type.mime != displayedType || !type.CanSetTypeDefault())
+  if (!SameMimeName(type.mime, displayedType) || !type.CanSetTypeDefault())
     throw std::runtime_error(
         "No specific matching file type. Close and reopen the dialog, or use Open once.");
   // Haiku records a signature, not an executable path. Do not promise to

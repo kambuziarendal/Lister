@@ -92,6 +92,11 @@ int main(){
   info.SetPreferredApp(receiver.signature.c_str());OpenWithSession preferred(path);auto choices=preferred.Inspect();
   Check(choices.preferred==receiver.signature,"per-file preferred application is displayed");
   Check(!choices.applications.empty() && choices.applications[0].signature==receiver.signature,"preferred application ordered first");
+  const char *foldedSignature = "application/x-vnd.kambuzi-openwithfixture";
+  Check(info.SetPreferredApp(foldedSignature) == B_OK, "store a case-variant native signature");
+  const auto folded = OpenWithSession(path).Inspect();
+  Check(!folded.applications.empty() && folded.applications.front().signature == receiver.signature,
+        "native signature case does not hide the preferred application");
   info.SetType("application/x-listi-unknown-fixture");info.SetPreferredApp("application/x-vnd.Listi-MissingFixture");
   OpenWithSession unknown(path);auto missing=unknown.Inspect();
   Check(missing.applications.empty(),"unknown type and missing preferred app allow explicit picker fallback");

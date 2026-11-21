@@ -17,6 +17,7 @@ struct OpenTypeInfo {
   bool CanSetTypeDefault() const;
   std::vector<OpenApplication> applications;
 };
+bool SameMimeName(const std::string &, const std::string &);
 OpenApplication InspectApplication(const std::string &path);
 // One local regular file. Neither discovery nor opening writes associations.
 class OpenWithSession {
