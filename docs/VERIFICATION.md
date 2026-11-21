@@ -164,12 +164,13 @@ of Smiðja. Run the `preferences-state` native test for settings compatibility.
 ### Flat View
 
 Run `python3 tests/run-native-audit.py flat-view file-search live-search shelf`.
-The Flat View fixture opens the native window over local files with duplicate
+The Flat View fixture scans local files with duplicate
 names and a directory-link cycle. It injects an unreadable branch, exercises
 filtering and frozen Shelf selection, and stops a deliberately paused scan.
 For a manual workspace check, select files in either panel, set a panel filter,
-and open **View > File view > Flat View…**. Close it and confirm that the same
-panel, selection, filter and workspace remain in place.
+and choose **View > File view > Flat View**. Confirm that results appear in
+that panel without opening a window, and the opposite panel remains usable.
+Close the tab and check that the original selection and filter are restored.
 
 ### BFS attribute columns
 

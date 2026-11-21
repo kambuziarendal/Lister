@@ -99,8 +99,9 @@ See [Panels and jobs][jobs] for result labels and recovery details.
 
 ## Find, collect and rename
 
-- **One recursive file list:** Choose **View > File view > Flat View…** from
-  a local folder. The **Relative folder** column distinguishes files with the
+- **One recursive file list:** Choose **View > File view > Flat View** to show
+  the active panel’s local folder tree in that panel. The other panel stays
+  available. The **Relative folder** column distinguishes files with the
   same name; `.` marks the starting folder. Filter by file name or relative
   folder, or stop the scan and keep its partial results. Flat View is a
   read-only snapshot. **Add to Shelf** collects references to the selected

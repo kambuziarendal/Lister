@@ -363,8 +363,8 @@ wildcard expansion. Hidden rows are deselected; Select All and file operations
 act on visible selections. New navigation clears the filter; refreshing the same
 folder preserves it.
 
-**View > File view > Flat View…** opens a read-only recursive snapshot of the
-active panel's local folder. The **Relative folder** column distinguishes
+**View > File view > Flat View** shows a read-only recursive snapshot in the
+active file panel. The other panel stays as it was. The **Relative folder** column distinguishes
 identical filenames; `.` means the starting folder itself. Filter by a literal
 name or relative-folder fragment without rescanning. Filtered-out files are
 deselected.
@@ -372,8 +372,9 @@ deselected.
 Select files and click **Add to Shelf** to collect references to those exact
 originals. If an original is unavailable or has been replaced since the scan,
 the selection is not added. Flat View itself has no file-changing actions.
-Close it to return to the same panel, selection and workspace. To scan another
-folder or take a fresh snapshot, close and reopen Flat View from that folder.
+Choose **Files** or close the Flat View tab to return to the original file
+list and selection. To scan another folder, navigate there and choose **Flat
+View** again.
 
 The scan runs in the background and lists regular files on the same persistent
 local volume. It does not follow symbolic links or enter Trash. **Stop scan**
