@@ -495,40 +495,6 @@ int main(int argc, char **argv) {
     return nullptr;
   };
 
-  // Explicit mode only: this interoperability test uses the system clipboard.
-  if (argc == 2 && std::string(argv[1]) == "--clipboard") {
-    assert(be_clipboard->Lock());
-    BMessage savedClipboard(*be_clipboard->Data());
-    be_clipboard->Unlock();
-    Listi::PutPathsAsText({"first clipboard text"});
-    send(kClipboardPaste);
-    auto *save = promptButton("Save");
-    assert(save);
-    // Close the question under the window lock, leaving its reply queued.
-    // A second Paste must not swap the first reply's data or reserve a Cut.
-    BMessage accept(*save->Message());
-    window->FindView("question")->Parent()->MessageReceived(&accept);
-    assert(!promptButton("Save"));
-    Listi::PutPathsAsText({"second clipboard text"});
-    send(kClipboardPaste);
-    assert(!promptButton("Save"));
-    const auto clipboardFile = sourcePath + "/Clipboard.txt";
-    waitFor([&] { return access(clipboardFile.c_str(), F_OK) == 0; });
-    std::string contents;
-    assert(std::getline(std::ifstream(clipboardFile), contents));
-    assert(contents == "first clipboard text");
-    assert(unlink(clipboardFile.c_str()) == 0);
-    send(kClipboardPaste);
-    assert(promptButton("Save"));
-    send(kInlineCancel);
-    assert(!promptButton("Save"));
-    assert(be_clipboard->Lock());
-    *be_clipboard->Data() = savedClipboard;
-    assert(be_clipboard->Commit(true) == B_OK);
-    be_clipboard->Unlock();
-    puts("Clipboard: queued confirmation retained original bytes; next paste available");
-  }
-
   // A pattern preview must not authorize replacing a new folder's selection,
   // even when the pattern still matches entries there.
   send(kSelectPattern);
@@ -626,6 +592,41 @@ int main(int argc, char **argv) {
   const auto created = sourcePath + "/New folder";
   waitFor([&] { return access(created.c_str(), F_OK) == 0; });
   assert(access((elsewhere + "/New folder").c_str(), F_OK) != 0);
+  // Run last: saving and deleting files triggers directory-monitor reloads.
+  // Explicit mode only: this interoperability test uses the system clipboard.
+  if (argc == 2 && std::string(argv[1]) == "--clipboard") {
+    assert(be_clipboard->Lock());
+    BMessage savedClipboard(*be_clipboard->Data());
+    be_clipboard->Unlock();
+    Listi::PutPathsAsText({"first clipboard text"});
+    send(kClipboardPaste);
+    auto *save = promptButton("Save");
+    assert(save);
+    // Close the question under the window lock, leaving its reply queued.
+    // A second Paste must not swap the first reply's data or reserve a Cut.
+    BMessage accept(*save->Message());
+    window->FindView("question")->Parent()->MessageReceived(&accept);
+    assert(!promptButton("Save"));
+    Listi::PutPathsAsText({"second clipboard text"});
+    send(kClipboardPaste);
+    assert(!promptButton("Save"));
+    const auto clipboardFile = std::string(pane->Path()) + "/Clipboard.txt";
+    waitFor([&] { return access(clipboardFile.c_str(), F_OK) == 0; });
+    std::string contents;
+    assert(std::getline(std::ifstream(clipboardFile), contents));
+    assert(contents == "first clipboard text");
+    assert(unlink(clipboardFile.c_str()) == 0);
+    send(kClipboardPaste);
+    assert(promptButton("Save"));
+    send(kInlineCancel);
+    assert(!promptButton("Save"));
+    assert(be_clipboard->Lock());
+    *be_clipboard->Data() = savedClipboard;
+    assert(be_clipboard->Commit(true) == B_OK);
+    be_clipboard->Unlock();
+    puts("Clipboard: queued confirmation retained original bytes; next paste available");
+  }
+
   assert(rmdir(created.c_str()) == 0 && rmdir(elsewhere.c_str()) == 0);
   assert(unlink(file.c_str()) == 0 && rmdir(temp) == 0);
   auto *split = dynamic_cast<Listi::WorkspaceSplit *>(left->Parent());
