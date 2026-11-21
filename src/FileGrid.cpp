@@ -314,10 +314,11 @@ public:
   }
   void KeyDown(const char *bytes, int32 length) override {
     const auto &visible = model->Visible();
+    const uint32 eventModifiers = Listi::TypeSelectModifiers(*this);
     int match;
     if (length > 0 && !pane->IsScanning() &&
         typeSelect.KeyDown({bytes, size_t(length)},
-                           Listi::TypeSelectModifiers(*this), system_time(),
+                           eventModifiers, system_time(),
                            pane->Path(), visible.size(), model->Focused(),
                            [&](int index) { return visible[index]; }, match)) {
       Pick(match, false);
@@ -371,7 +372,7 @@ public:
       if (change) {
         Pick(std::max(
                  0, std::min(int(model->Visible().size()) - 1, index + change)),
-             modifiers() & B_SHIFT_KEY);
+             eventModifiers & B_SHIFT_KEY);
         return;
       }
     }

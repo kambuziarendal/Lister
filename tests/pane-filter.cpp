@@ -2,6 +2,7 @@
 #include "Pane.h"
 #include <Application.h>
 #include <LayoutBuilder.h>
+#include <Messenger.h>
 #include <OutlineListView.h>
 #include <ScrollBar.h>
 #include <TextControl.h>
@@ -57,6 +58,30 @@ int main() {
     pane->MessageReceived(&changed);
     bar->GetRange(&low, &restored);
     passed = initial > 0 && filtered == 0 && restored == initial;
+    // Shift may already be released when the looper processes the arrow.
+    grid->MakeFocus();
+    const bool anchored = pane->MatchPattern("70", true) == 1;
+    const char right[] = {B_RIGHT_ARROW, 0};
+    BMessage key(B_KEY_DOWN);
+    key.AddString("bytes", right);
+    key.AddInt8("byte", B_RIGHT_ARROW);
+    key.AddInt32("raw_char", B_RIGHT_ARROW);
+    key.AddInt32("key", 0);
+    key.AddInt32("modifiers", B_SHIFT_KEY);
+    BMessenger target(grid);
+    BMessage frame(B_GET_PROPERTY), reply;
+    frame.AddSpecifier("Frame");
+    window->Unlock();
+    const bool delivered = target.SendMessage(&key) == B_OK &&
+        target.SendMessage(&frame, &reply, 2000000, 2000000) == B_OK;
+    window->Lock();
+    const auto range = pane->Selected();
+    const bool shiftRange = anchored && delivered &&
+        range == std::vector<std::string>{root + "/70", root + "/71"};
+    std::cout << (shiftRange ? "PASS " : "FAIL ")
+              << "queued Shift+Right selects a range in the icon grid\n";
+    passed = passed && shiftRange;
+    pane->Select(0);
     const auto revision = pane->SelectionRevision();
     const bool preview = pane->MatchPattern("7?", false) == 10 && pane->Selected().empty();
     const bool selected = pane->MatchPattern("7?", true) == 10 && pane->Selected().size() == 10;
