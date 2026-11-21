@@ -87,7 +87,10 @@ void CheckTargets(BulkRenamePreview &preview) {
         leaving.insert(row.before);
     }
   }
-  for (auto &row : preview.rows) {
+  std::map<std::string, size_t> needsVacant;
+  std::deque<size_t> blocked;
+  for (size_t i = 0; i < preview.rows.size(); ++i) {
+    auto &row = preview.rows[i];
     if (row.error.empty() && row.before != row.after) {
       ++preview.changed;
       try {
@@ -96,12 +99,27 @@ void CheckTargets(BulkRenamePreview &preview) {
         ValidateEntryLeaf(row.after);
         if (!leaving.count(row.after))
           ValidateNewEntryName(preview.job.destinationFolder, row.after);
+        else
+          needsVacant.emplace(row.after, i);
       } catch (const std::runtime_error &error) {
         row.error = error.what();
       }
     }
     if (!row.error.empty())
-      ++preview.blocked;
+      blocked.push_back(i);
+  }
+  // A blocked rename will not release its original name. Follow the chain
+  // backwards so that no dependent row is advertised as ready.
+  while (!blocked.empty()) {
+    const auto &occupied = preview.rows[blocked.front()].before;
+    blocked.pop_front();
+    ++preview.blocked;
+    const auto dependent = needsVacant.find(occupied);
+    if (dependent != needsVacant.end()) {
+      preview.rows[dependent->second].error =
+          "Another blocked entry cannot release this name.";
+      blocked.push_back(dependent->second);
+    }
   }
 }
 

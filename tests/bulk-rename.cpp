@@ -2,6 +2,7 @@
 #include "BulkRename.h"
 #include "JobSnapshot.h"
 #include <Application.h>
+#include <array>
 #include <Node.h>
 #include <cerrno>
 #include <cstdio>
@@ -76,6 +77,71 @@ template <class F> bool Reject(F action) {
     return true;
   }
 }
+// Enumerate all assignments of three source names to five usable names
+// and one unrelated occupied name. Verify the actual directory after every
+// operation, including the unchanged rows of a mixed batch.
+void CheckMappings(const std::string &folder) {
+  if (mkdir(folder.c_str(), 0700))
+    throw std::runtime_error("Cannot create mapping fixture");
+  const std::array<std::string, 6> names{
+      "été.txt", "blå", ".nom", "新", "two words.txt", "occupied"};
+  const std::vector<std::string> sources{Join(folder, names[0]),
+                                         Join(folder, names[1]),
+                                         Join(folder, names[2])};
+  const auto occupied = Join(folder, names[5]);
+  for (size_t i = 0; i < sources.size(); ++i)
+    Write(sources[i], std::to_string(i));
+  Write(occupied, "keep");
+  const auto snapshot = [&] {
+    std::map<std::string, std::string> files;
+    for (const auto &entry : std::filesystem::directory_iterator(folder))
+      files.emplace(entry.path().filename().string(), Read(entry.path().string()));
+    return files;
+  };
+  const auto original = snapshot();
+  const auto batch = FreezeBulkRename(folder, sources);
+  for (size_t a = 0; a < names.size(); ++a) {
+    for (size_t b = 0; b < names.size(); ++b) {
+      for (size_t c = 0; c < names.size(); ++c) {
+        BulkRenameOptions options;
+        options.overrides = {{sources[0], names[a]}, {sources[1], names[b]},
+                             {sources[2], names[c]}};
+        const auto preview = PreviewBulkRename(batch, options);
+        const int changes = (a != 0) + (b != 1) + (c != 2);
+        const bool valid = a < 5 && b < 5 && c < 5 &&
+                           a != b && b != c && a != c && changes;
+        const auto fail = [&] {
+          throw std::runtime_error("Unexpected mapping result: " + names[a] +
+                                   ", " + names[b] + ", " + names[c]);
+        };
+        if (preview.CanApply() != valid)
+          fail();
+        if (a == 1 && b == 2 && c == 5 && preview.blocked != 3)
+          fail();
+        auto result = Run(preview.job, {});
+        if (valid) {
+          const std::map<std::string, std::string> expected{
+              {names[a], "0"}, {names[b], "1"}, {names[c], "2"}, {names[5], "keep"}};
+          if (result.completed != changes || !result.errors.empty() ||
+              !result.bulkRenameUndo || snapshot() != expected)
+            fail();
+          const auto inverse = Run(*result.bulkRenameUndo, {});
+          if (inverse.completed != changes || !inverse.errors.empty())
+            fail();
+        } else if (result.completed || result.errors.empty()) {
+          fail();
+        }
+        if (snapshot() != original)
+          fail();
+      }
+    }
+  }
+  for (const auto &source : sources)
+    unlink(source.c_str());
+  unlink(occupied.c_str());
+  rmdir(folder.c_str());
+  Check(true, "216 rename mappings preserve exact contents, diagnose blocked chains and undo all valid changes");
+}
 } // namespace
 
 int main() {
@@ -85,6 +151,7 @@ int main() {
     return 2;
   const std::string root(temp), folder = root + "/entries";
   try {
+    CheckMappings(root + "/mappings");
     if (mkdir(folder.c_str(), 0700))
       throw std::runtime_error("Cannot create fixture directory");
     const auto a = folder + "/find find.txt", b = folder + "/find folder.v1",
