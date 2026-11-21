@@ -78,6 +78,25 @@ int main() {
   assert(state.Saving()); // The search is still pending.
   assert(!state.FinishPlaceSave(placeReply));
 
+  // Accepting the suggested label unchanged must work even when another
+  // folder already uses that label.
+  BMessage shortcut(kPlaceAction);
+  shortcut.AddInt32("action", 0);
+  shortcut.AddString("path", "/other/Work");
+  auto prompt = state.PreparePlaceEdit(shortcut);
+  assert(prompt && prompt->initial && *prompt->initial == "Work (2)");
+  prompt->accepted.AddString("name", prompt->initial->c_str());
+  state.EditPlace(prompt->accepted);
+  const auto secondPlace = requests->Next();
+  assert(secondPlace.what == kSavePlaces);
+  placeReply.ReplaceInt64("serial", secondPlace.GetInt64("serial", -1));
+  assert(state.FinishPlaceSave(placeReply));
+  const auto *savedShortcut = state.Places().Find("/other/Work");
+  assert(savedShortcut && savedShortcut->name == "Work (2)");
+  shortcut.ReplaceInt32("action", 1);
+  prompt = state.PreparePlaceEdit(shortcut);
+  assert(prompt && prompt->initial && *prompt->initial == "Work (2)");
+
   BMessage searchReply(kSearchesSaved);
   searchReply.AddInt64("revision", 1);
   searchReply.AddInt64("serial", saveSearch.GetInt64("serial", -1));

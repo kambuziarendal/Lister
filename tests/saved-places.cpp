@@ -50,6 +50,21 @@ int main() {
     full.Add("Place " + std::to_string(i), "/" + std::to_string(i));
   check(SavedPlaces::FromMessage(full.Message()).Items().size() == SavedPlaces::Limit, "64-place boundary roundtrips");
   rejects([&]{ full.Add("overflow", "/overflow"); }, "65th place refused");
+  SavedPlaces labels;
+  const auto longLeaf = std::string(79, 'x') + "å";
+  const auto longLabel = labels.SuggestedName("/one/" + longLeaf);
+  labels.Add(longLabel, "/one/" + longLeaf);
+  check(longLabel == std::string(79, 'x'),
+        "suggested name does not split a multibyte character at the byte limit");
+  const auto secondLabel = labels.SuggestedName("/two/" + longLeaf);
+  labels.Add(secondLabel, "/two/" + longLeaf);
+  const auto thirdLabel = labels.SuggestedName("/three/" + longLeaf);
+  labels.Add(thirdLabel, "/three/" + longLeaf);
+  check(secondLabel == std::string(76, 'x') + " (2)" &&
+            thirdLabel == std::string(76, 'x') + " (3)",
+        "long duplicate names reserve room for a unique suffix");
+  check(labels.SuggestedName("/line\nbreak") == "Place",
+        "invalid folder label gets a valid fallback");
   std::string file = "/boot/home/listi-places-test-" + std::to_string(getpid());
   check(SavedPlaces::Load(file).Items().empty(), "missing store starts empty");
   places.Save(file);

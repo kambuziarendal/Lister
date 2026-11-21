@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "SavedNavigationController.h"
 #include "Common.h"
-#include "VirtualFile.h"
 #include <stdexcept>
 #include <utility>
 
@@ -39,12 +38,8 @@ SavedNavigationController::PreparePlaceEdit(const BMessage &message) const {
                      std::nullopt};
   prompt.accepted.what = kPlaceAccepted;
   prompt.accepted.AddBool("placeLabel", true);
-  if (action != 2) {
-    auto initial = place ? place->name : LocationLeaf(path);
-    if (initial.empty())
-      initial = path;
-    prompt.initial = std::move(initial);
-  }
+  if (action != 2)
+    prompt.initial = place ? place->name : places.SuggestedName(path);
   return prompt;
 }
 

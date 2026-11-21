@@ -6,6 +6,29 @@
 #include <stdexcept>
 namespace Listi {
 namespace {
+constexpr size_t kNameLimit = 80;
+
+std::string TrimName(const std::string &name) {
+  const auto first = name.find_first_not_of(" \t\r\n");
+  return first == std::string::npos
+             ? ""
+             : name.substr(first, name.find_last_not_of(" \t\r\n") - first + 1);
+}
+
+bool ValidName(const std::string &name) {
+  return !name.empty() && name.size() <= kNameLimit &&
+         std::none_of(name.begin(), name.end(),
+                      [](unsigned char c) { return c < 32 || c == 127; });
+}
+
+std::string NamePrefix(const std::string &name, size_t limit) {
+  size_t end = std::min(name.size(), limit);
+  if (end < name.size())
+    while (end > 0 && (static_cast<unsigned char>(name[end]) & 0xc0) == 0x80)
+      --end;
+  return TrimName(name.substr(0, end));
+}
+
 std::string Address(const std::string &path) {
   if (path.empty() || path.size() > 8192 ||
       path.find('\0') != std::string::npos)
@@ -25,19 +48,31 @@ const SavedPlace *SavedPlaces::Find(const std::string &path) const {
 }
 std::string SavedPlaces::Name(const std::string &raw,
                               const std::string &except) const {
-  auto first = raw.find_first_not_of(" \t\r\n");
-  std::string name =
-      first == std::string::npos
-          ? ""
-          : raw.substr(first, raw.find_last_not_of(" \t\r\n") - first + 1);
-  if (name.empty() || name.size() > 80 ||
-      std::any_of(name.begin(), name.end(),
-                  [](unsigned char c) { return c < 32 || c == 127; }))
+  auto name = TrimName(raw);
+  if (!ValidName(name))
     throw std::runtime_error(
         "Use a name of 1 to 80 bytes without control characters.");
+  if (NameInUse(name, except))
+    throw std::runtime_error("That place name is already in use.");
+  return name;
+}
+bool SavedPlaces::NameInUse(const std::string &name,
+                            const std::string &except) const {
   for (auto &item : items)
     if (item.path != except && item.name == name)
-      throw std::runtime_error("That place name is already in use.");
+      return true;
+  return false;
+}
+std::string SavedPlaces::SuggestedName(const std::string &path) const {
+  auto leaf = LocationLeaf(path);
+  auto base = NamePrefix(leaf.empty() ? path : leaf, kNameLimit);
+  if (!ValidName(base))
+    base = "Place";
+  auto name = base;
+  for (size_t i = 2; NameInUse(name); ++i) {
+    const auto suffix = " (" + std::to_string(i) + ")";
+    name = NamePrefix(base, kNameLimit - suffix.size()) + suffix;
+  }
   return name;
 }
 void SavedPlaces::Add(const std::string &raw, const std::string &location) {
