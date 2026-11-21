@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "DynamicLibrary.h"
+#include "SshPaths.h"
 #include "VirtualFile.h"
 #include <algorithm>
 #include <cerrno>
@@ -164,11 +165,8 @@ struct CurlSession {
       Set(CURLOPT_XFERINFODATA, this);
       Set(CURLOPT_NOPROGRESS, 0L);
       if (l.scheme == "sftp") {
-        if (auth.knownHosts.empty()) {
-          const char *home = getenv("HOME");
-          auth.knownHosts =
-              std::string(home ? home : "/boot/home") + "/.ssh/known_hosts";
-        }
+        if (auth.knownHosts.empty())
+          auth.knownHosts = DefaultSshPath(false);
         Set(CURLOPT_SSH_KNOWNHOSTS, auth.knownHosts.c_str());
         if (!auth.privateKey.empty())
           Set(CURLOPT_SSH_PRIVATE_KEYFILE, auth.privateKey.c_str());

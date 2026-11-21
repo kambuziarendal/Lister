@@ -495,7 +495,7 @@ screenshots and bug reports.
 
 For SFTP, open **Connect** and enter the address and username. Under **Advanced**,
 **SSH private key** defaults to the first readable `id_ed25519`, `id_ecdsa` or
-`id_rsa` in your home folder’s `.ssh` directory. For a custom login key, enter
+`id_rsa` in Haiku’s `~/config/settings/ssh/` directory, then `~/.ssh/`. For a custom login key, enter
 its path (not its `.pub` file).
 **SSH known hosts** identifies the server: keep the default if it already contains
 a trusted key for the address you entered, or select a known_hosts file obtained
