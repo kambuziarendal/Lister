@@ -128,7 +128,43 @@ int main() {
   window->Lock();
   check(pane->Selected() == std::vector<std::string>{child},
         "parent retains the branch directory as actionable selection");
-  pane->NavigateFromColumn(child, inner);
+  // A click captured in a preview must not be reinterpreted after the
+  // file is replaced. Hold the window lock until the replacement is visible.
+  struct stat before;
+  if (lstat(inner.c_str(), &before) != 0)
+    return 2;
+  PaneEntry clicked;
+  clicked.path = inner;
+  clicked.device = before.st_dev;
+  clicked.node = before.st_ino;
+  pane->NavigateFromColumn(child, inner, true, false, {}, &clicked);
+  const auto previous = child + "/previous.txt";
+  if (rename(inner.c_str(), previous.c_str()) != 0)
+    return 2;
+  std::ofstream(inner) << "replacement";
+  auto *status = dynamic_cast<BStringView *>(pane->FindView("status"));
+  bool rejected = false;
+  for (int i = 0; i < 200 && !rejected; ++i) {
+    window->Unlock();
+    snooze(25000);
+    window->Lock();
+    rejected = status && std::string(status->Text()) ==
+                             "Column entry changed. Select it again.";
+  }
+  check(rejected && root == pane->Path() &&
+            pane->Selected() == std::vector<std::string>{child},
+        "stale preview click cannot select or open a replacement file");
+  if (lstat(inner.c_str(), &before) != 0)
+    return 2;
+  clicked.device = before.st_dev;
+  clicked.node = before.st_ino;
+  pane->NavigateFromColumn(child, inner, false, false, {}, &clicked);
+  window->Unlock();
+  check(ready(child), "fresh preview click reaches the intended folder");
+  window->Lock();
+  check(pane->Selected() == std::vector<std::string>{inner},
+        "fresh preview click selects the matching file after the rescan");
+  pane->NavigateFromColumn(root, file);
   pane->Navigate(archiveRoot.c_str());
   window->Unlock();
 
@@ -157,6 +193,7 @@ int main() {
   window->Quit();
 
   unlink(archive.destination.c_str());
+  unlink(previous.c_str());
   unlink(inner.c_str());
   unlink(file.c_str());
   rmdir(child.c_str());

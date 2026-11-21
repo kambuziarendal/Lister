@@ -187,11 +187,11 @@ public:
     const bool doubleClick = message->GetInt32("clicks", 1) == 2;
     if (!Current()) {
       if (row && row->directory && !secondary)
-        pane->NavigateFromColumn(row->path);
+        pane->NavigateFromColumn(row->path, {}, false, false, {}, row);
       else
         pane->NavigateFromColumn(location, row ? row->path : "",
                                  row && doubleClick && !secondary, secondary,
-                                 ConvertToScreen(point));
+                                 ConvertToScreen(point), row);
       return;
     }
     MakeFocus();
@@ -655,6 +655,8 @@ void MillerColumns::MessageReceived(BMessage *message) {
       row->path = item.GetString("path", "");
       row->directory = item.GetBool("directory", false);
       row->kind = item.GetInt32("kind", 0);
+      row->device = item.GetInt64("device", -1);
+      row->node = item.GetInt64("node", -1);
       state->incoming.Add(std::move(row));
     }
     return;

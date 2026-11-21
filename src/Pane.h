@@ -39,7 +39,7 @@ public:
   void NavigateFromColumn(const std::string &folder,
                           const std::string &selection = {},
                           bool invoke = false, bool context = false,
-                          BPoint at = {});
+                          BPoint at = {}, const PaneEntry *clicked = nullptr);
   void Reload();
   void SetPlaces(const Listi::SavedPlaces &, bool writable);
   void SetSource(bool);

@@ -40,6 +40,14 @@
 #include <unistd.h>
 
 namespace {
+bool ColumnEntryUnchanged(const BMessage &action) {
+  const char *path = action.GetString("clickedPath", nullptr);
+  if (!path)
+    return true;
+  return Listi::SameSearchEntry(
+      {path, action.GetInt64("device", -1), action.GetInt64("node", -1)});
+}
+
 class PaneInput : public BMessageFilter {
   Pane *pane;
   bool isFilter;
@@ -476,8 +484,13 @@ void Pane::Navigate(const char *p) {
 }
 void Pane::NavigateFromColumn(const std::string &folder,
                               const std::string &selection, bool invoke,
-                              bool context, BPoint at) {
+                              bool context, BPoint at, const PaneEntry *clicked) {
   BMessage message(kColumnNavigate);
+  if (clicked && !Listi::IsVirtual(clicked->path)) {
+    message.AddString("clickedPath", clicked->path.c_str());
+    message.AddInt64("device", clicked->device);
+    message.AddInt64("node", clicked->node);
+  }
   message.AddString("path", folder.c_str());
   message.AddString("selection", selection.c_str());
   message.AddBool("invoke", invoke);
@@ -878,6 +891,10 @@ void Pane::MessageReceived(BMessage *m) {
   case kColumnNavigate: {
     if (mode != MillerMode || m->GetInt64("serial", -1) != serial)
       break;
+    if (!ColumnEntryUnchanged(*m)) {
+      SetStatus("Column entry changed. Select it again.");
+      break;
+    }
     const char *destination = m->GetString("path", path.String());
     if (path == destination && (locationValid || scanning) &&
         !m->GetString("selection", "")[0] && !m->GetBool("context", false) &&
@@ -940,7 +957,7 @@ void Pane::MessageReceived(BMessage *m) {
     auto r = entries.Focused();
     if (m->HasString("column") &&
         (scanning || path != m->GetString("column", "") || !r ||
-         r->path != m->GetString("selection", "")))
+         r->path != m->GetString("selection", "") || !ColumnEntryUnchanged(*m)))
       break;
     if (r) {
       if (r->directory)
@@ -1044,6 +1061,14 @@ void Pane::MessageReceived(BMessage *m) {
       std::string picked = action.GetString("selection", "");
       if (!picked.empty())
         entries.SetSelection({picked}, picked);
+      bool changedColumn = !ColumnEntryUnchanged(action);
+      if (!picked.empty() && action.HasString("clickedPath")) {
+        const auto *row = entries.OnlySelected();
+        changedColumn |= !row || row->device != action.GetInt64("device", -1) ||
+                         row->node != action.GetInt64("node", -1);
+      }
+      if (changedColumn)
+        entries.SetSelection({}, "");
       if (!reveal.path.empty()) {
         const auto &visible = entries.Visible();
         const auto row =
@@ -1067,12 +1092,14 @@ void Pane::MessageReceived(BMessage *m) {
       if (m->FindData("node", B_RAW_TYPE, &p, &n) == B_OK &&
           n == sizeof(node_ref))
         watch_node(static_cast<const node_ref *>(p), B_WATCH_ALL, this);
-      if (action.GetBool("context", false))
+      if (changedColumn)
+        SetStatus("Column entry changed. Select it again.");
+      else if (action.GetBool("context", false))
         ContextMenu(picked, action.GetPoint("screen", BPoint()));
       else if (action.GetBool("invoke", false) && !entries.Selected().empty()) {
-        BMessage invoke(kInvoke);
+        BMessage invoke(action);
+        invoke.what = kInvoke;
         invoke.AddString("column", path);
-        invoke.AddString("selection", picked.c_str());
         Window()->PostMessage(&invoke, this);
       }
     }
