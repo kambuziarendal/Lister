@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "ArchivePasswordWindow.h"
 #include "ArchivePasswords.h"
+#include "TextFieldFocus.h"
 #include <Button.h>
 #include <LayoutBuilder.h>
 #include <Messenger.h>
@@ -64,7 +65,7 @@ public:
     GetLayout()->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
     AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
     SetDefaultButton(unlock);
-    password->MakeFocus(true);
+    Listi::FocusTextAtEnd(*password);
     Show();
   }
   ~PasswordWindow() { Finish(); }
