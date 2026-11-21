@@ -4,6 +4,7 @@
 #include "../src/Common.h"
 #include "../src/FunctionButtonBank.h"
 #include "../src/ImagePreview.h"
+#include "../src/FileClipboard.h"
 #include "../src/MainWindow.h"
 #include "../src/MainWindowMenu.h"
 #include "../src/Pane.h"
@@ -176,7 +177,7 @@ static void CheckWorkspaceSplit(Listi::WorkspaceSplit &split, BView *first) {
   assert(near(layout.splitWeights[2], 0.2f));
 }
 
-int main() {
+int main(int argc, char **argv) {
   BApplication app("application/x-vnd.Listi-MainWindowRoutingTest");
   CheckFunctionButtons();
   auto *window = CreateMainWindow(Preferences{}, BMessenger{}, {}, false, {}, false);
@@ -493,6 +494,40 @@ int main() {
     }
     return nullptr;
   };
+
+  // Explicit mode only: this interoperability test uses the system clipboard.
+  if (argc == 2 && std::string(argv[1]) == "--clipboard") {
+    assert(be_clipboard->Lock());
+    BMessage savedClipboard(*be_clipboard->Data());
+    be_clipboard->Unlock();
+    Listi::PutPathsAsText({"first clipboard text"});
+    send(kClipboardPaste);
+    auto *save = promptButton("Save");
+    assert(save);
+    // Close the question under the window lock, leaving its reply queued.
+    // A second Paste must not swap the first reply's data or reserve a Cut.
+    BMessage accept(*save->Message());
+    window->FindView("question")->Parent()->MessageReceived(&accept);
+    assert(!promptButton("Save"));
+    Listi::PutPathsAsText({"second clipboard text"});
+    send(kClipboardPaste);
+    assert(!promptButton("Save"));
+    const auto clipboardFile = sourcePath + "/Clipboard.txt";
+    waitFor([&] { return access(clipboardFile.c_str(), F_OK) == 0; });
+    std::string contents;
+    assert(std::getline(std::ifstream(clipboardFile), contents));
+    assert(contents == "first clipboard text");
+    assert(unlink(clipboardFile.c_str()) == 0);
+    send(kClipboardPaste);
+    assert(promptButton("Save"));
+    send(kInlineCancel);
+    assert(!promptButton("Save"));
+    assert(be_clipboard->Lock());
+    *be_clipboard->Data() = savedClipboard;
+    assert(be_clipboard->Commit(true) == B_OK);
+    be_clipboard->Unlock();
+    puts("Clipboard: queued confirmation retained original bytes; next paste available");
+  }
 
   // A pattern preview must not authorize replacing a new folder's selection,
   // even when the pattern still matches entries there.

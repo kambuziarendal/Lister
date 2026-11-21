@@ -42,7 +42,9 @@ std::optional<std::string> ClipboardFlow::SaveFile(const std::string &name) {
 }
 
 void ClipboardFlow::Begin(uint32 action, Pane &pane) {
-  if (actionArea.Pending()) {
+  // Accept and cancel are delivered to the window after the prompt closes.
+  // Keep the frozen contents (or cut lease) until that reply is processed.
+  if (actionArea.Pending() || pendingClipboardFile || archiveClipboardPending) {
     queue.ErrorInfo("Finish or cancel the open question first.");
     return;
   }
