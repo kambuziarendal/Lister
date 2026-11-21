@@ -493,6 +493,14 @@ behaviour vary by protocol and server. Comparison or previews can cause network
 reads, including downloading complete files. Keep credentials out of shared URLs,
 screenshots and bug reports.
 
+For SFTP, open **Connect** and enter the address and username. Under **Advanced**,
+**SSH private key** is the path to your local login key (not its `.pub` file).
+**SSH known hosts** identifies the server: keep the default if it already contains
+a trusted key for the address you entered, or select a known_hosts file obtained
+from the server administrator. An unknown or changed host key stops the connection
+before your login key is checked. Verify the server fingerprint before trusting
+a new key.
+
 ## Settings and older versions
 
 The 0.31.1 naming update retains existing workspace values and settings aliases.
