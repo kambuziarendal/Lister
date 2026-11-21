@@ -411,6 +411,10 @@ bool WorkspaceSplit::HandlePanelCommand(BMessage *m) {
     Panel(1 - source).Files().Navigate(Panel(source).Files().Path());
     break;
   case kRefresh:
+    if (auto &active = Panel(source); active.Current() == PanelPage::Flat) {
+      active.Page(PanelPage::Flat)->MessageReceived(m);
+      break;
+    }
     for (auto *panel : panes)
       panel->Files().Reload();
     break;

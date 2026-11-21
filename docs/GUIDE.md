@@ -367,7 +367,7 @@ folder preserves it.
 active file panel. The other panel stays as it was. The **Relative folder** column distinguishes
 identical filenames; `.` means the starting folder itself. Filter by a literal
 name or relative-folder fragment without rescanning. Filtered-out files are
-deselected.
+deselected. Choose **Refresh** to rescan the same folder with the filter intact.
 
 Select files and click **Add to Shelf** to collect references to those exact
 originals. If an original is unavailable or has been replaced since the scan,

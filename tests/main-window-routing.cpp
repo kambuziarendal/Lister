@@ -377,6 +377,30 @@ int main(int argc, char **argv) {
       });
       assert(app.CountWindows() == windows && other->Current() == otherPage);
       assert(!other->FindView("flat results") && active->Files().IsHidden());
+      if (mode == Workspace::tviskipt && index == 0) {
+        auto *filter = dynamic_cast<BTextControl *>(active->FindView("flat filter"));
+        assert(filter && filter->ModificationMessage());
+        filter->SetText("another");
+        assert(window->PostMessage(filter->ModificationMessage(),
+                                   filter->Target()) == B_OK);
+        auto *rows = static_cast<BColumnListView *>(active->FindView("flat results"));
+        waitFor([&] { return rows->CountRows() == 1; });
+        rows->SetFocusRow(rows->RowAt(0), true);
+        assert(rows->CurrentSelection());
+
+        const auto newFile = otherFolder + "/another-new.txt";
+        assert(std::ofstream(newFile) << "new since the snapshot");
+        assert(static_cast<BInvoker *>(item(kRefresh))->Invoke() == B_OK);
+        auto *status = static_cast<BStringView *>(active->FindView("flat status"));
+        assert(status);
+        waitFor([&] {
+          return rows->CountRows() == 2 &&
+                 std::string(status->Text()) == "2 of 3 files shown. Scan complete.";
+        });
+        assert(std::string(filter->Text()) == "another");
+        assert(!rows->CurrentSelection() && !rows->FocusRow());
+        assert(unlink(newFile.c_str()) == 0);
+      }
       BMessage closeFlat(Listi::kClosePanelPage);
       closeFlat.AddInt32("pane", index);
       window->MessageReceived(&closeFlat);

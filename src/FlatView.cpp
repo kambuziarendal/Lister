@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "FlatView.h"
+#include "Common.h"
 #include "FileSearch.h"
 #include "NameFilter.h"
 #include "SearchWorker.h"
@@ -117,6 +118,40 @@ class FlatView : public BGroupView {
     if (!scanning) deliveryTimer.reset();
   }
 
+  void StartScan() {
+    generation->fetch_add(1);
+    // Haiku's Clear() drops the rows but doesn't reset the keyboard focus row.
+    if (auto *focused = results->FocusRow()) {
+      results->RemoveRow(focused);
+      delete focused;
+    }
+    results->Clear();
+    files.clear();
+    shelfStatus->SetText("");
+    shelfStatus->SetToolTip("");
+    scanState = "Scanning…";
+
+    if (!worker) {
+      worker = NewSearchWorker(BMessenger(this), generation, failedSerial);
+      if (worker->Run() < 0) {
+        if (worker->Lock())
+          worker->Quit();
+        worker = nullptr;
+      }
+    }
+    BMessage check(kDeliveryCheck);
+    deliveryTimer.reset(new BMessageRunner(BMessenger(this), &check, 250000));
+    BMessage request(kSearchStart);
+    request.AddInt64("serial", generation->load());
+    request.AddString("root", rootPath.c_str());
+    request.AddBool("flat", true);
+    scanning = worker && deliveryTimer->InitCheck() == B_OK &&
+               worker->PostMessage(&request) == B_OK;
+    if (!scanning)
+      scanState = "Incomplete: could not start scan.";
+    UpdateStatus();
+  }
+
   void Collect() {
     std::vector<std::string> paths;
     std::map<std::string, NodeIdentity> expected;
@@ -193,21 +228,8 @@ public:
     filter->SetTarget(this);
     stop->SetTarget(this);
     collect->SetTarget(this);
-    if (worker)
-      return;
-
-    BMessage check(kDeliveryCheck);
-    deliveryTimer.reset(new BMessageRunner(BMessenger(this), &check, 250000));
-    worker = NewSearchWorker(BMessenger(this), generation, failedSerial);
-    BMessage request(kSearchStart);
-    request.AddInt64("serial", generation->load());
-    request.AddString("root", rootPath.c_str());
-    request.AddBool("flat", true);
-    scanning = worker->Run() >= 0 && deliveryTimer->InitCheck() == B_OK &&
-               worker->PostMessage(&request) == B_OK;
-    if (!scanning)
-      scanState = "Incomplete: could not start scan.";
-    UpdateStatus();
+    if (!worker)
+      StartScan();
   }
 
   ~FlatView() {
@@ -221,6 +243,9 @@ public:
     switch (message->what) {
     case kFlatView:
       filter->MakeFocus();
+      break;
+    case kRefresh:
+      StartScan();
       break;
     case kFilterChanged:
       needle = filter->Text();
