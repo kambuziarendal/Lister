@@ -248,13 +248,13 @@ public:
       return bytes[0] != B_ESCAPE && raw != 't' && raw != 'T' && raw != 'q' &&
              raw != 'Q';
     }
-    if (!Active())
-      return true;
     if ((mods & B_SHIFT_KEY) &&
         (bytes[0] == B_PAGE_UP || bytes[0] == B_PAGE_DOWN)) {
       ScrollHistory(bytes[0] == B_PAGE_UP ? rows : -rows);
       return true;
     }
+    if (!Active())
+      return true;
     historyOffset = 0;
     selection = {};
     int vtMods = VTERM_MOD_NONE;

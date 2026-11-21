@@ -9,6 +9,7 @@
 #include <OS.h>
 #include <SplitView.h>
 #include <Window.h>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -62,6 +63,26 @@ public:
       }
       be_clipboard->Unlock();
     }
+  }
+
+  std::string CopyFirstThreeCells(BView &screen) {
+    const auto width = std::ceil(screen.StringWidth("M"));
+    const BPoint first(6, 6), third(6 + 2 * width, 6);
+    screen.MouseDown(first);
+    screen.MouseMoved(third, B_INSIDE_VIEW, nullptr);
+    screen.MouseUp(third);
+    BMessage copy(B_COPY);
+    screen.MessageReceived(&copy);
+    if (!be_clipboard->Lock())
+      return {};
+    const void *data;
+    ssize_t size;
+    std::string result;
+    if (be_clipboard->Data()->FindData("text/plain", B_MIME_TYPE, &data, &size) == B_OK)
+      result.assign(static_cast<const char *>(data), size);
+    sequence = be_clipboard->SystemCount();
+    be_clipboard->Unlock();
+    return result;
   }
 
 private:
@@ -351,9 +372,29 @@ int main() {
           }),
           "can detach after closing the floating window");
     detached = Floating(app);
-    Check(Enter(detached, "exit") &&
+    Check(Enter(detached, "set -- $(stty size); for ((i=0;i<2*$1;i++)); do "
+                          "printf '%03d\\n' \"$i\"; done; exit") &&
               Until([&] { return PanelMatches(detached, panel, 1, false); }),
           "rebound polling notices PTY exit while detached");
+    Check(WithWindow(detached, [&](BWindow &) {
+            auto *screen = panel->FindView("terminal screen");
+            if (!screen)
+              return false;
+            const auto first = clipboard.CopyFirstThreeCells(*screen);
+            auto page = [&](char code) {
+              BMessage key(B_KEY_DOWN);
+              const char bytes[] = {code, 0};
+              key.AddString("bytes", bytes);
+              key.AddInt32("modifiers", B_SHIFT_KEY);
+              panel->HandleKey(&key);
+              return clipboard.CopyFirstThreeCells(*screen);
+            };
+            const auto previous = page(B_PAGE_UP);
+            return previous.size() == 3 &&
+                   previous.find_first_not_of("0123456789") == std::string::npos &&
+                   previous != first && page(B_PAGE_DOWN) == first;
+          }),
+          "Shift+Page Up reads older output after exit; Shift+Page Down returns");
     Check(Click(detached, "Close CLI") &&
               Until([&] { return !detached.IsValid(); }) &&
               Enter(main, "printf '%s' \"$token\" > after", 1) &&
