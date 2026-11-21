@@ -3,6 +3,7 @@
 #include "Common.h"
 #include "ExplicitSubmit.h"
 #include "SshKeyFormat.h"
+#include "TextFieldFocus.h"
 #include "SshPaths.h"
 #include "VirtualFile.h"
 #include "WrappedLabel.h"
@@ -54,7 +55,7 @@ public:
         .Add(unlock)
         .End();
     SetDefaultButton(unlock);
-    passphrase->MakeFocus(true);
+    Listi::FocusTextAtEnd(*passphrase);
     AddToSubset(owner);
     CenterIn(owner->Frame());
     MoveOnScreen();
@@ -208,7 +209,10 @@ public:
       }
     };
     target(target, this);
-    url->MakeFocus(true);
+  }
+  void AllAttached() override {
+    BGroupView::AllAttached();
+    Listi::FocusTextAtEnd(*url);
   }
   void DetachedFromWindow() override {
     DismissPassphrase();

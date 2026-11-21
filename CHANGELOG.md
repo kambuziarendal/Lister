@@ -2,7 +2,7 @@
 
 ## [0.37.1-2 alpha test candidate](https://github.com/kambuziarendal/listi/releases/tag/v0.37.1-2)
 
-- Connect suggests the first readable standard SSH identity in your home directory. You can still enter a custom path. Encrypted SSH keys have a separate, masked passphrase field.
+- Connect suggests the first readable standard SSH identity in your home directory. You can still enter a custom path. Connect prompts locally to unlock encrypted SSH keys. Text entry opens with a blinking insertion point.
 - Panel errors wrap at the available width. A failed folder or SFTP address keeps its error visible; press Enter in the address field to retry it.
 - Settings categories remain accessible in a narrow window, and short windows can scroll the current page without hiding Save or Cancel.
 
