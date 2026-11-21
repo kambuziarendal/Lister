@@ -9,8 +9,22 @@
 #include <LayoutBuilder.h>
 #include <TextControl.h>
 #include <TextView.h>
+#include <cstdlib>
+#include <sys/stat.h>
+#include <unistd.h>
 namespace {
 constexpr uint32 kConnect = 'conn', kAdvanced = 'nadv', kCancelConnect = 'nccl';
+std::string DefaultPrivateKey(const std::string &directory) {
+  for (auto name : {"id_ed25519", "id_ecdsa", "id_rsa"}) {
+    const std::string path = directory + "/" + name;
+    struct stat info;
+    if (stat(path.c_str(), &info) == 0 && S_ISREG(info.st_mode) &&
+        access(path.c_str(), R_OK) == 0)
+      return path;
+  }
+  return {};
+}
+
 class ConnectionView : public BGroupView {
   BMessenger pane, closeTarget;
   BMessage closeMessage;
@@ -35,9 +49,13 @@ public:
     password = new BTextControl("Password:", "", nullptr);
     password->TextView()->HideTyping(true);
     domain = new BTextControl("SMB domain:", "", nullptr);
-    key = new BTextControl("SSH private key:", "", nullptr);
-    hosts = new BTextControl("SSH known hosts:", "/boot/home/.ssh/known_hosts",
-                             nullptr);
+    const char *home = std::getenv("HOME");
+    const std::string sshDirectory =
+        std::string(home && *home ? home : "/boot/home") + "/.ssh";
+    key = new BTextControl("ssh key", "SSH private key:",
+                           DefaultPrivateKey(sshDirectory).c_str(), nullptr);
+    hosts = new BTextControl("known hosts", "SSH known hosts:",
+                             (sshDirectory + "/known_hosts").c_str(), nullptr);
     advanced = new BGroupView(B_VERTICAL, 4);
     BLayoutBuilder::Group<>(advanced, B_VERTICAL, 4)
         .AddGroup(B_HORIZONTAL, 12)
