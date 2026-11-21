@@ -5,6 +5,7 @@
 #include "SearchWindow.h"
 #include "SearchWorker.h"
 #include <Application.h>
+#include <Button.h>
 #include <StringView.h>
 #include <TextControl.h>
 #include <Window.h>
@@ -79,6 +80,60 @@ int main() {
   BMessage stop(Listi::kSearchStop);
   search->MessageReceived(&stop);
   assert(std::string(status->Text()).find("Stopped: 1 result kept.") == 0);
+  auto *save = dynamic_cast<BButton *>(search->FindView("save search"));
+  auto *forget = dynamic_cast<BButton *>(search->FindView("forget search"));
+  auto *name = dynamic_cast<BTextControl *>(search->FindView("search name"));
+  assert(save && forget && name);
+  Listi::SavedSearch item;
+  item.name = "Notes";
+  item.request.root = "/boot/home";
+  item.request.expression = "first";
+  Listi::SavedSearches store;
+  store.Put(item, false);
+  int64 revision = 0;
+  auto update = [&] {
+    auto snapshot = store.Message();
+    snapshot.what = kSearchStore;
+    snapshot.AddInt64("revision", ++revision);
+    snapshot.AddBool("writable", true);
+    search->MessageReceived(&snapshot);
+  };
+  update();
+  BMessage load('sqld');
+  load.AddString("name", "Notes");
+  search->MessageReceived(&load);
+  expression->SetText("unfinished work");
+  auto other = item;
+  other.name = "Music";
+  store.Put(other, false);
+  update();
+  assert(save->IsEnabled() && forget->IsEnabled());
+
+  // Another editor changed only a nested filter of the loaded search.
+  // Receiving its new revision is not consent to overwrite that change.
+  item.request.filters.extension = "pdf";
+  store.Put(item, true);
+  update();
+  assert(!save->IsEnabled() && !forget->IsEnabled());
+  assert(std::string(expression->Text()) == "unfinished work");
+  assert(std::string(status->Text()).find("changed elsewhere") != std::string::npos);
+  auto *extension = dynamic_cast<BTextControl *>(search->FindView("file extension"));
+  assert(extension && std::string(extension->Text()).empty());
+  name->SetText("Notes copy");
+  BMessage renameDraft('sqnm');
+  search->MessageReceived(&renameDraft);
+  assert(save->IsEnabled() && !forget->IsEnabled());
+  search->MessageReceived(&load);
+  assert(save->IsEnabled() && forget->IsEnabled());
+  assert(std::string(extension->Text()) == "pdf");
+
+  store.Remove("Notes");
+  update();
+  assert(!save->IsEnabled() && !forget->IsEnabled());
+  expression->SetText("preserve me");
+  search->MessageReceived(&load); // A stale menu invocation.
+  assert(std::string(expression->Text()) == "preserve me");
+  assert(std::string(status->Text()) == "That saved search no longer exists.");
   searchWindow->Quit();
   puts("Search result ordering, live reconciliation and stop status OK");
 }

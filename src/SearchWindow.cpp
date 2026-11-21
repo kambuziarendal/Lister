@@ -21,6 +21,7 @@
 #include <Window.h>
 #include <memory>
 #include <stdexcept>
+#include <utility>
 namespace {
 using namespace Listi;
 constexpr uint32 kStart = 'ssrt', kStop = 'sstp', kHit = 'shit',
@@ -44,6 +45,7 @@ class SearchView : public BGroupView {
   BButton *save, *forget;
   SavedSearches saved;
   std::string chosen;
+  bool chosenChanged = false;
   int64 storeRevision = 0, resultRevision = 0;
   bool writable = true, saving = false, initial = true;
   std::vector<SearchHit> pending;
@@ -123,8 +125,9 @@ class SearchView : public BGroupView {
     return request;
   }
   void StoreControls() {
-    save->SetEnabled(writable && !saving);
-    forget->SetEnabled(writable && !saving && !chosen.empty() &&
+    save->SetEnabled(writable && !saving &&
+                     !(chosenChanged && chosen == name->Text()));
+    forget->SetEnabled(writable && !saving && !chosenChanged && !chosen.empty() &&
                        chosen == name->Text());
     name->SetEnabled(!saving);
     savedField->SetEnabled(!saving);
@@ -132,8 +135,21 @@ class SearchView : public BGroupView {
   void Store(const BMessage &m) {
     if (m.GetInt64("revision", 0) < storeRevision)
       return;
-    saved = SavedSearches::FromMessage(m);
+    auto next = SavedSearches::FromMessage(m);
+    if (!m.HasString("chosen") && !chosen.empty() && !chosenChanged) {
+      const auto *before = saved.Find(chosen);
+      const auto *after = next.Find(chosen);
+      if (before && after) {
+        BMessage previous, current;
+        before->WriteTo(previous);
+        after->WriteTo(current);
+        chosenChanged = !previous.HasSameData(current, true, true);
+      } else
+        chosenChanged = !after;
+    }
+    saved = std::move(next);
     if (m.HasString("chosen")) {
+      chosenChanged = false;
       chosen = m.GetString("chosen", "");
       name->SetText(chosen.c_str());
     }
@@ -153,15 +169,16 @@ class SearchView : public BGroupView {
       entry->SetMarked(item.name == chosen);
     }
     savedMenu->SetTargetForItems(this);
-    if (!saved.Find(chosen)) {
-      chosen.clear();
+    if (!saved.Find(chosen))
       savedMenu->ItemAt(0)->SetMarked(true);
-    }
     StoreControls();
     if (m.HasString("error"))
       Status(m.GetString("error", "Save failed."));
+    else if (chosenChanged)
+      Status("Saved search changed elsewhere. Reload it or save under another name.");
     else if (m.GetBool("committed", false))
-      Status("Search criteria saved. Results are never stored.");
+      Status(chosen.empty() ? "Saved search forgotten." :
+                              "Search criteria saved. Results are never stored.");
   }
   void Cancel() {
     if (!busy)
@@ -415,8 +432,14 @@ public:
     case kLoad: {
       if (saving)
         break;
+      const std::string requested = m->GetString("name", "");
+      if (!requested.empty() && !saved.Find(requested)) {
+        Status("That saved search no longer exists.");
+        break;
+      }
       Cancel();
-      chosen = m->GetString("name", "");
+      chosenChanged = false;
+      chosen = requested;
       name->SetText(chosen.c_str());
       if (const auto *item = saved.Find(chosen)) {
         root->SetText(item->request.root.c_str());
@@ -448,7 +471,7 @@ public:
     }
     case kSave:
     case kForget: {
-      if (!writable || saving)
+      if (!writable || saving || (chosenChanged && chosen == name->Text()))
         break;
       if (m->what == kForget && (chosen.empty() || chosen != name->Text()))
         break;
