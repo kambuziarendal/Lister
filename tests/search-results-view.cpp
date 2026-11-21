@@ -84,12 +84,12 @@ int main() {
   auto *forget = dynamic_cast<BButton *>(search->FindView("forget search"));
   auto *name = dynamic_cast<BTextControl *>(search->FindView("search name"));
   assert(save && forget && name);
-  Listi::SavedSearch item;
-  item.name = "Notes";
-  item.request.root = "/boot/home";
-  item.request.expression = "first";
+  Listi::SavedSearch savedSearch;
+  savedSearch.name = "Notes";
+  savedSearch.request.root = "/boot/home";
+  savedSearch.request.expression = "first";
   Listi::SavedSearches store;
-  store.Put(item, false);
+  store.Put(savedSearch, false);
   int64 revision = 0;
   auto update = [&] {
     auto snapshot = store.Message();
@@ -103,7 +103,7 @@ int main() {
   load.AddString("name", "Notes");
   search->MessageReceived(&load);
   expression->SetText("unfinished work");
-  auto other = item;
+  auto other = savedSearch;
   other.name = "Music";
   store.Put(other, false);
   update();
@@ -111,8 +111,8 @@ int main() {
 
   // Another editor changed only a nested filter of the loaded search.
   // Receiving its new revision is not consent to overwrite that change.
-  item.request.filters.extension = "pdf";
-  store.Put(item, true);
+  savedSearch.request.filters.extension = "pdf";
+  store.Put(savedSearch, true);
   update();
   assert(!save->IsEnabled() && !forget->IsEnabled());
   assert(std::string(expression->Text()) == "unfinished work");
