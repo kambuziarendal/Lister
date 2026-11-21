@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include "ColumnRows.h"
 #include "BulkRenameWindow.h"
 #include "BulkRename.h"
 #include "Common.h"
@@ -125,7 +126,7 @@ class BulkRenameWindow : public BWindow {
   }
 
   void Render(int32 selected = -1) {
-    rows->Clear();
+    Listi::ClearColumnRows(*rows);
     preview = {};
     previewInvalidated = false;
     try {
@@ -146,7 +147,7 @@ class BulkRenameWindow : public BWindow {
       rows->AddRow(row);
     }
     if (selected >= 0 && size_t(selected) < preview.rows.size())
-      rows->AddToSelection(rows->RowAt(selected));
+      rows->SetFocusRow(rows->RowAt(selected), true);
     UpdateRowEditor();
     UpdateApplyState();
   }
@@ -235,14 +236,24 @@ public:
       if (!HasCurrentPreview()) {
         previewInvalidated = true;
         preview.error.clear();
-        rows->Clear();
+        Listi::ClearColumnRows(*rows);
         UpdateRowEditor();
       }
       UpdateApplyState();
       break;
-    case kPreview:
-      Render();
+    case kPreview: {
+      // A refresh checks the filesystem again; it does not submit or discard
+      // the selected row's text. Only Set name commits that draft.
+      const int32 selected = SelectedRow();
+      const bool keepDraft = selected == editedRow && HasPendingName();
+      const std::string draft = keepDraft ? rowName->Text() : "";
+      Render(selected);
+      if (keepDraft && editedRow == selected) {
+        rowName->SetText(draft.c_str());
+        UpdateApplyState();
+      }
       break;
+    }
     case kSelectRow:
       if (editedRow != SelectedRow())
         UpdateRowEditor();

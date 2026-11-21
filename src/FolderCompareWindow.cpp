@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include "ColumnRows.h"
 #include "FolderCompare.h"
 #include "ThemeTextView.h"
 #include <Layout.h>
@@ -90,12 +91,7 @@ class CompareWindow : public BWindow {
     cancel->SetEnabled(busy);
   }
   void ClearRows() {
-    // Clear() deletes rows but leaves Haiku's keyboard focus row unchanged.
-    if (auto *focused = rows->FocusRow()) {
-      rows->RemoveRow(focused);
-      delete focused;
-    }
-    rows->Clear();
+    Listi::ClearColumnRows(*rows);
     detail->SetText("");
   }
   void Render() {

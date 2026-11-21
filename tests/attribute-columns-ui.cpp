@@ -412,6 +412,39 @@ int main() {
                    Listi::AttributeCell(node, kNumber) == "-14";
           }),
           "saved draft edits only its original attribute");
+    {
+      WindowLock lock(properties);
+      auto *list = dynamic_cast<BColumnListView *>(
+          properties->FindView("property attributes"));
+      SelectAttribute(*list, kLabel);
+      list->SetFocusRow(list->CurrentSelection(), true);
+      Check(chmod(f.first.c_str(), 0064) == 0, "set a mode with no owner bits");
+      BMessage refresh('prrf');
+      properties->MessageReceived(&refresh);
+    }
+    Check(Await([&] {
+            WindowLock lock(properties);
+            if (!ContainsStatus(*properties, "Properties loaded."))
+              return false;
+            auto *list = dynamic_cast<BColumnListView *>(
+                properties->FindView("property attributes"));
+            auto *selection = list->CurrentSelection();
+            return selection && list->FocusRow() == selection &&
+                   Cell(*selection, 0) == kLabel;
+          }), "refresh keeps the selected attribute and its live keyboard row");
+    {
+      WindowLock lock(properties);
+      auto *mode = dynamic_cast<BTextControl *>(
+          properties->FindView("property permissions"));
+      Check(mode && std::string(mode->Text()) == "064",
+            "mode with no owner bits is displayed as three octal digits");
+      BMessage apply('prpm');
+      properties->MessageReceived(&apply);
+    }
+    Check(Await([&] {
+            WindowLock lock(properties);
+            return ContainsStatus(*properties, "Properties loaded.");
+          }), "Apply accepts the unchanged permission text");
     return 0;
   } catch (const std::exception &error) {
     std::cerr << "FAIL: " << error.what() << std::endl;

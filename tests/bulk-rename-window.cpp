@@ -96,7 +96,7 @@ int main() {
                         if (!row)
                           return false;
                         list->DeselectAll();
-                        list->AddToSelection(row);
+                        list->SetFocusRow(row, true);
                         list->SelectionChanged();
                         return true;
                       }) &&
@@ -168,6 +168,26 @@ int main() {
                   noSubmission() && Read(a) == "first" && Read(b) == "second",
               "an uncommitted row edit cannot apply a different preview");
 
+  ok &= check(WithWindow(dialog, [&](BWindow &window) {
+                auto update = button(window, "update-preview");
+                if (!update || !update->Message())
+                  return false;
+                // Complete the refresh before checking state which could
+                // otherwise already be true from the previous selection.
+                window.MessageReceived(update->Message());
+                return true;
+              }) &&
+                  WaitFor(dialog, [&](BWindow &window) {
+                    auto list = rows(window);
+                    return list && list->CountRows() == 2 &&
+                           list->FocusRow() == list->RowAt(1) &&
+                           list->CurrentSelection() == list->RowAt(1) &&
+                           std::string(editor(window)->Text()) == "uncommitted" &&
+                           PreviewName(*list, 1) == "alpha" &&
+                           !button(window, "apply-rename")->IsEnabled();
+                  }) && noSubmission(),
+              "refresh keeps the selected row and its uncommitted edit separate from the preview");
+
   ok &= check(
       WithWindow(dialog,
                  [&](BWindow &window) {
@@ -187,7 +207,7 @@ int main() {
                     auto field = editor(window);
                     auto apply = button(window, "apply-rename");
                     return list && field && apply && list->CountRows() == 0 &&
-                           !field->IsEnabled() && !apply->IsEnabled() &&
+                           !list->FocusRow() && !field->IsEnabled() && !apply->IsEnabled() &&
                            std::string(field->Text()).empty();
                   }) &&
           noSubmission(),

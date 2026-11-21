@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include "ColumnRows.h"
 #include "PropertiesWindow.h"
 #include "FileProperties.h"
 #include "ThemeTextView.h"
@@ -21,6 +22,7 @@
 #include <mutex>
 #include <functional>
 #include <sstream>
+#include <iomanip>
 namespace {
 using namespace Listi;
 constexpr uint32 kRefresh = 'prrf', kEdit = 'pred', kNew = 'prnw',
@@ -81,12 +83,13 @@ class PropertiesWindow : public BWindow {
            (originalName != name->Text() || originalValue != value->Text() ||
             originalType != Type());
   }
-  bool PermissionDirty() const {
-    if (!session)
-      return false;
+  std::string PermissionText() const {
     std::ostringstream current;
-    current << std::oct << permissionBase;
-    return current.str() != permissions->Text();
+    current << std::oct << std::setfill('0') << std::setw(3) << permissionBase;
+    return current.str();
+  }
+  bool PermissionDirty() const {
+    return session && PermissionText() != permissions->Text();
   }
   void Status(const std::string &s) {
     status->SetText(s.c_str());
@@ -130,9 +133,7 @@ class PropertiesWindow : public BWindow {
     heading->SetText("Choose an attribute and Edit, or create a new one.");
     if (!keepPermissionDraft) {
       permissionBase = snapshot.stat.st_mode & 07777;
-      std::ostringstream mode;
-      mode << std::oct << permissionBase;
-      permissions->SetText(mode.str().c_str());
+      permissions->SetText(PermissionText().c_str());
     }
     Controls();
   }
@@ -339,9 +340,15 @@ public:
       delivery->snapshot.reset();
       session = delivery->session;
       details->SetText(snapshot.summary.c_str());
-      attributes->Clear();
-      for (const auto &a : snapshot.attributes)
-        attributes->AddRow(new AttributeRow(a));
+      auto *selection = static_cast<AttributeRow *>(attributes->CurrentSelection());
+      const std::string selectedName = selection ? selection->value.name : "";
+      Listi::ClearColumnRows(*attributes);
+      for (const auto &a : snapshot.attributes) {
+        auto *row = new AttributeRow(a);
+        attributes->AddRow(row);
+        if (a.name == selectedName)
+          attributes->SetFocusRow(row, true);
+      }
       const bool keepPermissions = message->GetBool("keepPermissionDraft", false);
       Reset(keepPermissions);
       Status(

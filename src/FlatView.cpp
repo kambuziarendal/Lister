@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include "ColumnRows.h"
 #include "FlatView.h"
 #include "Common.h"
 #include "FileSearch.h"
@@ -120,12 +121,7 @@ class FlatView : public BGroupView {
 
   void StartScan() {
     generation->fetch_add(1);
-    // Haiku's Clear() drops the rows but doesn't reset the keyboard focus row.
-    if (auto *focused = results->FocusRow()) {
-      results->RemoveRow(focused);
-      delete focused;
-    }
-    results->Clear();
+    Listi::ClearColumnRows(*results);
     files.clear();
     shelfStatus->SetText("");
     shelfStatus->SetToolTip("");
