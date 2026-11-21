@@ -89,27 +89,32 @@ class CompareWindow : public BWindow {
     matches->SetEnabled(!busy && haveResults);
     cancel->SetEnabled(busy);
   }
-  void Render() {
+  void ClearRows() {
+    // Clear() deletes rows but leaves Haiku's keyboard focus row unchanged.
+    if (auto *focused = rows->FocusRow()) {
+      rows->RemoveRow(focused);
+      delete focused;
+    }
     rows->Clear();
     detail->SetText("");
-    size_t displayed = 0, wanted = 0;
-    for (size_t i = 0; i < result.entries.size(); ++i) {
-      auto &e = result.entries[i];
-      if (!matches->Value() && Listi::CompareMatch(e.state))
-        continue;
-      ++wanted;
-      if (displayed < 5000) {
-        rows->AddRow(new Row(e, i));
-        ++displayed;
-      }
-    }
+  }
+  void Render() {
+    ClearRows();
+    const auto visible =
+        Listi::SelectCompareRows(result, matches->Value(), 5000);
+    for (const auto index : visible.indices)
+      rows->AddRow(new Row(result.entries[index], index));
+    const auto displayed = visible.indices.size();
+    const auto wanted = visible.total;
     std::string text = heading;
     if (!result.complete)
       text += "Incomplete: " + result.error;
     else if (result.different)
       text += "Differences found.";
-    else if (result.checksum)
+    else if (result.checksum && result.verified)
       text += "No differences found. File contents match by SHA-256.";
+    else if (result.checksum)
+      text += "No differences found. No regular file pairs to hash.";
     else
       text += "Names and sizes match. Contents have NOT been checked.";
     text += "\n" + std::to_string(result.different) + " different, " +
@@ -117,9 +122,9 @@ class CompareWindow : public BWindow {
             std::to_string(result.sizeOnly) + " size-only matches, " +
             std::to_string(result.unverified) + " unverified. ";
     if (displayed < wanted)
-      text += "Showing first " + std::to_string(displayed) + " of " +
+      text += "Showing " + std::to_string(displayed) + " of " +
               std::to_string(wanted) +
-              " rows; comparison totals cover all scanned entries.";
+              " rows, prioritizing differences and unverified entries.";
     else
       text += std::to_string(displayed) + " rows shown.";
     summary->SetText(text.c_str());
@@ -130,8 +135,7 @@ class CompareWindow : public BWindow {
     picker.reset();
     result = {};
     haveResults = false;
-    rows->Clear();
-    detail->SetText("");
+    ClearRows();
     busy = true;
     Controls();
     Listi::CompareRequest request{left->Text(), right->Text(), checksum};
@@ -174,6 +178,7 @@ public:
     hash = new BButton("Compare with SHA-256", new BMessage(kHash));
     cancel = new BButton("Cancel", new BMessage(kCancel));
     matches = new BCheckBox("Show matching entries", new BMessage(kFilter));
+    matches->SetName("compare show matches");
     rows = new BColumnListView("folder comparison results",
                                B_WILL_DRAW | B_NAVIGABLE, B_FANCY_BORDER);
     rows->AddColumn(
@@ -215,7 +220,7 @@ public:
         .Add(matches)
         .Add(scroll)
         .Add(new BStringView("compare scope",
-                             "Read-only snapshot check. Includes subfolders "
+                             "Read-only comparison. Includes subfolders "
                              "and hidden files; links are not followed. "
                              "Attributes and permissions are not compared."))
         .AddGroup(B_HORIZONTAL, 8)
@@ -248,8 +253,7 @@ public:
       if (!busy) {
         haveResults = false;
         result = {};
-        rows->Clear();
-        detail->SetText("");
+        ClearRows();
         summary->SetText(
             "Folders changed. Run a new comparison for these paths.");
         Controls();

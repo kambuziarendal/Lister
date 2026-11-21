@@ -174,6 +174,28 @@ bool CompareMatch(CompareState s) {
   return s == CompareState::Verified || s == CompareState::SizeMatch ||
          s == CompareState::DirectoryMatch || s == CompareState::LinkMatch;
 }
+CompareRows SelectCompareRows(const CompareResult &result, bool showMatches,
+                              size_t limit) {
+  const auto &entries = result.entries;
+  const size_t nonmatching = std::count_if(
+      entries.begin(), entries.end(),
+      [](const CompareEntry &entry) { return !CompareMatch(entry.state); });
+  CompareRows selected;
+  selected.total = showMatches ? entries.size() : nonmatching;
+  selected.indices.reserve(std::min(limit, selected.total));
+  // Reserve space for differences and unverified entries before adding matches.
+  size_t matchingSlots = showMatches ? limit - std::min(limit, nonmatching) : 0;
+  for (size_t i = 0; i < entries.size() && selected.indices.size() < limit;
+       ++i) {
+    if (CompareMatch(entries[i].state)) {
+      if (!matchingSlots)
+        continue;
+      --matchingSlots;
+    }
+    selected.indices.push_back(i);
+  }
+  return selected;
+}
 CompareResult CompareFolders(const CompareRequest &r,
                              const TransferControl &control) {
   CompareResult result;

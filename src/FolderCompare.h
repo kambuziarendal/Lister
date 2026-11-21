@@ -33,6 +33,12 @@ struct CompareResult {
   size_t different = 0, verified = 0, sizeOnly = 0, unverified = 0;
   std::string error;
 };
+struct CompareRows {
+  std::vector<size_t> indices;
+  size_t total = 0;
+};
+CompareRows SelectCompareRows(const CompareResult &, bool showMatches,
+                              size_t limit);
 CompareResult CompareFolders(const CompareRequest &,
                              const TransferControl & = {});
 const char *CompareLabel(CompareState);

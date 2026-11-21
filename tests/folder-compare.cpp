@@ -3,6 +3,7 @@
 #include "FolderCompare.h"
 #include "Sha256.h"
 #include <Application.h>
+#include <CheckBox.h>
 #include <ColumnListView.h>
 #include <ColumnTypes.h>
 #include <Directory.h>
@@ -77,6 +78,46 @@ bool NumericSizeOrder(BApplication &app, const std::string &left,
   }
   target.SendMessage(B_QUIT_REQUESTED);
   return sorted;
+}
+bool FilterResetsFocusedRow(BApplication &app, const std::string &left,
+                            const std::string &right) {
+  OpenFolderCompare(left, right);
+  BWindow *window = app.WindowAt(0);
+  if (!window)
+    return false;
+  BMessenger target(window);
+  target.SendMessage('cmqu');
+
+  bool showMatches = false;
+  bool passed = false;
+  for (int i = 0; i < 250; ++i) {
+    if (window->LockWithTimeout(20000) == B_OK) {
+      auto rows = dynamic_cast<BColumnListView *>(
+          window->FindView("folder comparison results"));
+      auto matches = dynamic_cast<BCheckBox *>(
+          window->FindView("compare show matches"));
+      if (rows && matches && matches->IsEnabled()) {
+        if (!showMatches && rows->CountRows() == 1) {
+          auto difference = rows->RowAt(0);
+          rows->SetFocusRow(difference, true);
+          if (rows->FocusRow() == difference &&
+              rows->CurrentSelection() == difference) {
+            matches->SetValue(B_CONTROL_ON);
+            matches->Invoke();
+            showMatches = true;
+          }
+        } else if (showMatches && rows->CountRows() == 2) {
+          passed = !rows->FocusRow() && !rows->CurrentSelection();
+          window->Unlock();
+          break;
+        }
+      }
+      window->Unlock();
+    }
+    snooze(10000);
+  }
+  target.SendMessage(B_QUIT_REQUESTED);
+  return passed;
 }
 void clean(const std::string &p) {
   BDirectory d(p.c_str());
@@ -269,6 +310,31 @@ int main() {
     }
     check(CompareFolders({l, l, true}).complete,
           "same folder comparison is read-only and valid");
+    const auto filterLeft = root + "/filter-left";
+    const auto filterRight = root + "/filter-right";
+    mkdir(filterLeft.c_str(), 0700);
+    mkdir(filterRight.c_str(), 0700);
+    put(filterLeft + "/a-match", "equal");
+    put(filterRight + "/a-match", "equal");
+    put(filterRight + "/z-different", "right only");
+    check(FilterResetsFocusedRow(app, filterLeft, filterRight),
+          "showing matching entries safely clears the previous row focus and "
+          "selection");
+    CompareResult limited;
+    limited.entries.resize(5);
+    limited.entries[0].state = CompareState::SizeMatch;
+    limited.entries[1].state = CompareState::DirectoryMatch;
+    limited.entries[2].state = CompareState::LinkMatch;
+    limited.entries[3].state = CompareState::OnlyRight;
+    limited.entries[4].state = CompareState::Unverified;
+    auto differences = SelectCompareRows(limited, false, 3);
+    auto withMatches = SelectCompareRows(limited, true, 3);
+    check(differences.total == 2 &&
+              differences.indices == std::vector<size_t>{3, 4} &&
+              withMatches.total == 5 &&
+              withMatches.indices == std::vector<size_t>{0, 3, 4},
+          "the display cap keeps late differences and unverified entries when "
+          "showing matches");
   } catch (const std::exception &e) {
     check(false, e.what());
   }
