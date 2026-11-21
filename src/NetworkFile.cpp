@@ -166,7 +166,7 @@ struct CurlSession {
       Set(CURLOPT_NOPROGRESS, 0L);
       if (l.scheme == "sftp") {
         if (auth.knownHosts.empty())
-          auth.knownHosts = DefaultSshPath(false);
+          auth.knownHosts = DefaultSshPath(SshFile::KnownHosts);
         Set(CURLOPT_SSH_KNOWNHOSTS, auth.knownHosts.c_str());
         if (!auth.privateKey.empty())
           Set(CURLOPT_SSH_PRIVATE_KEYFILE, auth.privateKey.c_str());

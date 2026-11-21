@@ -14,12 +14,14 @@ inline bool ReadableSshFile(const std::string &path) {
 
 // Haiku's OpenSSH uses config/settings/ssh; .ssh may be a symlink, a
 // separate directory, or absent. Resolve each file independently.
-inline std::string DefaultSshPath(bool identity) {
+enum class SshFile { Identity, KnownHosts };
+
+inline std::string DefaultSshPath(SshFile file) {
   const char *home = std::getenv("HOME");
   std::string base = home && *home ? home : "/boot/home";
   const std::string native = base + "/config/settings/ssh/";
   for (const auto &directory : {native, base + "/.ssh/"}) {
-    if (!identity) {
+    if (file == SshFile::KnownHosts) {
       if (ReadableSshFile(directory + "known_hosts"))
         return directory + "known_hosts";
     } else {
@@ -28,6 +30,6 @@ inline std::string DefaultSshPath(bool identity) {
           return directory + name;
     }
   }
-  return identity ? std::string() : native + "known_hosts";
+  return file == SshFile::Identity ? std::string() : native + "known_hosts";
 }
 }

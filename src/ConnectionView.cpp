@@ -37,9 +37,9 @@ public:
     password->TextView()->HideTyping(true);
     domain = new BTextControl("SMB domain:", "", nullptr);
     key = new BTextControl("ssh key", "SSH private key:",
-                           Listi::DefaultSshPath(true).c_str(), nullptr);
+                           Listi::DefaultSshPath(Listi::SshFile::Identity).c_str(), nullptr);
     hosts = new BTextControl("known hosts", "SSH known hosts:",
-                             Listi::DefaultSshPath(false).c_str(), nullptr);
+                             Listi::DefaultSshPath(Listi::SshFile::KnownHosts).c_str(), nullptr);
     advanced = new BGroupView(B_VERTICAL, 4);
     BLayoutBuilder::Group<>(advanced, B_VERTICAL, 4)
         .AddGroup(B_HORIZONTAL, 12)
