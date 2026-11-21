@@ -38,7 +38,7 @@ struct FileEntry {
   bool modifiedKnown = false; // Distinguishes an explicit epoch from an absent timestamp.
 };
 struct Connection {
-  std::string username, password, domain, privateKey, knownHosts;
+  std::string username, password, domain, privateKey, knownHosts, keyPassphrase;
 };
 Location ParseLocation(const std::string &);
 bool IsVirtual(const std::string &);

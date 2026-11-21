@@ -168,8 +168,11 @@ struct CurlSession {
         if (auth.knownHosts.empty())
           auth.knownHosts = DefaultSshPath(SshFile::KnownHosts);
         Set(CURLOPT_SSH_KNOWNHOSTS, auth.knownHosts.c_str());
-        if (!auth.privateKey.empty())
+        if (!auth.privateKey.empty()) {
           Set(CURLOPT_SSH_PRIVATE_KEYFILE, auth.privateKey.c_str());
+          if (!auth.keyPassphrase.empty())
+            Set(CURLOPT_KEYPASSWD, auth.keyPassphrase.c_str());
+        }
       }
     } catch (...) {
       LIBCALL(lib, curl_easy_cleanup)(curl);

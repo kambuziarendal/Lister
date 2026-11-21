@@ -15,12 +15,13 @@ constexpr uint32 kConnect = 'conn', kAdvanced = 'nadv', kCancelConnect = 'nccl';
 class ConnectionView : public BGroupView {
   BMessenger pane, closeTarget;
   BMessage closeMessage;
-  BTextControl *url, *user, *password, *domain, *key, *hosts;
+  BTextControl *url, *user, *password, *domain, *key, *hosts, *keyPassphrase;
   WrappedLabel *error;
   BGroupView *advanced;
   bool expanded = false;
   void Close() {
     password->SetText("");
+    keyPassphrase->SetText("");
     BMessage done(closeMessage);
     closeTarget.SendMessage(&done);
   }
@@ -40,13 +41,16 @@ public:
                            Listi::DefaultSshPath(Listi::SshFile::Identity).c_str(), nullptr);
     hosts = new BTextControl("known hosts", "SSH known hosts:",
                              Listi::DefaultSshPath(Listi::SshFile::KnownHosts).c_str(), nullptr);
+    keyPassphrase = new BTextControl("key passphrase", "SSH key passphrase:", "", nullptr);
+    keyPassphrase->TextView()->HideTyping(true);
     advanced = new BGroupView(B_VERTICAL, 4);
     BLayoutBuilder::Group<>(advanced, B_VERTICAL, 4)
         .AddGroup(B_HORIZONTAL, 12)
         .Add(domain)
         .Add(key)
         .End()
-        .Add(hosts);
+        .Add(hosts)
+        .Add(keyPassphrase);
     advanced->Hide();
     error = new WrappedLabel("network hint",
                              "SMB, SFTP, FTP or FTPS. Credentials are kept only "
@@ -116,6 +120,11 @@ public:
       auth.domain = domain->Text();
       auth.privateKey = key->Text();
       auth.knownHosts = hosts->Text();
+      if (location.scheme == "sftp") {
+        if (!auth.privateKey.empty() && !Listi::ReadableSshFile(auth.privateKey))
+          throw std::runtime_error("Cannot read the selected SSH private key. Check its local path under Advanced.");
+        auth.keyPassphrase = keyPassphrase->Text();
+      }
       Listi::SetConnection(location.URL(), auth);
       BMessage navigate(kNavigate);
       navigate.AddString("path", location.URL().c_str());
