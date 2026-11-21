@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.37.1-2 testing
+
+- Panel errors wrap at the available width. A failed folder or SFTP address keeps its error visible; press Enter in the address field to retry it.
+- Settings categories remain accessible in a narrow window, and short windows can scroll the current page without hiding Save or Cancel.
+
 ## [0.37.1-1 alpha test candidate](https://github.com/kambuziarendal/listi/releases/tag/v0.37.1-1)
 
 - Edit text inside Inspector and Quick view. A draft stays bound to its original file when the selection changes or the editor is detached.
