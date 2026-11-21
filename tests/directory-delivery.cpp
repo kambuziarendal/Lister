@@ -9,6 +9,7 @@
 #include <Directory.h>
 #include <Entry.h>
 #include <Path.h>
+#include <TextView.h>
 #include <algorithm>
 #include <atomic>
 #include <fstream>
@@ -91,7 +92,7 @@ int main() {
    pane->Navigate(folder.c_str());window->Unlock();
    check(ready(),completion?"pane exits reading after lost completion":"pane exits reading after lost rows");
    window->Lock();
-   auto status=dynamic_cast<BStringView*>(pane->FindView("status"));
+   auto status=dynamic_cast<BTextView*>(pane->FindView("status"));
    check(status&&std::string(status->Text()).find("Reload")!=std::string::npos,"incomplete pane visibly offers reload");
    pane->Select(1);check(pane->Selected().empty(),"incomplete entries cannot become Select All input");
    rowFailures=0;doneFailures=0;pane->Reload();window->Unlock();

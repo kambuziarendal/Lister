@@ -3,10 +3,10 @@
 #include "Common.h"
 #include "ExplicitSubmit.h"
 #include "VirtualFile.h"
+#include "WrappedLabel.h"
 #include <Button.h>
 #include <GroupView.h>
 #include <LayoutBuilder.h>
-#include <StringView.h>
 #include <TextControl.h>
 #include <TextView.h>
 namespace {
@@ -15,7 +15,7 @@ class ConnectionView : public BGroupView {
   BMessenger pane, closeTarget;
   BMessage closeMessage;
   BTextControl *url, *user, *password, *domain, *key, *hosts;
-  BStringView *error;
+  WrappedLabel *error;
   BGroupView *advanced;
   bool expanded = false;
   void Close() {
@@ -46,11 +46,9 @@ public:
         .End()
         .Add(hosts);
     advanced->Hide();
-    error = new BStringView("network hint",
-                            "SMB, SFTP, FTP or FTPS. Credentials are kept only "
-                            "for this session. FTP is unencrypted.");
-    error->SetExplicitMinSize(BSize(300, B_SIZE_UNSET));
-    error->SetTruncation(B_TRUNCATE_END);
+    error = new WrappedLabel("network hint",
+                             "SMB, SFTP, FTP or FTPS. Credentials are kept only "
+                             "for this session. FTP is unencrypted.");
     BLayoutBuilder::Group<>(this, B_VERTICAL, 6)
         .Add(url)
         .AddGroup(B_HORIZONTAL, 12)
@@ -58,7 +56,7 @@ public:
         .Add(password)
         .End()
         .Add(advanced)
-        .Add(error)
+        .Add(error, 0)
         .AddGroup(B_HORIZONTAL, 8)
         .Add(new BButton("Advanced", new BMessage(kAdvanced)))
         .AddGlue()
@@ -117,7 +115,7 @@ public:
       pane.SendMessage(&navigate);
       Close();
     } catch (const std::exception &e) {
-      error->SetText(e.what());
+      error->SetMessage(e.what());
     }
   }
 };

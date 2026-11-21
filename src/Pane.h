@@ -19,6 +19,7 @@ class InlineAction;
 class OperationQueue;
 class PaneSidebar;
 class MillerColumns;
+class WrappedLabel;
 class BCardView;
 class BGroupView;
 class BSplitView;
@@ -126,7 +127,7 @@ private:
   void UpdateNavigation();
   BTextControl *filter;
   BButton *clearFilter;
-  BStringView *status;
+  WrappedLabel *status;
   void SetStatus(const char *);
   void UpdateActivityAppearance();
   void InvalidateActivityBorder();

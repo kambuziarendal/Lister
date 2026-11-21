@@ -563,7 +563,7 @@ int main(int argc, char **argv) {
   assert(pane->MatchPattern("*", false) == 1 && pane->Selected().empty());
   auto *applyPattern = promptButton("Select");
   assert(applyPattern && applyPattern->Invoke() == B_OK);
-  auto *paneStatus = dynamic_cast<BStringView *>(pane->FindView("status"));
+  auto *paneStatus = dynamic_cast<BTextView *>(pane->FindView("status"));
   assert(paneStatus);
   waitFor([&] {
     return std::string(paneStatus->Text()) ==

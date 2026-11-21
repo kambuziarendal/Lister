@@ -12,6 +12,7 @@
 #include "NameFilter.h"
 #include "Trash.h"
 #include "VirtualFile.h"
+#include "WrappedLabel.h"
 #include <Bitmap.h>
 #include <CardLayout.h>
 #include <CardView.h>
@@ -189,10 +190,7 @@ Pane::Pane(int32 number, const Preferences &p,
   content->SetItemWeight(1, 0.76f, true);
   content->SetCollapsible(0, false);
   content->SetCollapsible(1, false);
-  status = new BStringView("status", "Ready");
-  status->SetTruncation(B_TRUNCATE_END);
-  status->SetExplicitMinSize(BSize(0, B_SIZE_UNSET));
-  status->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+  status = new WrappedLabel("status", "Ready");
   header = new BGroupView(B_HORIZONTAL, 5);
   header->SetName("panel toolbar");
   header->AddChild(field);
@@ -500,8 +498,7 @@ void Pane::NavigateFromColumn(const std::string &folder,
   Window()->PostMessage(&message, this);
 }
 void Pane::SetStatus(const char *text) {
-  status->SetText(text);
-  status->SetToolTip(text);
+  status->SetMessage(text);
 }
 void Pane::SetPlaces(const Listi::SavedPlaces &value, bool writable) {
   sidebar->SetPlaces(value, writable);

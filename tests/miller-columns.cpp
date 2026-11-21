@@ -7,6 +7,7 @@
 #include <LayoutBuilder.h>
 #include <Messenger.h>
 #include <StringView.h>
+#include <TextView.h>
 #include <TextControl.h>
 #include <Window.h>
 #include <cstdlib>
@@ -142,7 +143,7 @@ int main() {
   if (rename(inner.c_str(), previous.c_str()) != 0)
     return 2;
   std::ofstream(inner) << "replacement";
-  auto *status = dynamic_cast<BStringView *>(pane->FindView("status"));
+  auto *status = dynamic_cast<BTextView *>(pane->FindView("status"));
   bool rejected = false;
   for (int i = 0; i < 200 && !rejected; ++i) {
     window->Unlock();
