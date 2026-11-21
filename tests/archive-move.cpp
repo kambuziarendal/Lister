@@ -125,6 +125,16 @@ int main(){
   // Clipboard lifecycle: pending, cancel, retry, success, and newer selection.
   BClipboard clipboard("Listi-archive-move-test",true);
   auto csrc=archive("zip",{input+"keep",input+"item",input+"folder"});auto cdst=archive("tgz",{input+"keep"});auto ci=ChildLocation(csrc,"item");
+  PutPathsAsText({"previous contents"}, &clipboard);
+  std::string deep = csrc;
+  for (int level = 0; level < 9; ++level)
+    deep = ChildLocation(deep, std::string(240, 'd'));
+  std::vector<std::string> largeSelection;
+  for (size_t i = 0; i < kFileSelectionLimit; ++i)
+    largeSelection.push_back(ChildLocation(deep, std::to_string(i)));
+  check(rejects([&] { PutFileClipboard(largeSelection, false, &clipboard); }) &&
+        ReadClipboardText(&clipboard) == "previous contents",
+        "oversized archive Copy leaves the previous clipboard intact");
   PutFileClipboard({ci},true,&clipboard);auto paste=PrepareFilePaste(cdst,&clipboard);
   check(paste.archiveCut&&!paste.lease.empty()&&paste.jobs.size()==1&&paste.jobs[0].action==Action::MoveArchive,"archive Cut prepares leased move job");
   check(rejects([&]{PrepareFilePaste(cdst,&clipboard);}),"duplicate pending paste refused");

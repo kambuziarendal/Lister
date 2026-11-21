@@ -25,6 +25,7 @@ namespace Listi {
 namespace {
 constexpr int32 kCopyMode = 'Tcsl', kCutMode = 'Tmsl';
 constexpr const char *kLease = "listi:paste-lease";
+constexpr ssize_t kMaximumSelectionBytes = 2 * 1024 * 1024;
 constexpr size_t kMaximumTextBytes = 4 * 1024 * 1024;
 void Require(status_t status, const char *operation) {
   if (status != B_OK)
@@ -149,7 +150,7 @@ void PutPathsAsText(const std::vector<std::string> &paths,
 }
 
 std::vector<ClipboardItem> ReadFileClipboard(const BMessage &message) {
-  if (message.FlattenedSize() > 2 * 1024 * 1024)
+  if (message.FlattenedSize() > kMaximumSelectionBytes)
     throw std::runtime_error(
         "Clipboard data is too large. Select fewer files.");
   std::vector<ClipboardItem> items;
@@ -246,7 +247,10 @@ void PutFileClipboard(const std::vector<std::string> &paths, bool cut,
           throw std::runtime_error("Cut entries from one archive at a time.");
     }
     BMessage message, encoded = EncodeJob(selection, 0);
-    message.AddMessage("listi:archive-copy", &encoded);
+    if (encoded.FlattenedSize() > kMaximumSelectionBytes)
+      throw std::runtime_error("Clipboard selection is too large.");
+    Require(message.AddMessage("listi:archive-copy", &encoded),
+            "Add archive selection");
     ClipboardLock lock(clipboard);
     Commit(clipboard, message);
     return;
@@ -268,7 +272,7 @@ ClipboardPaste PrepareFilePaste(const std::string &destination,
     BMessage encoded;
     if (clipboard->Data()->FindMessage("listi:archive-copy", &encoded) ==
         B_OK) {
-      if (encoded.FlattenedSize() > 2 * 1024 * 1024)
+      if (encoded.FlattenedSize() > kMaximumSelectionBytes)
         throw std::runtime_error("Clipboard selection is too large.");
       if (clipboard->Data()->HasString(kLease))
         throw std::runtime_error(
