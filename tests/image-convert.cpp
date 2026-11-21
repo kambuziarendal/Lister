@@ -2,6 +2,7 @@
 #include "FileDrop.h"
 #include "ImageConvert.h"
 #include <Application.h>
+#include <StorageDefs.h>
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
@@ -85,6 +86,23 @@ int main() {
     Check(converted.completed == 1 && Read(target).compare(0, 2, "\xff\xd8") == 0 &&
               Read(source) == png,
           "queue operation creates genuine JPEG and leaves source unchanged");
+
+    // The source fits the filesystem, but appending ".jpg" would split Ø
+    // at the byte limit. Keep the entire suffix and only whole characters.
+    const std::string prefix(B_FILE_NAME_LENGTH - 6, 'a');
+    const auto longSource = Join(root, prefix + "Øxyz");
+    const auto longTarget = Join(destination, prefix + ".jpg");
+    Write(longSource, png);
+    auto longJob = PrepareFileDrop(MakeFileDrag({longSource}), destination);
+    longJob.action = job.action;
+    longJob.imageFormat = jpeg->type;
+    longJob.imageMime = jpeg->mime;
+    Check(Run(longJob, {}).completed == 1 &&
+              Read(longTarget).compare(0, 2, "\xff\xd8") == 0 && Read(longSource) == png,
+          "conversion fits its extension without splitting a UTF-8 filename");
+    Write(longTarget, "preserve this file");
+    Check(Run(longJob, {}).completed == 0 && Read(longTarget) == "preserve this file",
+          "collision after shortening the output name preserves the existing file");
 
     Write(target, "existing target");
     auto collision = Run(job, {});

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "ImageConvert.h"
+#include "LeafName.h"
 
 #include <DataIO.h>
 #include <Message.h>
@@ -380,7 +381,7 @@ std::string ImageOutputName(const std::string &source,
   auto dot = name.find_last_of('.');
   if (dot != std::string::npos && dot != 0)
     name.resize(dot);
-  return name + "." + extension;
+  return SuffixedLeafName(name, "." + extension);
 }
 
 Result RunImageConversion(const Job &job, const Hooks &hooks) {

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "ArchiveWindow.h"
+#include "LeafName.h"
 #include "ArchiveBackend.h"
 #include "PaneModel.h"
 #include "ArchivePasswords.h"
@@ -15,7 +16,6 @@
 #include <MenuItem.h>
 #include <Path.h>
 #include <PopUpMenu.h>
-#include <StorageDefs.h>
 #include <StringView.h>
 #include <TextControl.h>
 #include <TextView.h>
@@ -46,15 +46,6 @@ bool HasSuffix(const std::string &name, const std::string &suffix) {
   return !suffix.empty() && name.size() >= suffix.size() &&
          strcasecmp(name.c_str() + name.size() - suffix.size(),
                     suffix.c_str()) == 0;
-}
-
-std::string SuggestedName(const std::string &stem, const std::string &suffix) {
-  // Generated suffixes are short ASCII strings. Reserve their bytes first.
-  size_t keep = std::min(stem.size(), B_FILE_NAME_LENGTH - 1 - suffix.size());
-  while (keep < stem.size() && keep > 0 &&
-         (static_cast<unsigned char>(stem[keep]) & 0xc0) == 0x80)
-    --keep;
-  return stem.substr(0, keep) + suffix;
 }
 
 class ArchiveWindow : public BWindow {
@@ -121,7 +112,7 @@ class ArchiveWindow : public BWindow {
     formatID = id;
     std::string text = name->Text();
     if (text == suggestedName) {
-      suggestedName = SuggestedName(suggestedStem, found->extension);
+      suggestedName = Listi::SuffixedLeafName(suggestedStem, found->extension);
       text = suggestedName;
     } else {
       if (HasSuffix(text, extension))
@@ -198,7 +189,7 @@ public:
       proposed = Listi::Leaf(loc.Archive() ? loc.archive : job.sources[0]);
       if (Listi::ArchiveExtension(proposed))
         proposed.resize(proposed.size() - FileTypeKey(proposed).size());
-      proposed = SuggestedName(proposed, " extracted");
+      proposed = Listi::SuffixedLeafName(proposed, " extracted");
     } else {
       suggestedStem = suggestedName = proposed;
     }
