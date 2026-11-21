@@ -18,6 +18,7 @@
 #include <Alert.h>
 #include <Application.h>
 #include <Button.h>
+#include <ColumnListView.h>
 #include <GridView.h>
 #include <MenuBar.h>
 #include <MenuField.h>
@@ -321,7 +322,7 @@ int main(int argc, char **argv) {
     assert(!left->Page(Page::Search));
   }
   // The Inspector's Edit action must not point at a selection on a hidden Files tab.
-  char temp[] = "/tmp/Listi-inspector-routing-XXXXXX";
+  char temp[] = "/boot/home/Listi-inspector-routing-XXXXXX";
   assert(mkdtemp(temp));
   const std::string file = std::string(temp) + "/visible.txt";
   assert(std::ofstream(file) << "visible selection");
@@ -353,6 +354,38 @@ int main(int argc, char **argv) {
   const auto selected = pane->Selected();
   assert(selected == std::vector<std::string>{
                          std::string(pane->Path()) + "/visible.txt"});
+  // Use the actual File view menu in each workspace. A recursive snapshot
+  // must replace only the active file list, never open another window.
+  for (auto mode : {Workspace::einn, Workspace::askr, Workspace::tviskipt,
+                    Workspace::smidja}) {
+    workspace(mode);
+    for (int index = 0; index < (mode == Workspace::tviskipt ? 2 : 1); ++index) {
+      if (index == 1) {
+        send(kSwitch);
+        rightPane->Navigate(temp);
+        waitFor([&] { return !rightPane->IsScanning(); });
+      }
+      auto *active = index == 0 ? left : right;
+      auto *other = index == 0 ? right : left;
+      const auto otherPage = other->Current();
+      const auto windows = app.CountWindows();
+      auto *flat = menu->FindItem("Flat View");
+      assert(flat && flat->IsEnabled() && static_cast<BInvoker *>(flat)->Invoke() == B_OK);
+      waitFor([&] {
+        auto *rows = dynamic_cast<BColumnListView *>(active->FindView("flat results"));
+        return rows && !rows->IsHidden() && rows->CountRows() == 2;
+      });
+      assert(app.CountWindows() == windows && other->Current() == otherPage);
+      assert(!other->FindView("flat results") && active->Files().IsHidden());
+      BMessage closeFlat(Listi::kClosePanelPage);
+      closeFlat.AddInt32("pane", index);
+      window->MessageReceived(&closeFlat);
+      assert(active->Current() == Page::Files && !active->Files().IsHidden());
+      assert(!active->FindView("flat results") && pane->Selected() == selected);
+      if (index == 1)
+        send(kSwitch);
+    }
+  }
   select(Page::Files);
   send(kPreviewOtherPanel);
   auto *inspect = right->Page(Page::Preview);
