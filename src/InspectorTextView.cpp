@@ -89,7 +89,9 @@ void InspectorTextView::Paste(BClipboard *clipboard) {
 
   Select(from, to); // Cancel inline input before replacing the selection.
   Delete(from, to);
-  Insert(from, text.data(), static_cast<int32>(text.size()));
+  const auto insertedBytes = static_cast<int32>(text.size());
+  Insert(from, text.data(), insertedBytes);
+  Select(from + insertedBytes, from + insertedBytes);
   ScrollToSelection();
 }
 

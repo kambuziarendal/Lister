@@ -262,6 +262,17 @@ int main() {
   body->Paste(&clipboard);
   const std::string pasted = "#!/bin/python\none\ntwo\nthree café\nyield two\n";
   body->GetSelection(&from, &to);
+  if (pasted != body->Text() || from != pasteAt + 13 || to != from) {
+    const std::string actual(body->Text(), body->TextLength());
+    std::cerr << "Paste selection: " << from << " to " << to
+              << "; expected caret " << pasteAt + 13 << "\nPaste bytes:";
+    for (unsigned char byte : actual)
+      std::cerr << " " << static_cast<int>(byte);
+    std::cerr << "\nExpected bytes:";
+    for (unsigned char byte : pasted)
+      std::cerr << " " << static_cast<int>(byte);
+    std::cerr << std::endl;
+  }
   Check(pasted == body->Text() && from == pasteAt + 13 && to == from,
         "paste normalizes CRLF and CR and advances the caret");
   window->Unlock();
