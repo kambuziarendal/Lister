@@ -57,7 +57,8 @@ int main() {
       return 2;
     auto select = [&](int32 index, const char *label) {
       auto *item = category->Menu()->ItemAt(index);
-      if (std::strcmp(item->Label(), label) != 0 || item->Invoke() != B_OK)
+      if (std::strcmp(item->Label(), label) != 0 ||
+          static_cast<BInvoker *>(item)->Invoke() != B_OK)
         return false;
       for (int i = 0; i < 100; ++i) {
         if (item->IsMarked() && pages->CardLayout()->VisibleIndex() == index) {
@@ -70,17 +71,23 @@ int main() {
       }
       return false;
     };
-    const auto inside = [](BView *container, BView *view) {
-      return container && view && !view->IsHidden() &&
-             container->ConvertToScreen(container->Bounds()).Contains(
-                 view->ConvertToScreen(view->Bounds()));
+    const auto inside = [](BRect screenBounds, BView *view) {
+      return view && !view->IsHidden() &&
+             screenBounds.Contains(view->ConvertToScreen(view->Bounds()));
+    };
+    const auto targetBounds = [](BScrollView *scroll) {
+      return scroll->Target()->ConvertToScreen(scroll->Target()->Bounds());
+    };
+    const auto actionsVisible = [&] {
+      const BRect bounds = window->ConvertToScreen(window->Bounds());
+      return inside(bounds, category) &&
+             inside(bounds, window->FindView("settings save")) &&
+             inside(bounds, window->FindView("settings cancel"));
     };
     window->ResizeTo(408, 180);
     window->Layout(true);
     check(window->Bounds().Width() <= 408 && window->Bounds().Height() <= 180 &&
-              inside(pages->Parent(), category) &&
-              inside(pages->Parent(), window->FindView("settings save")) &&
-              inside(pages->Parent(), window->FindView("settings cancel")),
+              actionsVisible(),
           "short, narrow settings keeps the chooser and actions visible");
     check(select(1, "Appearance"), "Appearance can be opened at narrow width");
     auto linkColor = window->FindView("settings link color");
@@ -89,11 +96,17 @@ int main() {
     auto bar = appearance->ScrollBar(B_VERTICAL);
     float minimum, maximum;
     bar->GetRange(&minimum, &maximum);
-    check(maximum > minimum && !inside(appearance->Target(), linkColor),
+    check(maximum > minimum && !inside(targetBounds(appearance), linkColor),
           "Appearance can be scrolled when its controls exceed the window");
-    bar->SetValue(maximum);
-    check(inside(appearance->Target(), linkColor),
+    const float scrollToField =
+        linkColor->ConvertToScreen(linkColor->Bounds()).bottom -
+        targetBounds(appearance).bottom;
+    bar->SetValue(scrollToField);
+    check(inside(targetBounds(appearance), linkColor),
           "scrolling reveals the last Appearance field");
+    bar->SetValue(maximum);
+    check(inside(targetBounds(appearance), window->FindView("color format")),
+          "scrolling to the bottom reveals the appearance format hint");
     check(select(2, "Workflow"), "Workflow can be opened at narrow width");
     check(select(3, "Applications"),
           "Applications can be opened at narrow width");
@@ -102,17 +115,20 @@ int main() {
     auto terminal = window->FindView("settings terminal");
     auto applications = dynamic_cast<BScrollView *>(
         pages->CardLayout()->VisibleItem()->View());
-    check(editor && inside(applications->Target(), editor) &&
-              inside(applications->Target(), terminal),
+    check(editor && inside(targetBounds(applications), editor) &&
+              inside(targetBounds(applications), terminal),
           "both application fields fit the short, narrow settings window");
     if (editor)
       editor->SetText("Settings test editor");
-    window->ResizeTo(560, 515);
+    window->ResizeTo(408, 515);
     window->Layout(true);
     check(select(1, "Appearance"), "Appearance remains reachable after resize");
     bar->GetRange(&minimum, &maximum);
-    check(maximum == minimum && inside(appearance->Target(), linkColor),
-          "growing the window removes overflow and resets the scroll position");
+    check(maximum == minimum && inside(targetBounds(appearance), linkColor) &&
+              actionsVisible(),
+          "at 408 by 515 the appearance fields and actions are visible without scrolling");
+    window->ResizeTo(560, 515);
+    window->Layout(true);
     check(select(0, "Workspaces"), "Workspaces remains reachable");
     auto field = dynamic_cast<BMenuField *>(window->FindView("einn"));
     auto choice = field ? field->Menu()->ItemAt(1) : nullptr;
