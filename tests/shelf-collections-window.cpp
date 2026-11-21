@@ -270,6 +270,60 @@ void CheckSwapSelection(BApplication &app, const fs::path &root) {
   Check(Until([&] { return !target.IsValid(); }), "close exchanged Shelf");
 }
 
+void CheckSharedCollections(BApplication &app, const fs::path &root) {
+  const auto store = (root / "shared-collections").string();
+  const auto earlier = root / "earlier", replacement = root / "replacement",
+             unrelated = root / "unrelated";
+  std::ofstream(earlier) << "old Dinner";
+  std::ofstream(replacement) << "new Dinner";
+  std::ofstream(unrelated) << "Lunch";
+  auto dinner = std::make_shared<Shelf>();
+  auto lunch = std::make_shared<Shelf>();
+  dinner->Add({earlier.string()});
+  lunch->Add({unrelated.string()});
+  BMessenger first, second;
+  OpenShelfWindow({}, dinner, first, store);
+  OpenShelfWindow({}, lunch, second, store);
+  auto *firstWindow = dynamic_cast<BWindow *>(first.Target(nullptr));
+  auto *secondWindow = dynamic_cast<BWindow *>(second.Target(nullptr));
+  Check(firstWindow && secondWindow && firstWindow != secondWindow,
+        "open independent Shelf windows for the same collection store");
+  Check(Menu(firstWindow, "Save current Shelf...") &&
+            Until([&] { return NamePrompt(firstWindow, "Dinner", "Save"); }) &&
+            Until([&] { return Status(firstWindow, "Saved collection"); }),
+        "save Dinner from the first Shelf");
+  Check(InWindow(secondWindow, [](BWindow &window) {
+          window.MenusBeginning();
+          auto *collections = ShelfMenu(window, "Collections");
+          auto *load = collections ? collections->FindItem("Load") : nullptr;
+          return load && load->Submenu()->FindItem("Dinner");
+        }), "opening Collections shows saves made by another Shelf window");
+
+  dinner->Clear();
+  dinner->Add({replacement.string()});
+  Check(Menu(firstWindow, "Save current Shelf...") &&
+            Until([&] { return NamePrompt(firstWindow, "Dinner", "Save"); }) &&
+            Until([&] { return !NoAlerts(app); }),
+        "leave Dinner's replacement confirmation open");
+  Check(Menu(secondWindow, "Save current Shelf...") &&
+            Until([&] { return NamePrompt(secondWindow, "Lunch", "Save"); }) &&
+            Until([&] { return Status(secondWindow, "Saved collection"); }),
+        "save Lunch from the second Shelf while Dinner awaits confirmation");
+  Check(Until([&] { return Alert(app, 1); }) && Until([&] {
+          const auto collections = ShelfCollections::Load(store);
+          const auto *updated = collections.Find("Dinner");
+          return updated && updated->entries[0].path == replacement.string();
+        }), "confirm and replace only Dinner's references");
+  const auto collections = ShelfCollections::Load(store);
+  Check(collections.Find("Lunch") &&
+            collections.Find("Lunch")->entries[0].path == unrelated.string(),
+        "confirming Dinner keeps the collection saved by the other Shelf");
+  first.SendMessage(B_QUIT_REQUESTED);
+  second.SendMessage(B_QUIT_REQUESTED);
+  Check(Until([&] { return !first.IsValid() && !second.IsValid(); }),
+        "close both Shelf windows");
+}
+
 bool SubmitPicker(const BMessenger &window, int64 serial,
                   const fs::path &candidate) {
   entry_ref ref;
@@ -394,6 +448,7 @@ int main() {
     messenger.SendMessage(B_QUIT_REQUESTED);
     Check(Until([&] { return !messenger.IsValid(); }), "close reopened Shelf");
     CheckSwapSelection(app, fixture.root);
+    CheckSharedCollections(app, fixture.root);
   } catch (const std::exception &e) {
     std::cerr << "FAIL " << e.what() << '\n';
     return 1;

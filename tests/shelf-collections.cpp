@@ -249,6 +249,14 @@ int main(int argc, char **argv) {
     Load(reopened, records, "Daily");
     Check(reopened.Snapshot().entries[0].State() == ShelfState::Ready,
           "explicitly updated collection keeps the relink across reloads");
+    const auto before = ShelfCollections::Load(records);
+    const auto *confirmed = before.Find("Daily");
+    ShelfCollections::SaveCurrent(records, "Daily", stale, confirmed);
+    Check(Refused([&] {
+            ShelfCollections::SaveCurrent(records, "Daily", relinked, confirmed);
+          }) &&
+              Refused([&] { ShelfCollections::DeleteSaved(records, *confirmed); }),
+          "reject replacement and deletion of a collection changed after confirmation");
     reopened.Remove({moved.string()});
     collections.Remove("Daily");
     collections.Save(records);

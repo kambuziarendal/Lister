@@ -242,6 +242,15 @@ class ShelfWindow : public BWindow {
     }
   }
 
+  void RefreshCollections() {
+    try {
+      RenderCollections(ShelfCollections::Load(collectionsFile));
+    } catch (const std::exception &e) {
+      RenderCollections({});
+      Status(e.what());
+    }
+  }
+
   bool Confirm(const char *title, const std::string &text,
                 const char *accept) {
     auto alert = new BAlert(title, text.c_str(), "Cancel", accept, nullptr,
@@ -267,18 +276,17 @@ class ShelfWindow : public BWindow {
     if (snapshot.revision != size_t(message.GetInt64("revision", -1)))
       throw std::runtime_error("The Shelf changed. Start the save again.");
     const auto name = ShelfCollections::Name(message.GetString("name", ""));
-    auto collections = ShelfCollections::Load(collectionsFile);
-    const bool exists = collections.Find(name) != nullptr;
-    if (exists &&
+    const auto collections = ShelfCollections::Load(collectionsFile);
+    const auto *existing = collections.Find(name);
+    if (existing &&
         !Confirm("Replace collection",
                  "Replace the saved references in “" + name + "”?",
                  "Replace"))
       return;
     if (shelf->Snapshot().revision != snapshot.revision)
       throw std::runtime_error("The Shelf changed. Start the save again.");
-    collections.Put(name, snapshot, exists);
-    collections.Save(collectionsFile);
-    RenderCollections(collections);
+    RenderCollections(
+        ShelfCollections::SaveCurrent(collectionsFile, name, snapshot, existing));
     Status("Saved collection “" + name + "”. Original files were not changed.");
   }
 
@@ -331,15 +339,16 @@ class ShelfWindow : public BWindow {
   }
 
   void DeleteCollection(const std::string &name) {
+    const auto collections = ShelfCollections::Load(collectionsFile);
+    const auto *existing = collections.Find(name);
+    if (!existing)
+      throw std::runtime_error("That saved collection no longer exists.");
     if (!Confirm("Delete collection",
                  "Delete saved collection “" + name +
                      "”? This does not change original files or the current Shelf.",
                  "Delete"))
       return;
-    auto collections = ShelfCollections::Load(collectionsFile);
-    collections.Remove(name);
-    collections.Save(collectionsFile);
-    RenderCollections(collections);
+    RenderCollections(ShelfCollections::DeleteSaved(collectionsFile, *existing));
     Status("Deleted saved collection “" + name + "”.");
   }
 
@@ -548,12 +557,7 @@ public:
         .End();
     AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
     Render();
-    try {
-      RenderCollections(ShelfCollections::Load(collectionsFile));
-    } catch (const std::exception &e) {
-      RenderCollections({});
-      Status(e.what());
-    }
+    RefreshCollections();
     BeginResolve({}, 0, {});
   }
 
@@ -561,6 +565,11 @@ public:
     BWindow::WindowActivated(active);
     if (active)
       Render();
+  }
+
+  void MenusBeginning() override {
+    BWindow::MenusBeginning();
+    RefreshCollections();
   }
 
   void MessageReceived(BMessage *message) override {

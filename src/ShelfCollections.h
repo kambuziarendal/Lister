@@ -19,6 +19,12 @@ public:
   static std::string Name(const std::string &);
   static ShelfCollections Load(const std::string &file);
   void Save(const std::string &file) const;
+  static ShelfCollections SaveCurrent(const std::string &file,
+                                      const std::string &name,
+                                      const ShelfSnapshot &,
+                                      const ShelfCollection *expected);
+  static ShelfCollections DeleteSaved(const std::string &file,
+                                      const ShelfCollection &expected);
 
 private:
   std::vector<ShelfCollection> items;

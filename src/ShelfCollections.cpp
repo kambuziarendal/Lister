@@ -3,6 +3,7 @@
 #include "MessageStore.h"
 #include <StorageDefs.h>
 #include <algorithm>
+#include <mutex>
 #include <stdexcept>
 #include <sys/stat.h>
 
@@ -83,6 +84,31 @@ ShelfEntry DecodeEntry(const BMessage &message) {
   }
   return entry;
 }
+
+bool SameSavedEntry(const ShelfEntry &a, const ShelfEntry &b) {
+  if (a.path != b.path || bool(a.proof) != bool(b.proof))
+    return false;
+  if (!a.proof)
+    return true;
+  const auto &first = *a.proof, &second = *b.proof;
+  return first.device == second.device && first.volumeRoot == second.volumeRoot &&
+         first.parent == second.parent && first.entry == second.entry &&
+         first.kind == second.kind;
+}
+
+void CheckUnchanged(const ShelfCollection *current,
+                    const ShelfCollection *expected) {
+  if ((!current && !expected) ||
+      (current && expected &&
+       std::equal(current->entries.begin(), current->entries.end(),
+                  expected->entries.begin(), expected->entries.end(),
+                  SameSavedEntry)))
+    return;
+  throw std::runtime_error("The saved collection changed. Open Collections and try again.");
+}
+
+// Listi uses B_SINGLE_LAUNCH, but each Shelf window has its own looper.
+std::mutex collectionEdits;
 }
 
 const ShelfCollection *ShelfCollections::Find(const std::string &name) const {
@@ -177,5 +203,28 @@ void ShelfCollections::Save(const std::string &file) const {
     root.AddMessage("collection", &collection);
   }
   SaveMessageStore(file, root);
+}
+
+ShelfCollections ShelfCollections::SaveCurrent(const std::string &file,
+                                                const std::string &name,
+                                                const ShelfSnapshot &shelf,
+                                                const ShelfCollection *expected) {
+  const auto canonical = Name(name);
+  std::lock_guard lock(collectionEdits);
+  auto latest = Load(file);
+  CheckUnchanged(latest.Find(canonical), expected);
+  latest.Put(canonical, shelf, expected != nullptr);
+  latest.Save(file);
+  return latest;
+}
+
+ShelfCollections ShelfCollections::DeleteSaved(const std::string &file,
+                                                const ShelfCollection &expected) {
+  std::lock_guard lock(collectionEdits);
+  auto latest = Load(file);
+  CheckUnchanged(latest.Find(expected.name), &expected);
+  latest.Remove(expected.name);
+  latest.Save(file);
+  return latest;
 }
 }
