@@ -51,18 +51,29 @@ bool ColumnEntryUnchanged(const BMessage &action) {
 
 class PaneInput : public BMessageFilter {
   Pane *pane;
-  bool isFilter;
+  BTextControl *pathControl;
 
 public:
-  PaneInput(Pane *p, bool filter)
+  PaneInput(Pane *p, BTextControl *path = nullptr)
       : BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE), pane(p),
-        isFilter(filter) {}
+        pathControl(path) {}
   filter_result Filter(BMessage *message, BHandler **) override {
     if (message->what == B_MOUSE_DOWN || message->what == B_KEY_DOWN)
       pane->Activate();
     if (message->what == B_KEY_DOWN) {
       const char *bytes = message->GetString("bytes", "");
-      if (isFilter && bytes[0] == B_ESCAPE) {
+      if (pathControl && bytes[0] == B_ENTER) {
+        BString text(pathControl->Text());
+        // BTextControl only invokes on Enter when its text changed. Reset
+        // its focus baseline so the following focus loss cannot submit again,
+        // even if navigation fails before updating the control.
+        pathControl->SetText(text);
+        BMessage navigate(kNavigate);
+        navigate.AddString("path", text);
+        pane->MessageReceived(&navigate);
+        return B_SKIP_MESSAGE;
+      }
+      if (!pathControl && bytes[0] == B_ESCAPE) {
         BMessage clear(kClearFilter);
         pane->MessageReceived(&clear);
         return B_SKIP_MESSAGE;
@@ -226,8 +237,8 @@ void Pane::AttachedToWindow() {
   forward->SetTarget(this);
   filter->SetTarget(this);
   clearFilter->SetTarget(this);
-  filter->TextView()->AddFilter(new PaneInput(this, true));
-  edit->TextView()->AddFilter(new PaneInput(this, false));
+  filter->TextView()->AddFilter(new PaneInput(this));
+  edit->TextView()->AddFilter(new PaneInput(this, edit));
   auto field = dynamic_cast<BMenuField *>(FindView("go"));
   field->Menu()->SetTargetForItems(this);
   scanDelivery = std::make_shared<DirectoryScanDelivery>();
@@ -475,7 +486,7 @@ void Pane::Navigate(const char *p) {
     if (Listi::IsVirtual(request))
       request = Listi::ParseLocation(request).URL();
   } catch (const std::exception &error) {
-    SetStatus(error.what());
+    SetNavigationError(error.what());
     return;
   }
   StartNavigation(request);
@@ -498,6 +509,11 @@ void Pane::NavigateFromColumn(const std::string &folder,
   Window()->PostMessage(&message, this);
 }
 void Pane::SetStatus(const char *text) {
+  if (!navigationFailed)
+    status->SetMessage(text);
+}
+void Pane::SetNavigationError(const char *text) {
+  navigationFailed = true;
   status->SetMessage(text);
 }
 void Pane::SetPlaces(const Listi::SavedPlaces &value, bool writable) {
@@ -534,6 +550,7 @@ void Pane::StartNavigation(const std::string &request, int target, bool trash) {
   UpdateNavigation();
   generation->store(serial);
   ClearRows();
+  navigationFailed = false;
   SetStatus("Reading directory...");
   BMessage m(kScan);
   m.AddString("path", path);
@@ -637,7 +654,7 @@ void Pane::SendSelection(bool gesture) {
   else
     s << " entries";
   SetStatus(s);
-  if (summary.selected) {
+  if (!navigationFailed && summary.selected) {
     BString tip(s);
     if (summary.files && !summary.overflow)
       tip << "\nKnown file sizes: " << uint64(summary.bytes) << " bytes.";
@@ -1050,8 +1067,9 @@ void Pane::MessageReceived(BMessage *m) {
       ClearRows();
       BString s("Cannot open: ");
       s << error;
-      SetStatus(s);
+      SetNavigationError(s);
     } else {
+      navigationFailed = false;
       bool stale = false;
       BMessage action(columnAction);
       columnAction.MakeEmpty();

@@ -21,6 +21,7 @@ using namespace Listi;
 namespace {
 std::atomic<int> rowFailures{0}, doneFailures{0};
 std::atomic<int> rowAttempts{0}, doneAttempts{0};
+std::atomic<int64> lastDoneSerial{-1};
 std::shared_ptr<std::atomic<int64>> generation;
 bool cancelOnFailure=false;
 }
@@ -28,7 +29,12 @@ extern "C" status_t __real__ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl(c
 extern "C" status_t __wrap__ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl(const BMessenger* self,BMessage* message,BHandler* reply,bigtime_t timeout) {
   auto fail=[&](std::atomic<int>& n) { int old=n.load(); if(old>0) {n.fetch_sub(1);return true;} return false; };
   if(message->what==kRows) { ++rowAttempts; if(fail(rowFailures)) {if(cancelOnFailure)generation->fetch_add(1);return B_TIMED_OUT;} }
-  if(message->what==kScanDone) { ++doneAttempts; if(fail(doneFailures)) return B_TIMED_OUT; }
+  if (message->what == kScanDone) {
+    ++doneAttempts;
+    lastDoneSerial = message->GetInt64("serial", -1);
+    if (fail(doneFailures))
+      return B_TIMED_OUT;
+  }
   return __real__ZNK10BMessenger11SendMessageEP8BMessageP8BHandlerl(self,message,reply,timeout);
 }
 class Receiver:public BLooper {
@@ -112,6 +118,62 @@ int main() {
  check(selected.size() == 159 &&
        std::find(selected.begin(), selected.end(), replaced) == selected.end(),
        "reload keeps untouched selections, not a replacement at the same path");
+ // A server failure and a delivery failure both arrive as kScanDone
+ // errors. Inject the latter here so retry coverage needs no network.
+ rowFailures = 100;
+ pane->Navigate(folder.c_str());
+ window->Unlock();
+ check(ready(), "failed location attempt settles");
+ window->Lock();
+ auto *status = dynamic_cast<BTextView *>(pane->FindView("status"));
+ auto *pathControl = dynamic_cast<BTextControl *>(pane->FindView("path"));
+ auto *filterControl = dynamic_cast<BTextControl *>(pane->FindView("filter"));
+ if (status && pathControl && filterControl) {
+   const std::string error = status->Text();
+   filterControl->SetText("file");
+   BMessage changed(kFilterChanged);
+   pane->MessageReceived(&changed);
+   pane->ShowStatus("Unrelated status update");
+   check(error.find("Cannot open:") == 0 && status->Text() == error,
+         "filter and unrelated status leave the navigation error visible");
+
+   const int64 failedSerial = lastDoneSerial;
+   pathControl->MakeFocus(true);
+   BMessenger editor(pathControl->TextView());
+   window->Unlock();
+   const char enter[] = {B_ENTER, 0};
+   BMessage key(B_KEY_DOWN);
+   key.AddString("bytes", enter);
+   key.AddInt8("byte", B_ENTER);
+   key.AddInt32("raw_char", B_ENTER);
+   key.AddInt32("key", 0);
+   key.AddInt32("modifiers", 0);
+   BMessage frame(B_GET_PROPERTY), reply;
+   frame.AddSpecifier("Frame");
+   const bool delivered = editor.SendMessage(&key) == B_OK &&
+       editor.SendMessage(&frame, &reply, 2000000, 2000000) == B_OK;
+   const bool retried = delivered && ready();
+   window->Lock();
+   check(retried && lastDoneSerial == failedSerial + 1 &&
+             status->Text() == error,
+         "Enter on unchanged path retries exactly once and shows the error again");
+
+   const int64 retrySerial = lastDoneSerial;
+   rowFailures = 0;
+   // Connect sends a kNavigate with an explicit path to the originating pane.
+   BMessage connect(kNavigate);
+   connect.AddString("path", folder.c_str());
+   pane->MessageReceived(&connect);
+   window->Unlock();
+   const bool recovered = ready();
+   window->Lock();
+   check(recovered && lastDoneSerial == retrySerial + 1 &&
+             pane->LocationValid() &&
+             std::string(status->Text()).find("Cannot open:") == std::string::npos,
+         "explicit same-path navigation replaces the error after recovery");
+ } else {
+   check(false, "native pane has controls for the navigation retry test");
+ }
  window->Quit();
  clean(root);std::cout<<checks<<" checks, "<<failures<<" failures"<<std::endl;return failures?1:0;
 }

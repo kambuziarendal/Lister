@@ -128,7 +128,9 @@ private:
   BTextControl *filter;
   BButton *clearFilter;
   WrappedLabel *status;
+  bool navigationFailed = false;
   void SetStatus(const char *);
+  void SetNavigationError(const char *);
   void UpdateActivityAppearance();
   void InvalidateActivityBorder();
   std::unique_ptr<BMessageRunner> activityTimer;
