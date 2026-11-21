@@ -1,14 +1,161 @@
 // SPDX-License-Identifier: MIT
 #include "ConnectionView.h"
+#include "Common.h"
+#include "VirtualFile.h"
 #include <Application.h>
 #include <TextControl.h>
+#include <TextView.h>
+#include <Window.h>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
+
+namespace {
+constexpr uint32 kTestClose = 'ctcl';
+
+class ConnectionReceiver : public BLooper {
+public:
+  std::atomic<int> navigations{0}, closes{0};
+  ConnectionReceiver() : BLooper("connection test receiver") {}
+  void MessageReceived(BMessage *message) override {
+    if (message->what == kNavigate)
+      ++navigations;
+    else if (message->what == kTestClose)
+      ++closes;
+    else
+      BLooper::MessageReceived(message);
+  }
+};
+
+bool WaitFor(const std::function<bool()> &condition) {
+  for (int i = 0; i < 100; ++i) {
+    if (condition())
+      return true;
+    snooze(20000);
+  }
+  return false;
+}
+
+// The receiver stands in for the originating pane so no network is involved.
+bool CheckPopup(BApplication &app, const std::string &identity,
+                const std::string &knownHosts) {
+  auto receiver = new ConnectionReceiver();
+  receiver->Run();
+  BMessenger events(receiver);
+  auto owner = new BWindow(BRect(100, 100, 700, 340), "Connect test",
+                           B_TITLED_WINDOW, 0);
+  constexpr char remote[] = "sftp://listi-passphrase-test.invalid/";
+  auto createForm = [&] {
+    auto *view = CreateConnectionView(events, events, BMessage(kTestClose));
+    owner->AddChild(view);
+    auto field = [&](const char *name) {
+      return dynamic_cast<BTextControl *>(view->FindView(name));
+    };
+    field("network address")->SetText(remote);
+    field("network username")->SetText("test-user");
+    field("network password")->SetText("server-password");
+    field("ssh key")->SetText(identity.c_str());
+    field("known hosts")->SetText(knownHosts.c_str());
+    return view;
+  };
+  auto *form = createForm();
+  owner->Show();
+  auto prompt = [&]() -> BWindow * {
+    for (int32 i = 0; i < app.CountWindows(); ++i) {
+      auto *window = app.WindowAt(i);
+      if (window && window != owner)
+        return window;
+    }
+    return nullptr;
+  };
+  auto connect = [&] {
+    BMessage message('conn');
+    form->MessageReceived(&message);
+  };
+  owner->Lock();
+  connect();
+  connect();
+  auto popup = prompt();
+  bool ok = popup && app.CountWindows() == 2 &&
+            receiver->navigations == 0 &&
+            Listi::GetConnection(remote).username.empty();
+  if (popup && popup->Lock()) {
+    auto *field = dynamic_cast<BTextControl *>(popup->FindView("unlock ssh key"));
+    ok &= field && field->TextView()->IsTypingHidden();
+    popup->PostMessage(B_QUIT_REQUESTED);
+    popup->Unlock();
+  }
+  owner->Unlock();
+  ok &= WaitFor([&] { return app.CountWindows() == 1; });
+  // Drain the canceled prompt's asynchronous result before trying again.
+  BMessage frame(B_GET_PROPERTY), reply;
+  frame.AddSpecifier("Frame");
+  ok &= BMessenger(owner).SendMessage(&frame, &reply, 2000000, 2000000) == B_OK;
+  owner->Lock();
+  auto *user = dynamic_cast<BTextControl *>(form->FindView("network username"));
+  ok &= user && std::string(user->Text()) == "test-user" &&
+        receiver->navigations == 0 && receiver->closes == 0 &&
+        Listi::GetConnection(remote).username.empty();
+  connect();
+  popup = prompt();
+  owner->Unlock();
+  if (popup && popup->Lock()) {
+    auto *field = dynamic_cast<BTextControl *>(popup->FindView("unlock ssh key"));
+    if (field) {
+      field->SetText("key-only-passphrase");
+      popup->PostMessage('nukp');
+    }
+    popup->Unlock();
+  } else {
+    ok = false;
+  }
+  ok &= WaitFor([&] { return receiver->navigations == 1 &&
+                             receiver->closes == 1 && app.CountWindows() == 1; });
+  const auto auth = Listi::GetConnection(remote);
+  ok &= auth.username == "test-user" && auth.password == "server-password" &&
+        auth.keyPassphrase == "key-only-passphrase" &&
+        auth.privateKey == identity && auth.knownHosts == knownHosts;
+
+  owner->Lock();
+  owner->RemoveChild(form);
+  delete form;
+  form = createForm();
+  connect();
+  ok &= prompt() != nullptr;
+  owner->RemoveChild(form);
+  delete form;
+  owner->Unlock();
+  ok &= WaitFor([&] { return app.CountWindows() == 1; });
+  ok &= receiver->navigations == 1 && receiver->closes == 1;
+
+  owner->Lock();
+  form = createForm();
+  auto *inlinePassphrase =
+      dynamic_cast<BTextControl *>(form->FindView("key passphrase"));
+  if (inlinePassphrase) {
+    inlinePassphrase->SetText("inline-key-passphrase");
+    connect();
+    ok &= !prompt();
+  } else {
+    ok = false;
+  }
+  owner->Unlock();
+  ok &= WaitFor([&] { return receiver->navigations == 2 &&
+                             receiver->closes == 2; });
+  ok &= Listi::GetConnection(remote).keyPassphrase == "inline-key-passphrase";
+  owner->Lock();
+  owner->Quit();
+  if (receiver->Lock())
+    receiver->Quit();
+  return ok;
+}
+} // namespace
 
 int main() {
   BApplication app("application/x-vnd.Listi-ConnectionDefaultsTest");
@@ -45,6 +192,16 @@ int main() {
   std::ofstream(native + "/known_hosts") << "test";
   expectedHosts = native + "/known_hosts";
   ok &= check(native + "/id_ed25519");
+  const auto encrypted = directory + "/encrypted.pem";
+  // Header-only fixture; contains no test private key or encrypted key data.
+  std::ofstream(encrypted) << "-----BEGIN RSA PRIVATE KEY-----\n"
+                              "Proc-Type: 4,ENCRYPTED\n"
+                              "DEK-Info: AES-128-CBC,00000000000000000000000000000000\n"
+                              "\n"
+                              "AAAA\n"
+                              "-----END RSA PRIVATE KEY-----\n";
+  const bool popup = CheckPopup(app, encrypted, expectedHosts);
+  unlink(encrypted.c_str());
   unlink((directory + "/known_hosts").c_str());
   unlink((native + "/known_hosts").c_str());
   unlink((native + "/id_ed25519").c_str());
@@ -57,5 +214,7 @@ int main() {
   rmdir(directory.c_str());
   rmdir(home);
   puts(ok ? "PASS editable SSH path defaults" : "FAIL SSH path defaults");
-  return ok ? 0 : 1;
+  puts(popup ? "PASS encrypted SSH key passphrase prompt"
+             : "FAIL encrypted SSH key passphrase prompt");
+  return ok && popup ? 0 : 1;
 }

@@ -2,6 +2,8 @@
 #include "ConnectionView.h"
 #include "Common.h"
 #include "ExplicitSubmit.h"
+#include "SshKeyFormat.h"
+#include "SshPaths.h"
 #include "VirtualFile.h"
 #include "WrappedLabel.h"
 #include <Button.h>
@@ -9,21 +11,140 @@
 #include <LayoutBuilder.h>
 #include <TextControl.h>
 #include <TextView.h>
-#include "SshPaths.h"
+#include <Window.h>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <utility>
 namespace {
-constexpr uint32 kConnect = 'conn', kAdvanced = 'nadv', kCancelConnect = 'nccl';
+constexpr uint32 kConnect = 'conn', kAdvanced = 'nadv', kCancelConnect = 'nccl',
+                 kUnlockKey = 'nukp', kPassphraseFinished = 'npfd',
+                 kDismissPassphrase = 'npdq';
+
+struct PassphraseAnswer {
+  std::mutex mutex;
+  std::string text;
+};
+
+class PassphraseWindow : public BWindow {
+  BMessenger target;
+  std::shared_ptr<PassphraseAnswer> answer;
+  BTextControl *passphrase;
+
+public:
+  PassphraseWindow(BWindow *owner, BMessenger receiver,
+                   std::shared_ptr<PassphraseAnswer> result)
+      : BWindow(BRect(0, 0, 415, 125), "SSH key passphrase", B_TITLED_WINDOW_LOOK,
+                B_MODAL_SUBSET_WINDOW_FEEL,
+                B_NOT_RESIZABLE | B_NOT_ZOOMABLE | B_NOT_MINIMIZABLE |
+                    B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
+        target(receiver), answer(std::move(result)) {
+    passphrase = new BTextControl("unlock ssh key", "Passphrase:", "", nullptr);
+    passphrase->TextView()->HideTyping(true);
+    auto unlock = new BButton("Unlock", new BMessage(kUnlockKey));
+    BLayoutBuilder::Group<>(this, B_VERTICAL, 10)
+        .SetInsets(12)
+        .Add(new WrappedLabel("unlock ssh key hint",
+                              "Enter the passphrase for the SSH private key."))
+        .Add(passphrase)
+        .AddGlue()
+        .AddGroup(B_HORIZONTAL, 8)
+        .AddGlue()
+        .Add(new BButton("Cancel", new BMessage(B_QUIT_REQUESTED)))
+        .Add(unlock)
+        .End();
+    SetDefaultButton(unlock);
+    passphrase->MakeFocus(true);
+    AddToSubset(owner);
+    CenterIn(owner->Frame());
+    MoveOnScreen();
+  }
+
+  bool QuitRequested() override {
+    passphrase->SetText("");
+    target.SendMessage(kPassphraseFinished);
+    return true;
+  }
+
+  void MessageReceived(BMessage *message) override {
+    if (message->what == kDismissPassphrase) {
+      passphrase->SetText("");
+      Quit();
+      return;
+    }
+    if (message->what != kUnlockKey) {
+      BWindow::MessageReceived(message);
+      return;
+    }
+    if (!passphrase->Text()[0]) {
+      passphrase->MakeFocus(true);
+      return;
+    }
+    {
+      std::lock_guard<std::mutex> lock(answer->mutex);
+      answer->text = passphrase->Text();
+    }
+    passphrase->SetText("");
+    target.SendMessage(kPassphraseFinished);
+    Quit();
+  }
+};
+
 class ConnectionView : public BGroupView {
   BMessenger pane, closeTarget;
   BMessage closeMessage;
   BTextControl *url, *user, *password, *domain, *key, *hosts, *keyPassphrase;
   WrappedLabel *error;
   BGroupView *advanced;
-  bool expanded = false;
+  bool expanded = false, closing = false;
+  struct PendingConnection {
+    std::string location;
+    Listi::Connection auth;
+    std::shared_ptr<PassphraseAnswer> answer;
+    BMessenger window;
+  };
+  std::optional<PendingConnection> pending;
+
+  void DismissPassphrase() {
+    if (pending) {
+      pending->window.SendMessage(kDismissPassphrase);
+      pending.reset();
+    }
+  }
   void Close() {
+    closing = true;
+    DismissPassphrase();
     password->SetText("");
     keyPassphrase->SetText("");
     BMessage done(closeMessage);
     closeTarget.SendMessage(&done);
+  }
+  void Connect(const std::string &location, const Listi::Connection &auth) {
+    Listi::SetConnection(location, auth);
+    BMessage navigate(kNavigate);
+    navigate.AddString("path", location.c_str());
+    pane.SendMessage(&navigate);
+    Close();
+  }
+  void AskPassphrase(std::string location, Listi::Connection auth) {
+    auto answer = std::make_shared<PassphraseAnswer>();
+    auto window = new PassphraseWindow(Window(), BMessenger(this), answer);
+    pending.emplace(PendingConnection{std::move(location), std::move(auth),
+                                      std::move(answer), BMessenger(window)});
+    window->Show();
+  }
+  void FinishPassphrase() {
+    if (!pending)
+      return;
+    auto connection = std::move(*pending);
+    pending.reset();
+    {
+      std::lock_guard<std::mutex> lock(connection.answer->mutex);
+      connection.auth.keyPassphrase = std::move(connection.answer->text);
+    }
+    if (connection.auth.keyPassphrase.empty())
+      return;
+    Connect(connection.location, connection.auth);
   }
 
 public:
@@ -32,9 +153,10 @@ public:
         closeMessage(message) {
     // BTextControl invokes its message on focus loss as well as Enter. Never
     // submit partially entered credentials when the user tabs between fields.
-    url = new BTextControl("Address:", "smb://", nullptr);
-    user = new BTextControl("Username:", "", nullptr);
-    password = new BTextControl("Password:", "", nullptr);
+    url = new BTextControl("network address", "Address:", "smb://", nullptr);
+    user = new BTextControl("network username", "Username:", "", nullptr);
+    password =
+        new BTextControl("network password", "Password:", "", nullptr);
     password->TextView()->HideTyping(true);
     domain = new BTextControl("SMB domain:", "", nullptr);
     key = new BTextControl("ssh key", "SSH private key:",
@@ -88,7 +210,13 @@ public:
     target(target, this);
     url->MakeFocus(true);
   }
+  void DetachedFromWindow() override {
+    DismissPassphrase();
+    BGroupView::DetachedFromWindow();
+  }
   void MessageReceived(BMessage *m) override {
+    if (closing)
+      return;
     if (m->what == kCancelConnect) {
       Close();
       return;
@@ -101,11 +229,17 @@ public:
         advanced->Hide();
       return;
     }
-    if (m->what != kConnect) {
+    if (m->what != kConnect && m->what != kPassphraseFinished) {
       BGroupView::MessageReceived(m);
       return;
     }
     try {
+      if (m->what == kPassphraseFinished) {
+        FinishPassphrase();
+        return;
+      }
+      if (pending)
+        return;
       auto location = Listi::ParseLocation(url->Text());
       if (location.Local() || location.Archive())
         throw std::runtime_error("Enter an SMB, SFTP, FTP or FTPS address.");
@@ -124,12 +258,13 @@ public:
         if (!auth.privateKey.empty() && !Listi::ReadableSshFile(auth.privateKey))
           throw std::runtime_error("Cannot read the selected SSH private key. Check its local path under Advanced.");
         auth.keyPassphrase = keyPassphrase->Text();
+        if (auth.keyPassphrase.empty() && !auth.privateKey.empty() &&
+            Listi::SshKeyNeedsPassphrase(auth.privateKey)) {
+          AskPassphrase(location.URL(), std::move(auth));
+          return;
+        }
       }
-      Listi::SetConnection(location.URL(), auth);
-      BMessage navigate(kNavigate);
-      navigate.AddString("path", location.URL().c_str());
-      pane.SendMessage(&navigate);
-      Close();
+      Connect(location.URL(), auth);
     } catch (const std::exception &e) {
       error->SetMessage(e.what());
     }
