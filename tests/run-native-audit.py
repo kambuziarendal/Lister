@@ -27,7 +27,7 @@ inspector-content inspector-document inspector-editor inspector-photo
 terminal-session terminal-dock bulk-rename bulk-rename-window shelf shelf-collections
 shelf-collections-window named-entry file-properties attribute-columns
 attribute-columns-ui properties-faults attribute-copy job-snapshot icon-cache
-audit-io theme-text connection-defaults
+audit-io theme-text connection-defaults ssh-key-format
 """.split()
 
 WRAPS = {
