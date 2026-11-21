@@ -5,6 +5,7 @@
 #include "ArchivePasswords.h"
 #include <memory>
 #include <algorithm>
+#include <UTF8.h>
 #include <archive.h>
 #include <archive_entry.h>
 #include <cctype>
@@ -209,8 +210,22 @@ std::string EntryName(Reader &reader, struct archive_entry *entry,
                       const Location &location) {
   auto name =
       SafeArchivePath(LIBCALL(reader.lib, archive_entry_pathname)(entry));
-  if (LIBCALL(reader.lib, archive_format)(reader.handle) ==
-      ARCHIVE_FORMAT_RAW) {
+  const int format = LIBCALL(reader.lib, archive_format)(reader.handle);
+  // Keep Unicode extra fields and the unmarked UTF-8 names written by older
+  // Listi releases. Only fall back to ZIP's original DOS encoding if the
+  // archive engine cannot interpret the member name as UTF-8.
+  if ((format & ARCHIVE_FORMAT_BASE_MASK) == ARCHIVE_FORMAT_ZIP &&
+      !name.empty() && !LIBCALL(reader.lib, archive_entry_pathname_utf8)(entry)) {
+    int32 sourceSize = name.size(), size = sourceSize * 3, state = 0;
+    std::string decoded(size, '\0');
+    if (convert_to_utf8(B_MS_DOS_CONVERSION, name.data(), &sourceSize,
+                        decoded.data(), &size, &state) != B_OK ||
+        size_t(sourceSize) != name.size())
+      throw std::runtime_error("Cannot decode ZIP entry name.");
+    decoded.resize(size);
+    return SafeArchivePath(decoded.c_str());
+  }
+  if (format == ARCHIVE_FORMAT_RAW) {
     name = LocationLeaf(location.archive);
     auto dot = name.find_last_of('.');
     if (dot != std::string::npos)

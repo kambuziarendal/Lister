@@ -31,6 +31,25 @@ int main(){
   auto job=PrepareArchiveJob(true,{path});SetArchiveDestination(job,root,"extract-"+format+std::to_string(i));auto result=Run(job,{});struct stat st;
   check(!result.errors.empty()&&!result.completed&&lstat(job.destination.c_str(),&st)!=0,format+" never publishes ambiguous extraction "+std::to_string(i));
  }
+ // Original DOS ZIP member names are CP437, not arbitrary local filename bytes.
+ const auto oldZip = root + "/legacy.zip";
+ {
+   std::ifstream in("tests/fixtures/zip/cp437.zip", std::ios::binary);
+   std::ofstream out(oldZip, std::ios::binary);
+   out << in.rdbuf();
+   if (!out) return 2;
+ }
+ auto legacyEntries = ListFiles(OpenArchive(oldZip));
+ const std::string expected = "Ålesund Æö.txt";
+ check(legacyEntries.size() == 1 && legacyEntries[0].name == expected,
+       "DOS ZIP exposes a UTF-8 filename");
+ auto extract = PrepareArchiveJob(true, {oldZip});
+ SetArchiveDestination(extract, root, "legacy");
+ auto extracted = Run(extract, {});
+ std::string payload;
+ std::getline(std::ifstream(extract.destination + "/" + expected), payload);
+ check(extracted.completed == 1 && extracted.errors.empty() && payload == "payload-123",
+       "DOS ZIP extracts under the decoded name with exact contents");
  std::cout<<checks<<" checks, "<<failures<<" failures\n";
  // Retain small malformed fixtures for diagnosis if a regression fails.
  return failures?1:0;
