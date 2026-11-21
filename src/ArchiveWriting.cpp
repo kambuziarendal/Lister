@@ -52,6 +52,7 @@ struct Writer {
     Require(level >= 0 && level <= 9, "Invalid compression level.");
     if (format == "zip") {
       Check(LIBCALL(lib, archive_write_set_format_zip)(a));
+      Check(LIBCALL(lib, archive_write_set_options)(a, "zip:hdrcharset=UTF-8"));
       if (secret) {
         Check(LIBCALL(lib, archive_write_set_passphrase)(a, secret->Text()));
         Check(LIBCALL(lib, archive_write_set_options)(a,
@@ -117,6 +118,7 @@ const ArchiveFormat formats[] = {
 struct Pack {
   Writer &writer;
   const Hooks &hooks;
+  bool zip;
   size_t count = 0;
   std::vector<std::pair<std::string, struct stat>> snapshots;
   std::map<std::string, std::string> *isoMembers = nullptr;
@@ -156,7 +158,11 @@ struct Pack {
     Require(entry, "Cannot allocate archive entry.");
     try {
       LIBCALL(writer.lib, archive_entry_copy_stat)(entry, &before);
-      LIBCALL(writer.lib, archive_entry_set_pathname)(entry, name.c_str());
+      // Haiku supplies UTF-8 independently of the worker's C locale.
+      if (zip)
+        LIBCALL(writer.lib, archive_entry_set_pathname_utf8)(entry, name.c_str());
+      else
+        LIBCALL(writer.lib, archive_entry_set_pathname)(entry, name.c_str());
       LIBCALL(writer.lib, archive_entry_set_perm)(entry, before.st_mode & 0777);
       LIBCALL(writer.lib, archive_entry_set_uid)(entry, 0);
       LIBCALL(writer.lib, archive_entry_set_gid)(entry, 0);
@@ -241,7 +247,7 @@ void CreateArchiveOutput(int output, const std::string &format,
     Writer writer;
     writer.Configure(format, level, secret);
     writer.Check(LIBCALL(writer.lib, archive_write_open_fd)(writer.a, output));
-    Pack pack{writer, hooks};
+    Pack pack{writer, hooks, format == "zip"};
     std::map<std::string, std::string> isoMembers;
     if (format == "iso")
       pack.isoMembers = &isoMembers;

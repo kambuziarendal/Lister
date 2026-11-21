@@ -28,6 +28,22 @@ std::string vread(const std::string &p){std::string out;ReadFile(p,[&](const cha
 bool exists(const std::string &p){struct stat s;return !lstat(p.c_str(),&s);}
 ArchiveSecretPtr secret(const char *text="Listi-create-test-Æ"){return std::make_shared<ArchiveSecret>(text);}
 void clean(const std::string &p){BDirectory d(p.c_str());BEntry e;while(d.GetNextEntry(&e,false)==B_OK){if(e.IsDirectory()) {BPath path;e.GetPath(&path);clean(path.Path());}e.Remove();}rmdir(p.c_str());}
+// Check the ZIP headers directly: a same-library round trip can read raw
+// UTF-8 even when independent readers are told to interpret it as CP437.
+void checkZipName(const std::string &path) {
+  const auto bytes = read(path);
+  const std::string name = "folder/æ name ; $(no).txt";
+  auto marked = [&](const char *signature, size_t header, size_t flagOffset) {
+    for (size_t at = bytes.find(name); at != std::string::npos;
+         at = bytes.find(name, at + name.size())) {
+      if (at >= header && bytes.compare(at - header, 4, signature, 4) == 0)
+        return (bytes[at - header + flagOffset + 1] & 0x08) != 0;
+    }
+    return false;
+  };
+  check(marked("PK\x03\x04", 30, 6) && marked("PK\x01\x02", 46, 8),
+        "ZIP local and central headers declare UTF-8 for the exact member name");
+}
 void *run(void *) {
  try{
   char pattern[]="/tmp/Listi-archive-jobs-XXXXXX";std::string root=mkdtemp(pattern);
@@ -77,6 +93,7 @@ void *run(void *) {
     job=DecodeJob(EncodeJob(job,0));auto result=Run(job,{});
     if(!result.errors.empty())std::cerr<<result.errors.front()<<std::endl;
     check(result.completed==1 && result.errors.empty(),f.id+" creates archive");
+    if (f.id == "zip") checkZipName(job.destination);
     auto extract=PrepareArchiveJob(true,{job.destination});SetArchiveDestination(extract,out,"extract-"+f.id);
     auto unpack=Run(extract,{});if(!unpack.errors.empty())std::cerr<<unpack.errors.front()<<std::endl;
     check(unpack.completed==1 && unpack.errors.empty(),f.id+" extracts transactionally");
@@ -219,6 +236,7 @@ void *run(void *) {
     auto made=RunArchiveJob(encrypted,{});
     if(!made.errors.empty())std::cerr<<made.errors.front()<<std::endl;
     check(made.completed==1 && made.errors.empty(),format.id+" AES-256 archive creation");
+    if (format.id == "zip") checkZipName(encrypted.destination);
     int prompts=0;ForgetArchivePasswords();
     SetArchivePasswordPrompt([&](const std::string &,bool,const TransferControl &){++prompts;return secret(password.c_str());});
     auto encryptedURL=OpenArchive(encrypted.destination);
@@ -248,6 +266,7 @@ void *run(void *) {
     check(evicted, format.id+" edit experienced password-cache eviction");
     if(!encryptedUpdated.errors.empty())std::cerr<<encryptedUpdated.errors.front()<<std::endl;
     check(encryptedUpdated.completed==1&&encryptedUpdated.errors.empty(),format.id+" encrypted archive edit");
+    if (format.id == "zip") checkZipName(encrypted.destination);
     ForgetArchivePasswords();int editPrompts=0;
     SetArchivePasswordPrompt([&](const std::string &,bool,const TransferControl &){++editPrompts;return secret(password.c_str());});
     auto editedURL=OpenArchive(encrypted.destination);
