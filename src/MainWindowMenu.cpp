@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "MainWindowMenu.h"
 #include "Common.h"
-#include "FlatViewWindow.h"
+#include "FlatView.h"
 #include "MainWindow.h"
 #include "ShelfWindow.h"
 #include "WorkspaceActions.h"
@@ -112,7 +112,7 @@ void MainWindowMenu::AddViewMenu() {
   fileView->AddSeparatorItem();
   fileView->AddItem(new BMenuItem("Use workspace default", resetView));
   fileView->AddSeparatorItem();
-  flatViewItem = AddCommand(fileView, "Flat View…", Listi::kFlatView);
+  flatViewItem = AddCommand(fileView, "Flat View", Listi::kFlatView);
   viewMenu->AddItem(fileView);
   bankToggle = AddCommand(viewMenu, "Show function buttons", kToggleBank);
   compactActions = new BMenu("Function actions");
@@ -175,10 +175,11 @@ void MainWindowMenu::SetPreview(const WorkspaceLayout &layout, bool showingQuick
   previewMenu->SetEnabled(!showingQuickView && !layout.SinglePane());
 }
 
-void MainWindowMenu::SetFileActions(int32 viewMode, bool canOpenFlatView,
+void MainWindowMenu::SetFileActions(int32 viewMode, bool flat, bool canOpenFlatView,
                                     bool canSaveClipboard, bool canUndoBulkRename) {
   for (int32 i = 0; i < ViewModeCount; ++i)
-    fileView->ItemAt(i)->SetMarked(i == viewMode);
+    fileView->ItemAt(i)->SetMarked(!flat && i == viewMode);
+  flatViewItem->SetMarked(flat);
   flatViewItem->SetEnabled(canOpenFlatView);
   saveClipboardTextItem->SetEnabled(canSaveClipboard);
   saveClipboardImageItem->SetEnabled(canSaveClipboard);

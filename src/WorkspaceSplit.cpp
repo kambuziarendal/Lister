@@ -5,7 +5,8 @@
 #include "ImagePreview.h"
 #include "MainWindowMenu.h"
 #include "Pane.h"
-#include "FlatViewWindow.h"
+#include "FlatView.h"
+#include "VirtualFile.h"
 #include "ShelfWindow.h"
 #include "PanelTools.h"
 #include "WorkspaceLayout.h"
@@ -160,8 +161,11 @@ void WorkspaceSplit::SetSource(int pane) {
 }
 
 void WorkspaceSplit::FollowFocus(const BView *view) {
+  if (!prefs.IsSmidja() && Panel(0).Current() != PanelPage::Flat &&
+      Panel(1).Current() != PanelPage::Flat)
+    return;
   const int pane = PanelContaining(view);
-  if (pane >= 0 && source != pane) {
+  if (pane >= 0 && paneVisible[pane] && source != pane) {
     SetSource(pane);
     UpdatePreviews();
   }
@@ -176,8 +180,6 @@ bool WorkspaceSplit::ActivateFiles(int pane) {
 }
 
 bool WorkspaceSplit::AllowsCommand(uint32 action) const {
-  if (!prefs.IsSmidja())
-    return true;
   switch (action) {
   case kCopy: case kMove: case kSame: case kCreateLink: case kDuplicate:
   case kCompareFolders: case kCreateArchive: case kExtractArchive:
@@ -190,9 +192,13 @@ bool WorkspaceSplit::AllowsCommand(uint32 action) const {
   case kDelete: case kRestore: case kPermanentDelete: case kRename:
   case kBulkRename: case kMkdir: case kAddArchive: case kRemoveArchive:
   case kAll: case kNone: case kInvert: case kSelectType: case kSelectPattern:
-  case Listi::kApplyPattern: case kGridMode: case Listi::kAddToShelf:
-  case Listi::kFlatView:
+  case Listi::kApplyPattern: case kNetwork:
     return Panel(source).Current() == PanelPage::Files;
+  case kGridMode:
+  case Listi::kAddToShelf:
+  case Listi::kFlatView:
+    return Panel(source).Current() == PanelPage::Files ||
+           Panel(source).Current() == PanelPage::Flat;
   default:
     return true;
   }
@@ -203,7 +209,7 @@ void WorkspaceSplit::Focus() { Panel(source).FocusCurrent(); }
 void WorkspaceSplit::SwitchPane() {
   if (quickView)
     return;
-  if (prefs.workspace == Workspace::askr) {
+  if (prefs.workspace == Workspace::askr && Panel(source).Current() == PanelPage::Files) {
     Panel(source).Files().ToggleTreeFocus();
   } else if (!prefs.SinglePane()) {
     SetSource(1 - source);
@@ -264,16 +270,36 @@ bool WorkspaceSplit::SetQuickView(bool enabled) {
 
 void WorkspaceSplit::HandlePageCommand(const BMessage &message) {
   const int pane = message.GetInt32("pane", -1);
-  if (!prefs.IsSmidja() || pane < 0 || pane > 1)
+  if (pane < 0 || pane > 1 || !paneVisible[pane] ||
+      (!prefs.IsSmidja() && Panel(pane).Current() != PanelPage::Flat))
     return;
   if (message.what == kClosePanelPage) {
     ClosePanelTool(pane);
     return;
   }
   const int32 page = message.GetInt32("page", -1);
-  if (page >= int32(PanelPage::Files) && page <= int32(PanelPage::Preview) &&
+  if (page >= int32(PanelPage::Files) && page <= int32(PanelPage::Flat) &&
+      (prefs.IsSmidja() || page == int32(PanelPage::Files) || page == int32(PanelPage::Flat)) &&
       Panel(pane).Select(PanelPage(page))) {
     SetSource(pane);
+    RefreshAndFocus();
+  }
+}
+
+bool WorkspaceSplit::CanToggleFlat() const {
+  const auto &panel = Panel(source);
+  const char *path = panel.Files().Path();
+  return panel.Current() == PanelPage::Flat ||
+         (panel.Current() == PanelPage::Files && path[0] == '/' && !IsVirtual(path));
+}
+
+void WorkspaceSplit::ToggleFlat(const std::shared_ptr<Shelf> &shelf) {
+  if (!CanToggleFlat())
+    return;
+  if (Panel(source).Current() == PanelPage::Flat)
+    ClosePanelTool(source);
+  else {
+    Panel(source).OpenFlat(shelf);
     RefreshAndFocus();
   }
 }
@@ -284,6 +310,10 @@ void WorkspaceSplit::OpenSearch(const BMessage &store) {
 }
 
 void WorkspaceSplit::FocusFilter() {
+  if (Panel(source).Current() == PanelPage::Flat) {
+    Focus();
+    return;
+  }
   if (Panel(source).Select(PanelPage::Files)) {
     RefreshPanels();
     Panel(source).Files().FocusFilter();
@@ -301,6 +331,7 @@ void WorkspaceSplit::TogglePanelPreview() {
 
 bool WorkspaceSplit::DismissPanelTool() {
   switch (Panel(source).Current()) {
+  case PanelPage::Flat:
   case PanelPage::Preview:
     ClosePanelTool(source);
     return true;
@@ -387,6 +418,8 @@ bool WorkspaceSplit::HandlePanelCommand(BMessage *m) {
     FocusFilter();
     break;
   case kGridMode:
+    if (Panel(source).Current() == PanelPage::Flat)
+      ClosePanelTool(source);
     Panel(source).Files().MessageReceived(m);
     break;
   default:

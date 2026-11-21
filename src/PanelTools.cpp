@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "PanelTools.h"
+#include "FlatView.h"
 #include "ViewVisibility.h"
 
 #include "ImagePreview.h"
@@ -16,16 +17,14 @@ PanelTools::PanelTools(int32 index, Pane &list)
   pages[0] = &files;
   tabs = new BGroupView(B_HORIZONTAL, 2);
   tabs->SetName("panel tabs");
-  const char *labels[] = {"Files", "Search", "Preview"};
-  for (int32 i = 0; i < 3; ++i) {
+  const char *labels[] = {"Files", "Search", "Preview", "Flat View"};
+  for (int32 i = 0; i < int32(buttons.size()); ++i) {
     auto *choose = new BMessage(kPanelPage);
     choose->AddInt32("pane", pane);
     choose->AddInt32("page", i);
     buttons[i] = new BButton(labels[i], choose);
     buttons[i]->SetBehavior(BButton::B_TOGGLE_BEHAVIOR);
     tabs->AddChild(buttons[i]);
-    if (i != 0)
-      buttons[i]->Hide();
   }
   auto *close = new BMessage(kClosePanelPage);
   close->AddInt32("pane", pane);
@@ -54,13 +53,12 @@ bool PanelTools::CloseCurrent() {
     return true;
   if (!Select(PanelPage::Files))
     return false;
-  const auto index = size_t(page);
-  GroupLayout()->RemoveView(pages[index]);
-  delete pages[index];
-  pages[index] = nullptr;
-  buttons[index]->Hide();
-  if (!Page(PanelPage::Search) && !Page(PanelPage::Preview))
-    tabs->Hide();
+  // A flat snapshot is discarded whenever we leave it. Search and preview
+  // pages normally survive tab changes, but not an explicit close.
+  if (Page(page)) {
+    RemovePage(page);
+    UpdateTabs();
+  }
   return true;
 }
 
@@ -74,11 +72,11 @@ bool PanelTools::CloseEditor() {
 }
 
 void PanelTools::EnableTools(bool enabled) {
-  if (!enabled)
+  toolsEnabled = enabled;
+  if (!enabled && current != PanelPage::Flat)
     ShowPage(PanelPage::Files);
-  const bool show =
-      enabled && (Page(PanelPage::Search) || Page(PanelPage::Preview));
-  SetViewVisible(tabs, show);
+  else
+    UpdateTabs();
 }
 
 void PanelTools::FocusCurrent() {
@@ -86,8 +84,9 @@ void PanelTools::FocusCurrent() {
   case PanelPage::Files:
     files.FocusList();
     break;
-  case PanelPage::Search: {
-    BMessage focus(kSearch);
+  case PanelPage::Search:
+  case PanelPage::Flat: {
+    BMessage focus(current == PanelPage::Flat ? kFlatView : kSearch);
     Page(current)->MessageReceived(&focus);
     break;
   }
@@ -95,6 +94,12 @@ void PanelTools::FocusCurrent() {
     Page(current)->MakeFocus();
     break;
   }
+}
+
+void PanelTools::OpenFlat(const std::shared_ptr<Shelf> &shelf) {
+  if (current == PanelPage::Files)
+    Open(PanelPage::Flat,
+         CreateFlatView(BMessenger(Window()), shelf, files.Path()));
 }
 
 bool PanelTools::OpenSearch(const BMessage &store) {
@@ -137,14 +142,22 @@ void PanelTools::Open(PanelPage page, BView *view) {
   pages[index] = view;
   AddChild(view);
   view->Hide();
-  buttons[index]->Show();
-  SetViewVisible(tabs, true);
   ShowPage(page);
+}
+
+void PanelTools::RemovePage(PanelPage page) {
+  auto *view = Page(page);
+  GroupLayout()->RemoveView(view);
+  delete view;
+  pages[size_t(page)] = nullptr;
 }
 
 void PanelTools::ShowPage(PanelPage page) {
   if (current != page) {
-    Page(current)->Hide();
+    if (current == PanelPage::Flat)
+      RemovePage(current);
+    else
+      Page(current)->Hide();
     Page(page)->Show();
     current = page;
   }
@@ -152,8 +165,14 @@ void PanelTools::ShowPage(PanelPage page) {
 }
 
 void PanelTools::UpdateTabs() {
-  for (size_t i = 0; i < buttons.size(); ++i)
+  const bool otherTools = Page(PanelPage::Search) || Page(PanelPage::Preview);
+  SetViewVisible(tabs, current == PanelPage::Flat || (toolsEnabled && otherTools));
+  for (size_t i = 0; i < buttons.size(); ++i) {
+    const auto page = PanelPage(i);
+    const bool available = toolsEnabled || page == PanelPage::Files || page == PanelPage::Flat;
+    SetViewVisible(buttons[i], pages[i] && available);
     buttons[i]->SetValue(i == size_t(current) ? B_CONTROL_ON : B_CONTROL_OFF);
+  }
   closeButton->SetEnabled(current != PanelPage::Files);
 }
 } // namespace Listi

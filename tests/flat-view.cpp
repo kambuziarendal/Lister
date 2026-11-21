@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 #include "FileSearch.h"
-#include "FlatViewWindow.h"
+#include "FlatView.h"
 #include "SearchWorker.h"
 #include "SearchWindow.h"
 #include "SavedSearches.h"
 #include "Shelf.h"
 #include <Application.h>
+#include <LayoutBuilder.h>
 #include <Button.h>
 #include <ColumnListView.h>
 #include <ColumnTypes.h>
@@ -101,10 +102,19 @@ std::set<std::string> Folders(const BColumnListView &results) {
   return folders;
 }
 
+BMessenger HostFlatView(const std::shared_ptr<Shelf> &shelf, const char *path) {
+  auto *window = new BWindow(BRect(50, 50, 700, 450), "Test lister",
+                             B_TITLED_WINDOW, B_ASYNCHRONOUS_CONTROLS);
+  BLayoutBuilder::Group<>(window, B_VERTICAL).Add(CreateFlatView(BMessenger(window), shelf, path));
+  BMessenger host(window);
+  window->Show();
+  return host;
+}
+
 void SetFilter(BWindow &window, const char *text) {
   auto field = static_cast<BTextControl *>(window.FindView("flat filter"));
   field->SetText(text);
-  window.PostMessage(field->ModificationMessage());
+  window.PostMessage(field->ModificationMessage(), field->Target());
 }
 }
 
@@ -142,7 +152,7 @@ int main() {
         "Flat View bounds traversal even where no file matches yet");
 
   auto shelf = std::make_shared<Shelf>();
-  auto flat = OpenFlatView(BMessenger(), shelf, root.c_str());
+  auto flat = HostFlatView(shelf, root.c_str());
   Check(
       Await([&] {
         return Inspect(flat, [&](BWindow &window) {
@@ -226,10 +236,13 @@ int main() {
   openedRoot = create_sem(0, "flat test worker started");
   resumeRoot = create_sem(0, "flat test worker may finish");
   pauseRoot = true;
-  auto scanning = OpenFlatView(BMessenger(), shelf, root.c_str());
+  auto scanning = HostFlatView(shelf, root.c_str());
   Check(acquire_sem_etc(openedRoot, 1, B_RELATIVE_TIMEOUT, 3000000) == B_OK,
         "scan is running on a worker while the window is open");
-  scanning.SendMessage(kSearchStop);
+  Inspect(scanning, [](BWindow &window) {
+    auto *stop = dynamic_cast<BButton *>(window.FindView("cancel flat scan"));
+    return stop && stop->Invoke() == B_OK;
+  });
   Check(
       Await([&] {
         return Inspect(scanning, [&](BWindow &window) {
@@ -244,7 +257,7 @@ int main() {
   Check(Await([&] { return !scanning.IsValid(); }),
         "closing a cancelled Flat View joins its worker");
   dropCompletion = true;
-  auto lost = OpenFlatView(BMessenger(), shelf, root.c_str());
+  auto lost = HostFlatView(shelf, root.c_str());
   Check(Await([&] { return Inspect(lost, [](BWindow &window) {
       return TextContains(window, "flat status", "Incomplete: results could not be delivered.");
     }); }), "failed terminal delivery cannot leave Flat View scanning indefinitely");

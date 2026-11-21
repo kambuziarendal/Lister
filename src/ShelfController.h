@@ -19,7 +19,6 @@ public:
   ShelfController(BMessenger owner, const std::array<Pane *, 2> &panes);
 
   const std::shared_ptr<Shelf> &Model() const { return fShelf; }
-  static bool CanOpenFlatView(const char *path);
   bool Handle(const BMessage &message, Pane &active, OperationQueue &queue);
   void Add(Pane &active,
            const std::map<std::string, NodeIdentity> &expected = {});
@@ -27,13 +26,11 @@ public:
 
 private:
   void RefreshSidebars();
-  void OpenFlatViewFor(const char *root);
 
   BMessenger fOwner;
   const std::array<Pane *, 2> &fPanes;
   std::shared_ptr<Shelf> fShelf = std::make_shared<Shelf>();
   BMessenger fShelfWindow;
-  std::map<std::string, BMessenger> fFlatViews;
 };
 
 } // namespace Listi

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-#include "FlatViewWindow.h"
+#include "FlatView.h"
 #include "FileSearch.h"
 #include "NameFilter.h"
 #include "SearchWorker.h"
@@ -8,6 +8,7 @@
 #include <Button.h>
 #include <ColumnListView.h>
 #include <ColumnTypes.h>
+#include <GroupView.h>
 #include <LayoutBuilder.h>
 #include <Message.h>
 #include <MessageRunner.h>
@@ -58,13 +59,14 @@ public:
   }
 };
 
-class FlatViewWindow : public BWindow {
+class FlatView : public BGroupView {
   struct File {
     SearchHit hit;
     std::string name;
     FlatRow *row = nullptr;
   };
 
+  const std::string rootPath;
   BMessenger owner;
   std::shared_ptr<Shelf> shelf;
   std::shared_ptr<std::atomic<int64>> generation =
@@ -154,14 +156,13 @@ class FlatViewWindow : public BWindow {
   }
 
 public:
-  FlatViewWindow(BMessenger target, std::shared_ptr<Shelf> collection,
-                 const char *path)
-      : BWindow(BRect(110, 105, 890, 655), "Listi: Flat View", B_TITLED_WINDOW,
-                B_ASYNCHRONOUS_CONTROLS | B_AUTO_UPDATE_SIZE_LIMITS),
-        owner(target), shelf(std::move(collection)) {
+  FlatView(BMessenger target, std::shared_ptr<Shelf> collection,
+           const char *path)
+      : BGroupView("flat view", B_VERTICAL, 5), rootPath(path), owner(target),
+        shelf(std::move(collection)) {
     auto root = Line("flat root", (std::string("Folder: ") + path).c_str());
-    filter =
-        new BTextControl("flat filter", "Filter name or folder:", "", nullptr);
+    filter = new BTextControl("flat filter", "Filter:", "", nullptr);
+    filter->SetToolTip("Filter by file name or relative folder");
     filter->SetModificationMessage(new BMessage(kFilterChanged));
     filter->TextView()->SetMaxBytes(B_PATH_NAME_LENGTH);
     status = Line("flat status", "");
@@ -170,11 +171,9 @@ public:
         new BButton("cancel flat scan", "Stop scan", new BMessage(kSearchStop));
     collect = new BButton("add flat selection", "Add to Shelf",
                           new BMessage(kCollect));
-    auto close =
-        new BButton("close flat view", "Close", new BMessage(B_QUIT_REQUESTED));
     results = new FlatResults(collect);
-    BLayoutBuilder::Group<>(this, B_VERTICAL, 8)
-        .SetInsets(10)
+    BLayoutBuilder::Group<>(this)
+        .SetInsets(5)
         .Add(root)
         .AddGroup(B_HORIZONTAL, 8)
         .Add(filter)
@@ -185,19 +184,24 @@ public:
         .AddGroup(B_HORIZONTAL, 8)
         .Add(shelfStatus)
         .Add(collect)
-        .Add(close)
         .End();
-    AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(kSearchStop));
-    AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
     Colors();
-    filter->MakeFocus();
+  }
+
+  void AllAttached() override {
+    BGroupView::AllAttached();
+    filter->SetTarget(this);
+    stop->SetTarget(this);
+    collect->SetTarget(this);
+    if (worker)
+      return;
 
     BMessage check(kDeliveryCheck);
     deliveryTimer.reset(new BMessageRunner(BMessenger(this), &check, 250000));
     worker = NewSearchWorker(BMessenger(this), generation, failedSerial);
     BMessage request(kSearchStart);
     request.AddInt64("serial", generation->load());
-    request.AddString("root", path);
+    request.AddString("root", rootPath.c_str());
     request.AddBool("flat", true);
     scanning = worker->Run() >= 0 && deliveryTimer->InitCheck() == B_OK &&
                worker->PostMessage(&request) == B_OK;
@@ -206,9 +210,9 @@ public:
     UpdateStatus();
   }
 
-  ~FlatViewWindow() {
+  ~FlatView() {
     generation->fetch_add(1);
-    if (worker->Lock())
+    if (worker && worker->Lock())
       worker->Quit();
     results->Clear();
   }
@@ -216,7 +220,7 @@ public:
   void MessageReceived(BMessage *message) override {
     switch (message->what) {
     case kFlatView:
-      Activate();
+      filter->MakeFocus();
       break;
     case kFilterChanged:
       needle = filter->Text();
@@ -224,6 +228,7 @@ public:
         UpdateRow(file);
       UpdateStatus();
       break;
+    case kAddToShelf:
     case kCollect:
       Collect();
       break;
@@ -280,22 +285,19 @@ public:
       break;
     }
     case B_COLORS_UPDATED:
-      BWindow::MessageReceived(message);
+      BGroupView::MessageReceived(message);
       Colors();
       break;
     default:
-      BWindow::MessageReceived(message);
+      BGroupView::MessageReceived(message);
       break;
     }
   }
 };
 }
 
-BMessenger OpenFlatView(BMessenger owner, std::shared_ptr<Shelf> shelf,
+BView *CreateFlatView(BMessenger owner, std::shared_ptr<Shelf> shelf,
                         const char *root) {
-  auto window = new FlatViewWindow(owner, std::move(shelf), root);
-  BMessenger result(window);
-  window->Show();
-  return result;
+  return new FlatView(owner, std::move(shelf), root);
 }
 }

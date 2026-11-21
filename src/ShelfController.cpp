@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
 #include "ShelfController.h"
 
-#include "FlatViewWindow.h"
 #include "JobSnapshot.h"
 #include "MainWindow.h"
 #include "OperationQueue.h"
 #include "Pane.h"
 #include "ShelfWindow.h"
-#include "VirtualFile.h"
 #include <exception>
 
 namespace Listi {
@@ -15,10 +13,6 @@ namespace Listi {
 ShelfController::ShelfController(BMessenger owner,
                                  const std::array<Pane *, 2> &panes)
     : fOwner(owner), fPanes(panes) {}
-
-bool ShelfController::CanOpenFlatView(const char *path) {
-  return path[0] == '/' && !IsVirtual(path);
-}
 
 bool ShelfController::Handle(const BMessage &message, Pane &active,
                              OperationQueue &queue) {
@@ -44,9 +38,6 @@ bool ShelfController::Handle(const BMessage &message, Pane &active,
       queue.Enqueue(*job);
     break;
   }
-  case kFlatView:
-    OpenFlatViewFor(active.Path());
-    break;
   default:
     return false;
   }
@@ -81,20 +72,6 @@ void ShelfController::Refresh() {
     BMessage refresh(kRefreshShelf);
     fShelfWindow.SendMessage(&refresh, (BHandler *)nullptr, 0);
   }
-}
-
-void ShelfController::OpenFlatViewFor(const char *root) {
-  if (!CanOpenFlatView(root))
-    return;
-  for (auto it = fFlatViews.begin(); it != fFlatViews.end();) {
-    if (!it->second.IsValid())
-      it = fFlatViews.erase(it);
-    else
-      ++it;
-  }
-  auto &window = fFlatViews[root];
-  if (!window.IsValid() || window.SendMessage(kFlatView) != B_OK)
-    window = OpenFlatView(fOwner, fShelf, root);
 }
 
 } // namespace Listi

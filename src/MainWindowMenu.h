@@ -15,7 +15,7 @@ public:
 
   void SetWorkspace(const WorkspaceLayout &layout, bool quickView);
   void SetPreview(const WorkspaceLayout &layout, bool showingQuickView);
-  void SetFileActions(int32 viewMode, bool canOpenFlatView,
+  void SetFileActions(int32 viewMode, bool flat, bool canOpenFlatView,
                       bool canSaveClipboard, bool canUndoBulkRename);
   void SetFunctionButtonState(bool available, bool requested, bool overflow);
   void ClearFunctionActions();

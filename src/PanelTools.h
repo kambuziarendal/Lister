@@ -5,13 +5,15 @@
 #include <Messenger.h>
 #include <array>
 #include <string>
+#include <memory>
 
 class BButton;
 class ImagePreview;
 class Pane;
 
 namespace Listi {
-enum class PanelPage : int32 { Files, Search, Preview };
+class Shelf;
+enum class PanelPage : int32 { Files, Search, Preview, Flat };
 inline constexpr uint32 kPanelPage = 'ptpg', kClosePanelPage = 'ptcl';
 
 // Keep the Pane and any open tools attached when switching pages. Detaching
@@ -28,6 +30,7 @@ public:
   bool CloseEditor();
   void EnableTools(bool enabled);
   void FocusCurrent();
+  void OpenFlat(const std::shared_ptr<Shelf> &shelf);
   bool OpenSearch(const BMessage &store);
   BMessenger SearchMessenger() const;
   ImagePreview &OpenPreview();
@@ -37,15 +40,17 @@ public:
 private:
   bool CanLeaveCurrent();
   void Open(PanelPage page, BView *view);
+  void RemovePage(PanelPage page);
   void ShowPage(PanelPage page);
   void UpdateTabs();
 
   const int32 pane;
   Pane &files;
   PanelPage current = PanelPage::Files;
+  bool toolsEnabled = false;
   BGroupView *tabs;
   BButton *closeButton;
-  std::array<BView *, 3> pages{};
-  std::array<BButton *, 3> buttons{};
+  std::array<BView *, 4> pages{};
+  std::array<BButton *, 4> buttons{};
 };
 } // namespace Listi

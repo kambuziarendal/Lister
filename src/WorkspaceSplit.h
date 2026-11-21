@@ -3,6 +3,7 @@
 
 #include <SplitView.h>
 #include <array>
+#include <memory>
 
 class ImagePreview;
 class MainWindowMenu;
@@ -12,6 +13,7 @@ struct WorkspaceLayout;
 
 namespace Listi {
 class PanelTools;
+class Shelf;
 constexpr uint32 kSplitChanged = 'swgt';
 
 class WorkspaceSplit : public BSplitView {
@@ -28,6 +30,8 @@ public:
   bool ApplyWorkspaceEdit(const BMessage &message);
   bool PrepareLayoutChange();
   bool HandlePanelCommand(BMessage *message);
+  bool CanToggleFlat() const;
+  void ToggleFlat(const std::shared_ptr<Shelf> &shelf);
   void OpenSearch(const BMessage &store);
   void TogglePanelPreview();
   bool DismissPanelTool();

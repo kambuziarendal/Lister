@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "MainWindow.h"
+#include "FlatView.h"
 #include "MainWindowMenu.h"
 #include "ApplicationServices.h"
 #include "ArchivePasswords.h"
@@ -159,6 +160,9 @@ class MainWindow : public BWindow {
           PostMainWindowNotice(m->GetString("error", "Save failed."));
         PublishPlaces();
       }
+      break;
+    case Listi::kFlatView:
+      split->ToggleFlat(shelf.Model());
       break;
     case kSearch:
       if (prefs.IsSmidja()) {
@@ -321,8 +325,7 @@ public:
     return BWindow::ResolveSpecifier(msg, index, spec, what, property);
   }
   void DispatchMessage(BMessage *message, BHandler *target) override {
-    if (prefs.IsSmidja() &&
-        (message->what == B_MOUSE_DOWN || message->what == B_KEY_DOWN)) {
+    if (message->what == B_MOUSE_DOWN || message->what == B_KEY_DOWN) {
       auto *receiver = message->what == B_MOUSE_DOWN
                            ? dynamic_cast<BView *>(target) : CurrentFocus();
       split->FollowFocus(receiver);
@@ -333,12 +336,12 @@ public:
     BWindow::MenusBeginning();
     const auto &pane = *panes[split->Source()];
     const char *path = pane.Path();
-    const bool canOpenFlatView = Listi::ShelfController::CanOpenFlatView(path);
+    const bool flat = split->Panel(split->Source()).Current() == PanelPage::Flat;
     const bool canSaveClipboard =
         !actionArea->Pending() && Listi::CanSaveClipboardIn(path);
     const bool canUndoBulkRename =
         !actionArea->Pending() && queue.CanUndoBulkRename();
-    menu->SetFileActions(pane.CurrentView(), canOpenFlatView,
+    menu->SetFileActions(pane.CurrentView(), flat, split->CanToggleFlat(),
                          canSaveClipboard, canUndoBulkRename);
   }
 
@@ -369,6 +372,11 @@ public:
       return;
     if (!split->AllowsCommand(m->what)) {
       queue.ErrorInfo("Switch to Files in the affected panel before using this command.");
+      return;
+    }
+    auto &panel = split->Panel(source);
+    if (m->what == Listi::kAddToShelf && panel.Current() == PanelPage::Flat) {
+      panel.Page(PanelPage::Flat)->MessageReceived(m);
       return;
     }
     auto &pane = *panes[source];
