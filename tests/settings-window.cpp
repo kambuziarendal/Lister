@@ -3,10 +3,15 @@
 #include "WorkspaceEditor.h"
 #include <Button.h>
 #include <Application.h>
+#include <CardLayout.h>
+#include <CardView.h>
 #include <MenuField.h>
 #include <MenuItem.h>
-#include <TabView.h>
+#include <ScrollBar.h>
+#include <ScrollView.h>
+#include <TextControl.h>
 #include <Window.h>
+#include <cstring>
 #include <iostream>
 
 class Receiver : public BLooper {
@@ -45,10 +50,72 @@ int main() {
     if (!window || !window->Lock())
       return 2;
     BMessenger dialog(window);
-    auto tabs = dynamic_cast<BTabView *>(window->FindView("settings tabs"));
+    auto category =
+        dynamic_cast<BMenuField *>(window->FindView("settings category"));
+    auto pages = dynamic_cast<BCardView *>(window->FindView("settings pages"));
+    if (!category || !pages || category->Menu()->CountItems() != 4)
+      return 2;
+    auto select = [&](int32 index, const char *label) {
+      auto *item = category->Menu()->ItemAt(index);
+      if (std::strcmp(item->Label(), label) != 0 || item->Invoke() != B_OK)
+        return false;
+      for (int i = 0; i < 100; ++i) {
+        if (item->IsMarked() && pages->CardLayout()->VisibleIndex() == index) {
+          window->Layout(true);
+          return true;
+        }
+        window->Unlock();
+        snooze(10000);
+        window->Lock();
+      }
+      return false;
+    };
+    const auto inside = [](BView *container, BView *view) {
+      return container && view && !view->IsHidden() &&
+             container->ConvertToScreen(container->Bounds()).Contains(
+                 view->ConvertToScreen(view->Bounds()));
+    };
+    window->ResizeTo(408, 180);
+    window->Layout(true);
+    check(window->Bounds().Width() <= 408 && window->Bounds().Height() <= 180 &&
+              inside(pages->Parent(), category) &&
+              inside(pages->Parent(), window->FindView("settings save")) &&
+              inside(pages->Parent(), window->FindView("settings cancel")),
+          "short, narrow settings keeps the chooser and actions visible");
+    check(select(1, "Appearance"), "Appearance can be opened at narrow width");
+    auto linkColor = window->FindView("settings link color");
+    auto appearance = dynamic_cast<BScrollView *>(
+        pages->CardLayout()->VisibleItem()->View());
+    auto bar = appearance->ScrollBar(B_VERTICAL);
+    float minimum, maximum;
+    bar->GetRange(&minimum, &maximum);
+    check(maximum > minimum && !inside(appearance->Target(), linkColor),
+          "Appearance can be scrolled when its controls exceed the window");
+    bar->SetValue(maximum);
+    check(inside(appearance->Target(), linkColor),
+          "scrolling reveals the last Appearance field");
+    check(select(2, "Workflow"), "Workflow can be opened at narrow width");
+    check(select(3, "Applications"),
+          "Applications can be opened at narrow width");
+    auto editor =
+        dynamic_cast<BTextControl *>(window->FindView("settings editor"));
+    auto terminal = window->FindView("settings terminal");
+    auto applications = dynamic_cast<BScrollView *>(
+        pages->CardLayout()->VisibleItem()->View());
+    check(editor && inside(applications->Target(), editor) &&
+              inside(applications->Target(), terminal),
+          "both application fields fit the short, narrow settings window");
+    if (editor)
+      editor->SetText("Settings test editor");
+    window->ResizeTo(560, 515);
+    window->Layout(true);
+    check(select(1, "Appearance"), "Appearance remains reachable after resize");
+    bar->GetRange(&minimum, &maximum);
+    check(maximum == minimum && inside(appearance->Target(), linkColor),
+          "growing the window removes overflow and resets the scroll position");
+    check(select(0, "Workspaces"), "Workspaces remains reachable");
     auto field = dynamic_cast<BMenuField *>(window->FindView("einn"));
     auto choice = field ? field->Menu()->ItemAt(1) : nullptr;
-    check(tabs && tabs->CountTabs() >= 2, "settings split into named pages");
     check(field && field->Menu()->CountItems() == ViewModeCount &&
               field->Menu()->ItemAt(0)->IsMarked(),
           "Einn starts in Details and all file views remain available");
@@ -77,5 +144,7 @@ int main() {
   check(prefs.DefaultMode(Workspace::einn) == 1 &&
             prefs.DefaultMode(Workspace::askr) == 0,
         "only chosen default changed");
+  check(prefs.editor == "Settings test editor",
+        "an application setting survives category changes and Save");
   return failures ? 1 : 0;
 }

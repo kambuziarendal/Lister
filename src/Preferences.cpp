@@ -1,18 +1,23 @@
 // SPDX-License-Identifier: MIT
 #include "Common.h"
+#include "WrappedLabel.h"
 #include "WorkspaceEditor.h"
 #include <Alert.h>
 #include <Button.h>
+#include <CardLayout.h>
+#include <CardView.h>
 #include <CheckBox.h>
 #include <GroupView.h>
 #include <LayoutBuilder.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
+#include <ScrollBar.h>
+#include <ScrollView.h>
 #include <StringView.h>
-#include <TabView.h>
 #include <TextControl.h>
 #include <Window.h>
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -115,20 +120,99 @@ BMessage Preferences::Save() const {
 namespace {
 constexpr Workspace kSettingsWorkspaces[] = {
     Workspace::einn, Workspace::tviskipt, Workspace::askr, Workspace::smidja};
-constexpr int32 kAppearanceTab = 1;
+constexpr uint32 kSettingsCategory = 'stct';
+constexpr int32 kAppearancePage = 1;
+
+// Clip to a fixed viewport, but give the page enough height for every
+// control. The scroll bar moves the viewport rather than shrinking the page.
+class SettingsPage : public BScrollView {
+  BView *content;
+
+public:
+  explicit SettingsPage(BView *page)
+      : BScrollView("settings page scroll",
+                    new BView("settings viewport", B_SCROLL_VIEW_AWARE),
+                    0, false, true, B_NO_BORDER),
+        content(page) {
+    Target()->AddChild(content);
+  }
+
+  BSize MinSize() override {
+    const auto bar = ScrollBar(B_VERTICAL);
+    return {content->MinSize().width + bar->PreferredSize().width + 1,
+            std::max(64.f, bar->MinSize().height)};
+  }
+
+  void DoLayout() override {
+    BScrollView::DoLayout();
+    const BRect bounds = Target()->Bounds();
+    if (!bounds.IsValid())
+      return;
+    float minimum = content->MinSize().height;
+    if (content->HasHeightForWidth())
+      content->GetHeightForWidth(bounds.Width(), &minimum, nullptr, nullptr);
+    const float height = std::max(bounds.Height(), minimum);
+    content->ResizeTo(bounds.Width(), height);
+
+    auto bar = ScrollBar(B_VERTICAL);
+    bar->SetRange(0, height - bounds.Height());
+    bar->SetProportion((bounds.Height() + 1) / (height + 1));
+    bar->SetSteps(be_plain_font->Size() * 1.33f, bounds.Height());
+  }
+
+  void Reveal(BView *view) {
+    BView *ancestor = view;
+    while (ancestor && ancestor != content)
+      ancestor = ancestor->Parent();
+    if (!ancestor)
+      return;
+    const BRect bounds = Target()->Bounds();
+    const BRect field =
+        Target()->ConvertFromScreen(view->ConvertToScreen(view->Bounds()));
+    const float top = bounds.top;
+    if (field.top < top)
+      ScrollBar(B_VERTICAL)->SetValue(field.top);
+    else if (field.bottom > bounds.bottom)
+      ScrollBar(B_VERTICAL)->SetValue(top + field.bottom - bounds.bottom);
+  }
+};
 
 class PreferencesWindow : public BWindow {
   BMessenger target;
   Preferences prefs;
-  BTabView *tabs;
+  BCardView *pages;
+  BPopUpMenu *categories;
   BPopUpMenu *defaultModes[sizeof(kSettingsWorkspaces) /
                            sizeof(kSettingsWorkspaces[0])];
   BCheckBox *icons, *size, *date, *buttons, *command;
   BTextControl *family, *fontSize, *folders, *files, *links, *editor, *terminal;
 
+  void AddPage(BView *page) {
+    auto choose = new BMessage(kSettingsCategory);
+    choose->AddInt32("page", categories->CountItems());
+    categories->AddItem(new BMenuItem(page->Name(), choose));
+    pages->AddChild(new SettingsPage(page));
+  }
+
+  void SelectPage(int32 index) {
+    auto item = categories->ItemAt(index);
+    if (!item)
+      return;
+    item->SetMarked(true);
+    pages->CardLayout()->SetVisibleItem(index);
+  }
+
+  void Reveal(BView *view) {
+    auto item = pages->CardLayout()->VisibleItem();
+    if (item)
+      static_cast<SettingsPage *>(item->View())->Reveal(view);
+  }
+
   void ShowInputError(BTextControl *control, const char *error) {
-    tabs->Select(kAppearanceTab);
+    SelectPage(kAppearancePage);
+    Layout(false);
     control->MakeFocus();
+    Reveal(control);
     (new BAlert("invalid setting", error, "OK"))->Go(nullptr);
   }
 
@@ -137,7 +221,10 @@ public:
       : BWindow(BRect(0, 0, 560, 300), "Listi settings", B_TITLED_WINDOW,
                 B_AUTO_UPDATE_SIZE_LIMITS | B_NOT_ZOOMABLE),
         target(t), prefs(p) {
-    tabs = new BTabView("settings tabs", B_WIDTH_FROM_LABEL);
+    pages = new BCardView("settings pages");
+    categories = new BPopUpMenu("Category");
+    auto categoryField =
+        new BMenuField("settings category", "Category:", categories);
 
     auto workspaces = new BGroupView("Workspaces", B_VERTICAL);
     auto workspaceLayout = BLayoutBuilder::Group<>(workspaces);
@@ -164,12 +251,12 @@ public:
                                  "Customize current workspace layout…", openLayout);
     customize->SetTarget(target);
     views.End()
-        .Add(new BStringView(
+        .Add(new WrappedLabel(
             "view precedence",
-            "An explicit view saved for a folder takes priority."))
+            "An explicit view saved for a folder takes priority."), 0)
         .Add(customize)
         .AddGlue();
-    tabs->AddTab(workspaces);
+    AddPage(workspaces);
 
     icons = new BCheckBox("Show file icons", nullptr);
     icons->SetValue(p.icons);
@@ -190,9 +277,12 @@ public:
     fontSize = new BTextControl("Font size:", number, nullptr);
     folders = new BTextControl("Folder color:", p.folders, nullptr);
     files = new BTextControl("File color:", p.files, nullptr);
-    links = new BTextControl("Symbolic link color:", p.links, nullptr);
-    editor = new BTextControl("Editor application:", p.editor, nullptr);
-    terminal = new BTextControl("Terminal application:", p.terminal, nullptr);
+    links = new BTextControl("settings link color", "Symbolic link color:",
+                             p.links, nullptr);
+    editor = new BTextControl("settings editor", "Editor application:",
+                              p.editor, nullptr);
+    terminal = new BTextControl("settings terminal", "Terminal application:",
+                                p.terminal, nullptr);
 
     auto appearance = new BGroupView("Appearance", B_VERTICAL);
     BLayoutBuilder::Group<>(appearance)
@@ -212,10 +302,10 @@ public:
         .Add(links->CreateLabelLayoutItem(), 0, 4)
         .Add(links->CreateTextViewLayoutItem(), 1, 4)
         .End()
-        .Add(new BStringView("color format",
-                             "Use system or a color like #B8C4D0."))
+        .Add(new WrappedLabel("color format",
+                              "Use system or a color like #B8C4D0."), 0)
         .AddGlue();
-    tabs->AddTab(appearance);
+    AddPage(appearance);
 
     auto workflow = new BGroupView("Workflow", B_VERTICAL);
     BLayoutBuilder::Group<>(workflow)
@@ -223,7 +313,7 @@ public:
         .Add(buttons)
         .Add(command)
         .AddGlue();
-    tabs->AddTab(workflow);
+    AddPage(workflow);
 
     auto applications = new BGroupView("Applications", B_VERTICAL);
     BLayoutBuilder::Group<>(applications)
@@ -235,23 +325,40 @@ public:
         .Add(terminal->CreateTextViewLayoutItem(), 1, 1)
         .End()
         .AddGlue();
-    tabs->AddTab(applications);
+    AddPage(applications);
 
-    auto save = new BButton("Save", new BMessage(kApplyPreferences));
+    auto save = new BButton("settings save", "Save",
+                            new BMessage(kApplyPreferences));
     BLayoutBuilder::Group<>(this, B_VERTICAL, B_USE_DEFAULT_SPACING)
         .SetInsets(B_USE_WINDOW_SPACING)
-        .Add(tabs)
+        .Add(categoryField, 0)
+        .Add(pages)
         .AddGroup(B_HORIZONTAL)
         .AddGlue()
-        .Add(new BButton("Cancel", new BMessage(B_QUIT_REQUESTED)))
+        .Add(new BButton("settings cancel", "Cancel",
+                         new BMessage(B_QUIT_REQUESTED)))
         .Add(save)
         .End();
+    categories->SetTargetForItems(this);
+    SelectPage(0);
     SetDefaultButton(save);
     AddShortcut(B_ESCAPE, B_NO_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
     AddShortcut('W', B_COMMAND_KEY, new BMessage(B_QUIT_REQUESTED));
     CenterOnScreen();
   }
+  void DispatchMessage(BMessage *message, BHandler *handler) override {
+    const bool tab = message && message->what == B_KEY_DOWN &&
+                     message->GetString("bytes", "")[0] == B_TAB;
+    BView *previous = tab ? CurrentFocus() : nullptr;
+    BWindow::DispatchMessage(message, handler);
+    if (tab && CurrentFocus() != previous)
+      Reveal(CurrentFocus());
+  }
   void MessageReceived(BMessage *m) override {
+    if (m->what == kSettingsCategory) {
+      SelectPage(m->GetInt32("page", -1));
+      return;
+    }
     if (m->what != kApplyPreferences) {
       BWindow::MessageReceived(m);
       return;
