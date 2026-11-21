@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "ArchiveActions.h"
+#include "ArchiveWindow.h"
 #include "ArchiveJobs.h"
 #include "ArchivePasswords.h"
 #include "ArchiveSettings.h"
@@ -7,6 +8,9 @@
 #include "JobSnapshot.h"
 #include "VirtualFile.h"
 #include <Application.h>
+#include <TextControl.h>
+#include <StringView.h>
+#include <Window.h>
 #include <algorithm>
 #include <cstring>
 #include <Directory.h>
@@ -44,9 +48,59 @@ void checkZipName(const std::string &path) {
   check(marked("PK\x03\x04", 30, 6) && marked("PK\x01\x02", 46, 8),
         "ZIP local and central headers declare UTF-8 for the exact member name");
 }
+void checkSuggestedNames(const std::string &root) {
+  const std::string prefix(250, 'x');
+  const auto source = root + "/" + prefix + "🍕z";
+  write(source, "fixture");
+  auto job = PrepareArchiveJob(false, {source});
+  auto address = OpenArchiveWindow(job, root, {});
+  BWindow *dialog = nullptr;
+  for (int i = 0; i < 200; ++i) {
+    if (!address.LockTarget()) throw std::runtime_error("cannot lock archive dialog");
+    dialog = dynamic_cast<BWindow *>(address.Target(nullptr));
+    auto *label = dynamic_cast<BStringView *>(dialog->FindView("archive chosen format"));
+    if (label && std::string(label->Text()) != "Format: checking...")
+      break;
+    dialog->Unlock();
+    dialog = nullptr;
+    snooze(50000);
+  }
+  check(dialog != nullptr, "archive format discovery completed");
+  auto *name = dynamic_cast<BTextControl *>(dialog->FindView("archive name"));
+  auto select = [&](const char *id) {
+    BMessage msg('arfm');
+    msg.AddString("format", id);
+    dialog->MessageReceived(&msg);
+  };
+  select("tgz");
+  check(std::string(name->Text()) == prefix.substr(0, 248) + ".tar.gz",
+        "long source name leaves room for the entire archive suffix");
+  select("zip");
+  check(std::string(name->Text()) == prefix + ".zip",
+        "switching back restores the full available UTF-8 prefix");
+  SetArchiveDestination(job, root, name->Text());
+  name->SetText("Field notes.ZIP");
+  select("tgz");
+  check(std::string(name->Text()) == "Field notes.tar.gz",
+        "switching format replaces a custom uppercase suffix exactly once");
+  dialog->Quit();
+
+  Job extract;
+  extract.action = Action::ExtractArchive;
+  extract.sources = {root + "/Album.TAR.XZ"};
+  auto extraction = OpenArchiveWindow(extract, root, {});
+  check(extraction.LockTarget(), "lock extraction dialog");
+  dialog = dynamic_cast<BWindow *>(extraction.Target(nullptr));
+  name = dynamic_cast<BTextControl *>(dialog->FindView("archive name"));
+  check(std::string(name->Text()) == "Album extracted",
+        "extract suggestion strips a mixed-case compound archive suffix");
+  dialog->Quit();
+}
+
 void *run(void *) {
  try{
   char pattern[]="/tmp/Listi-archive-jobs-XXXXXX";std::string root=mkdtemp(pattern);
+  checkSuggestedNames(root);
   Job moveRequest;
   moveRequest.action = Action::MoveArchive;
   moveRequest.sources = {root + "/local.txt"};

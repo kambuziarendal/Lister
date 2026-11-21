@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "ArchiveWindow.h"
+#include "ArchiveBackend.h"
+#include "PaneModel.h"
 #include "ArchivePasswords.h"
 #include "JobSnapshot.h"
 #include "ArchiveSettings.h"
@@ -13,6 +15,7 @@
 #include <MenuItem.h>
 #include <Path.h>
 #include <PopUpMenu.h>
+#include <StorageDefs.h>
 #include <StringView.h>
 #include <TextControl.h>
 #include <TextView.h>
@@ -39,6 +42,21 @@ std::string SettingsPath() {
   p.Append("Lister_archive_settings");
   return p.Path();
 }
+bool HasSuffix(const std::string &name, const std::string &suffix) {
+  return !suffix.empty() && name.size() >= suffix.size() &&
+         strcasecmp(name.c_str() + name.size() - suffix.size(),
+                    suffix.c_str()) == 0;
+}
+
+std::string SuggestedName(const std::string &stem, const std::string &suffix) {
+  // Generated suffixes are short ASCII strings. Reserve their bytes first.
+  size_t keep = std::min(stem.size(), B_FILE_NAME_LENGTH - 1 - suffix.size());
+  while (keep < stem.size() && keep > 0 &&
+         (static_cast<unsigned char>(stem[keep]) & 0xc0) == 0x80)
+    --keep;
+  return stem.substr(0, keep) + suffix;
+}
+
 class ArchiveWindow : public BWindow {
   Listi::Job job;
   BMessenger target;
@@ -55,6 +73,7 @@ class ArchiveWindow : public BWindow {
   std::vector<Listi::ArchiveFormat> formats;
   BMessage settings;
   std::string formatID = "zip", extension;
+  std::string suggestedStem, suggestedName;
   bool expanded = true, ready = false;
   bool Extract() const { return job.action == Listi::Action::ExtractArchive; }
   const Listi::ArchiveFormat *SelectedFormat() const {
@@ -101,11 +120,17 @@ class ArchiveWindow : public BWindow {
                                       id == "7z" && formatID != "7z";
     formatID = id;
     std::string text = name->Text();
-    if (!extension.empty() && text.size() >= extension.size() &&
-        text.substr(text.size() - extension.size()) == extension)
-      text.resize(text.size() - extension.size());
+    if (text == suggestedName) {
+      suggestedName = SuggestedName(suggestedStem, found->extension);
+      text = suggestedName;
+    } else {
+      if (HasSuffix(text, extension))
+        text.resize(text.size() - extension.size());
+      if (!HasSuffix(text, found->extension))
+        text += found->extension;
+    }
     extension = found->extension;
-    name->SetText((text + extension).c_str());
+    name->SetText(text.c_str());
     formatSummary->SetText(("Format: " + found->label).c_str());
     favorite->SetValue(Favorite(id));
     const int saved =
@@ -171,17 +196,11 @@ public:
     if (Extract()) {
       auto loc = Listi::ParseLocation(job.sources[0]);
       proposed = Listi::Leaf(loc.Archive() ? loc.archive : job.sources[0]);
-      for (const char *suffix :
-           {".tar.gz", ".tar.xz", ".tar.bz2", ".tar.lz4", ".tar.zst", ".zip",
-            ".7z", ".rar", ".tar", ".tgz", ".txz", ".gz", ".xz", ".bz2"}) {
-        std::string ending = suffix;
-        if (proposed.size() > ending.size() &&
-            proposed.substr(proposed.size() - ending.size()) == ending) {
-          proposed.resize(proposed.size() - ending.size());
-          break;
-        }
-      }
-      proposed += " extracted";
+      if (Listi::ArchiveExtension(proposed))
+        proposed.resize(proposed.size() - FileTypeKey(proposed).size());
+      proposed = SuggestedName(proposed, " extracted");
+    } else {
+      suggestedStem = suggestedName = proposed;
     }
     name = new BTextControl("archive name",
                             Extract() ? "New folder name:" : "Archive name:",
@@ -395,11 +414,7 @@ public:
         }
         std::string outputName = name->Text();
         if (!Extract() && launchOptions.appendExtension &&
-            !outputName.empty() &&
-            (outputName.size() < extension.size() ||
-             strcasecmp(outputName.c_str() + outputName.size() -
-                            extension.size(),
-                        extension.c_str()) != 0))
+            !outputName.empty() && !HasSuffix(outputName, extension))
           outputName += extension;
         Listi::SetArchiveDestination(job, folder->Text(), outputName);
         if (!Extract()) {
