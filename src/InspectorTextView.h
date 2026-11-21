@@ -17,6 +17,7 @@ class InspectorTextView : public BTextView {
 public:
   InspectorTextView(const std::string &path, const std::string &text);
   void MessageReceived(BMessage *) override;
+  void Paste(BClipboard *) override;
 
   std::string_view Content() const;
   uint64 Revision() const { return revision; }

@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: MIT
 #include "InspectorTextView.h"
+#include "InspectorDocument.h"
 #include "InspectorSyntax.h"
+#include <Beep.h>
+#include <Clipboard.h>
 #include <Input.h>
 #include <Message.h>
+#include <TypeConstants.h>
+#include <algorithm>
 #include <utility>
 
 namespace Inspector {
@@ -34,6 +39,58 @@ void InspectorTextView::MessageReceived(BMessage *message) {
       composing = false;
   }
   BTextView::MessageReceived(message);
+}
+
+void InspectorTextView::Paste(BClipboard *clipboard) {
+  const void *data = nullptr;
+  ssize_t size = 0;
+  if (!IsEditable() || !clipboard->Lock()) {
+    BTextView::Paste(clipboard);
+    return;
+  }
+  const auto *message = clipboard->Data();
+  std::string_view bytes;
+  if (message &&
+      message->FindData("text/plain", B_MIME_TYPE, &data, &size) == B_OK &&
+      size > 0)
+    bytes = {static_cast<const char *>(data), static_cast<size_t>(size)};
+  bytes = bytes.substr(0, bytes.find('\0'));
+  if (bytes.find('\r') == bytes.npos) {
+    clipboard->Unlock();
+    BTextView::Paste(clipboard);
+    return;
+  }
+
+  int32 from, to;
+  GetSelection(&from, &to);
+  const size_t keptBytes = TextLength() - (to - from);
+  const size_t limit = std::min(kDocumentLimit, static_cast<size_t>(MaxBytes()));
+  const size_t available = limit - std::min(limit, keptBytes);
+  // CRLF is the only shrinking conversion, so oversized clipboard data
+  // cannot produce a fitting edit even in the best case.
+  if (bytes.size() / 2 + bytes.size() % 2 > available) {
+    clipboard->Unlock();
+    beep();
+    return;
+  }
+  std::string text;
+  text.reserve(std::min(bytes.size(), available));
+  for (size_t i = 0; i < bytes.size(); ++i) {
+    if (bytes[i] == '\r' && i + 1 < bytes.size() && bytes[i + 1] == '\n')
+      continue;
+    if (text.size() == available) {
+      clipboard->Unlock();
+      beep();
+      return;
+    }
+    text += bytes[i] == '\r' ? '\n' : bytes[i];
+  }
+  clipboard->Unlock();
+
+  Select(from, to); // Cancel inline input before replacing the selection.
+  Delete(from, to);
+  Insert(from, text.data(), static_cast<int32>(text.size()));
+  ScrollToSelection();
 }
 
 std::string_view InspectorTextView::Content() const {

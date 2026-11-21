@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: MIT
 #include "ImagePreview.h"
+#include "InspectorDocument.h"
 #include "InspectorEditor.h"
 #include <Alert.h>
 #include <Application.h>
 #include <Button.h>
+#include <Clipboard.h>
 #include <Font.h>
+#include <Message.h>
 #include <StringView.h>
 #include <TextControl.h>
 #include <TextView.h>
+#include <TypeConstants.h>
 #include <Window.h>
 #include <cstdlib>
 #include <fstream>
@@ -241,6 +245,55 @@ int main() {
   Check(Read(path) == "#!/bin/python\r\nyield café\r\nyield two\r\n" &&
             InspectorEditorsAllowQuit(),
         "save persists edits, preserves CRLF and permits quit");
+
+  const auto clipboardName = "Listi-editor-paste-" + std::to_string(getpid());
+  BClipboard clipboard(clipboardName.c_str());
+  Check(clipboard.Lock(), "lock private paste fixture clipboard");
+  const std::string copied = "one\r\ntwo\rthree";
+  Check(clipboard.Clear() == B_OK &&
+            clipboard.Data()->AddData("text/plain", B_MIME_TYPE, copied.data(),
+                                      copied.size()) == B_OK &&
+            clipboard.Commit() == B_OK,
+        "copy mixed clipboard line endings");
+  clipboard.Unlock();
+  Check(window->Lock(), "paste onto a selection in the saved document");
+  const int32 pasteAt = modified.find("yield");
+  body->Select(pasteAt, pasteAt + 5);
+  body->Paste(&clipboard);
+  const std::string pasted = "#!/bin/python\none\ntwo\nthree café\nyield two\n";
+  body->GetSelection(&from, &to);
+  Check(pasted == body->Text() && from == pasteAt + 13 && to == from,
+        "paste normalizes CRLF and CR and advances the caret");
+  window->Unlock();
+  Send(editor, 'ieUn');
+  Check(window->Lock(), "inspect paste undo");
+  Check(modified == body->Text(),
+        "one undo restores the replaced selection text");
+  window->Unlock();
+  Send(editor, 'ieRe');
+  Send(editor, 'ieSv');
+  const std::string pastedDisk =
+      "#!/bin/python\r\none\r\ntwo\r\nthree café\r\nyield two\r\n";
+  Check(Read(path) == pastedDisk && InspectorEditorsAllowQuit(),
+        "redo and save preserve the document's original CRLF format");
+
+  Check(clipboard.Lock(), "lock oversized paste fixture clipboard");
+  const std::string oversized =
+      std::string(Inspector::kDocumentLimit, 'x') + "\r\n";
+  Check(clipboard.Clear() == B_OK &&
+            clipboard.Data()->AddData("text/plain", B_MIME_TYPE,
+                                      oversized.data(), oversized.size()) ==
+                B_OK &&
+            clipboard.Commit() == B_OK,
+        "copy text that cannot fit after normalization");
+  clipboard.Unlock();
+  Check(window->Lock(), "inspect oversized normalized paste");
+  body->Select(pasteAt, pasteAt + 3);
+  body->Paste(&clipboard);
+  body->GetSelection(&from, &to);
+  Check(pasted == body->Text() && from == pasteAt && to == pasteAt + 3,
+        "oversized normalized paste leaves the draft and selection intact");
+  window->Unlock();
   editor.SendMessage(B_QUIT_REQUESTED);
   for (int i = 0; i < 100 && editor.IsValid(); ++i)
     snooze(20000);
