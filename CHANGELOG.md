@@ -1,8 +1,13 @@
 # Changelog
 
-## Unreleased documentation
+## [0.37.1-1 alpha test candidate](https://github.com/kambuziarendal/listi/releases/tag/v0.37.1-1)
 
-- Separate hands-on ThinkPad testing from recorded Haiku VM results. Add the physical USB disconnect test procedure; it has not been run.
+- Edit text inside Inspector and Quick view. A draft stays bound to its original file when the selection changes or the editor is detached.
+- Open Flat View for the active panel in any workspace, resize the standalone Shelf, and jump to recent folders.
+- Improve file-selection identity checks, same-volume moves, archive recovery, and clipboard handling so stale selections do not silently retarget operations.
+- Keep folder differences visible in large comparisons and preserve photo orientation and filename extensions during image conversion.
+
+This is still an alpha. The physical USB disconnect test has not been run. Use Copy for transfers between disks and check the destination after remounting before removing originals.
 
 ## [0.37.0-1 alpha test candidate](https://github.com/kambuziarendal/listi/releases/tag/v0.37.0-1)
 
