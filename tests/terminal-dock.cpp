@@ -104,6 +104,19 @@ public:
            panel->SessionId() == session;
   }
 
+  bool ConfirmRestart(const fs::path &target, int lister, bool removeTarget) {
+    auto *panel = dock->Docked(lister);
+    const auto session = panel->SessionId();
+    const auto original = panel->StartFolder();
+    auto prompt = dock->Open(BMessage(kTerminal), lister, target.c_str());
+    if (!prompt || (removeTarget && !fs::remove(target)))
+      return false;
+    dock->Open(prompt->accepted, lister, target.c_str());
+    return panel->Active() &&
+           panel->SessionId() == session + (removeTarget ? 0 : 1) &&
+           panel->StartFolder() == (removeTarget ? original : target.string());
+  }
+
   bool DockIs(orientation direction, int32 workspaceIndex) const {
     return split->Orientation() == direction &&
            split->GetLayout()->IndexOfView(FindView("file panels")) ==
@@ -259,6 +272,12 @@ int main() {
               Until([&] { return Read(fixture.path / "ready") == "ready"; }),
           "start an interactive command that waits for input");
 
+    const auto removed = fixture.path / "removed before confirmation";
+    Check(fs::create_directory(removed) && WithWindow(main, [&](BWindow &) {
+            return owner->ConfirmRestart(removed, 0, true);
+          }),
+          "missing restart folder leaves the running interactive command intact");
+
     TerminalPanel *right = nullptr;
     Check(WithWindow(main, [&](BWindow &) {
             right = owner->Start(rightFixture.path, 1);
@@ -340,6 +359,11 @@ int main() {
               Enter(main, "printf '%s' \"$token\" > after", 1) &&
               Until([&] { return Read(rightFixture.path / "after") == "right"; }),
           "closing the floating left CLI leaves the right shell running");
+    Check(WithWindow(main, [&](BWindow &) {
+            return owner->ConfirmRestart(fixture.path, 1, false);
+          }) && Enter(main, "printf '%s' \"${token:-fresh}\" > restarted", 1) &&
+              Until([&] { return Read(fixture.path / "restarted") == "fresh"; }),
+          "successful restart opens a new shell in the confirmed folder");
     Check(WithWindow(main, [&](BWindow &) {
             return owner->StartFloating(fixture.path);
           }) && Until([&] {

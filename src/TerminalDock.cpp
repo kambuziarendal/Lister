@@ -126,20 +126,18 @@ TerminalDock::Open(const BMessage &message, int lister, const char *directory) {
       PostMainWindowNotice("Open a local folder first.");
       return std::nullopt;
     }
-    if (hasSession && terminalPanel->StartFolder() != path) {
-      if (!message.HasString("folder")) {
-        BMessage accepted(message.what);
-        accepted.AddString("folder", path);
-        accepted.AddInt32("terminal lister", lister);
-        accepted.AddInt64("session", terminalPanel->SessionId());
-        accepted.AddInt64("terminal placement", terminalPanel->Placement());
-        BString prompt("Close the current CLI and start a new shell in ");
-        prompt << path << "? Any running command will stop.";
-        return TerminalRestartPrompt{prompt, accepted};
-      }
-      terminalPanel->Stop();
+    const bool restart = hasSession && terminalPanel->StartFolder() != path;
+    if (restart && !message.HasString("folder")) {
+      BMessage accepted(message.what);
+      accepted.AddString("folder", path);
+      accepted.AddInt32("terminal lister", lister);
+      accepted.AddInt64("session", terminalPanel->SessionId());
+      accepted.AddInt64("terminal placement", terminalPanel->Placement());
+      BString prompt("Close the current CLI and start a new shell in ");
+      prompt << path << "? Any running command will stop.";
+      return TerminalRestartPrompt{prompt, accepted};
     }
-    if (!terminalPanel->Active()) {
+    if (!hasSession || restart) {
       if (const int error = terminalPanel->Start(path)) {
         BString detail("Could not open Listi CLI: ");
         detail << strerror(error);

@@ -130,18 +130,29 @@ public:
   }
 
   ~TerminalView() override { Stop(); }
-  bool Active() const { return session.Descriptor() >= 0; }
+  bool Active() const { return session && session->Descriptor() >= 0; }
 
   int Start(const char *directory) {
+    auto nextSession = std::make_unique<TerminalSession>();
+    if (const int error = nextSession->Start(directory, rows, columns))
+      return error;
+    auto nextRunner = PollRunner(pollGeneration + 1);
+    if (nextRunner->InitCheck() != B_OK)
+      return EIO;
+    auto *nextState = vterm_new(rows, columns);
+    if (!nextState)
+      return ENOMEM;
+
+    // Only retire the current shell after its replacement can run here.
     Stop();
+    session = std::move(nextSession);
+    runner = std::move(nextRunner);
+    state = nextState;
     history.clear();
     historyOffset = 0;
     selection = {};
     cursorVisible = true;
     alternate = false;
-    state = vterm_new(rows, columns);
-    if (!state)
-      return ENOMEM;
     vterm_set_utf8(state, 1);
     vterm_output_set_callback(state, Output, this);
     screen = vterm_obtain_screen(state);
@@ -154,16 +165,6 @@ public:
                     kBackground.blue);
     vterm_screen_set_default_colors(screen, &foreground, &background);
     vterm_screen_reset(screen, 1);
-    const int error = session.Start(directory, rows, columns);
-    if (error) {
-      Stop();
-      return error;
-    }
-
-    if (!StartPolling()) {
-      Stop();
-      return EIO;
-    }
     Invalidate();
     return 0;
   }
@@ -171,7 +172,7 @@ public:
   void Stop() {
     runner.reset();
     ++pollGeneration;
-    session.Stop();
+    session.reset();
     pending.clear();
     if (state)
       vterm_free(state);
@@ -183,7 +184,7 @@ public:
   void AttachedToWindow() override {
     BView::AttachedToWindow();
     if (Active())
-      StartPolling();
+      runner = PollRunner(++pollGeneration);
   }
 
   void DetachedFromWindow() override {
@@ -206,7 +207,8 @@ public:
     if (state) {
       selection = {};
       vterm_set_size(state, rows, columns);
-      session.Resize(rows, columns);
+      if (Active())
+        session->Resize(rows, columns);
       Invalidate();
     }
   }
@@ -374,11 +376,10 @@ public:
   }
 
 private:
-  bool StartPolling() {
+  std::unique_ptr<BMessageRunner> PollRunner(int64 generation) {
     BMessage tick(kPollTerminal);
-    tick.AddInt64("poll generation", ++pollGeneration);
-    runner = std::make_unique<BMessageRunner>(BMessenger(this), &tick, 30000);
-    return runner->InitCheck() == B_OK;
+    tick.AddInt64("poll generation", generation);
+    return std::make_unique<BMessageRunner>(BMessenger(this), &tick, 30000);
   }
 
   struct Selection {
@@ -431,7 +432,7 @@ private:
     if (pending.empty() || !Active())
       return;
     const ssize_t written =
-        write(session.Descriptor(), pending.data(), pending.size());
+        write(session->Descriptor(), pending.data(), pending.size());
     if (written > 0)
       pending.erase(0, written);
     else if (written < 0 && errno != EINTR && errno != EAGAIN &&
@@ -445,7 +446,7 @@ private:
     char data[8192];
     bool changed = false;
     for (int batch = 0; batch < 16; ++batch) {
-      const ssize_t count = read(session.Descriptor(), data, sizeof(data));
+      const ssize_t count = read(session->Descriptor(), data, sizeof(data));
       if (count > 0) {
         vterm_input_write(state, data, count);
         changed = true;
@@ -455,8 +456,8 @@ private:
         continue;
       if (count == 0 ||
           (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK) ||
-          session.Reap()) {
-        session.Stop();
+          session->Reap()) {
+        session.reset();
         runner.reset();
         static const char ended[] = "\r\n[Listi CLI session ended]";
         vterm_input_write(state, ended, sizeof(ended) - 1);
@@ -567,7 +568,7 @@ private:
     Invalidate();
   }
 
-  TerminalSession session;
+  std::unique_ptr<TerminalSession> session;
   VTerm *state = nullptr;
   VTermScreen *screen = nullptr;
   std::unique_ptr<BMessageRunner> runner;
